@@ -1,9 +1,9 @@
 #include <SPI.h>
 #include <Wire.h>
-#include <LEDFlash.h>
-#include <MCP4822.h>
-#include <ADS1286.h>
-#include <MAX6675.h>
+#include "LEDFlash.h"
+#include "MCP4822.h"
+#include "ADS1286.h"
+#include "MAX6675.h"
 
 //1 for serial communication, 0 to turn off.
 #define DEBUG 0
