@@ -8,24 +8,26 @@ void setup()
   #endif
     
   //OPTION B: I2C COMMUNICATION WITH MASTER ARDUINO
-  Wire.begin(I2C_address);       // join I2C bus with address specified (see header)
-  Wire.onRequest(request_event); // register event
+  Wire.begin(I2CAddress);           // join I2C bus with address specified (see header)
+  Wire.onRequest(I2C_TransmitData); // register event
 
   //INITIALISE DAC
-  DAC_SMU.gainSet(DACgain);
-  DAC_SMU.output('a', 0);
-  DAC_SMU.output('b', 0);
-  DAC_errmsg = DAC_SMU.readErrmsg();
+  DacSmu.gainSet(DacGain);
+  DacSmu.output('a', 0);
+  DacSmu.output('b', 0);
+  DacErrmsg = DacSmu.readErrmsg();
 
   //SETUP ADC
-  channel_A.ADC_input.setMicroDelay(200); //delay time between switching CS pin and reading data over SPI - determines measurement speed/rate.
-  channel_B.ADC_input.setMicroDelay(200);
+  //delay time between switching CS pin and reading data over SPI
+  //determines measurement speed/rate.
+  LTChannelA.AdcInput.setMicroDelay(200); 
+  LTChannelB.AdcInput.setMicroDelay(200);
 
   //MPP INITIAL SEARCH/SCAN
-  MPP_scan(&channel_A, V_scan_min, V_scan_max, dV_scan, DAC_SMU); 
-  DAC_SMU.output(channel_A.DAC_channel, channel_A.iv_data.v); //initialise DAC to MPP initial guess
-  MPP_scan(&channel_B, V_scan_min, V_scan_max, dV_scan, DAC_SMU); 
-  DAC_SMU.output(channel_B.DAC_channel, channel_B.iv_data.v); //initialise DAC to MPP initial guess  
+  IV_Scan(&LTChannelA, VScanMin, VScanMax, dVScan, &DacSmu); 
+  DacSmu.output(LTChannelA.DacChannel, LTChannelA.IVData.v); //initialise DAC to MPP initial guess
+  IV_Scan(&LTChannelB, VScanMin, VScanMax, dVScan, &DacSmu); 
+  DacSmu.output(LTChannelB.DacChannel, LTChannelB.IVData.v); //initialise DAC to MPP initial guess  
 
   #if DEBUG
     //DATA HEADINGS
@@ -35,24 +37,24 @@ void setup()
   #endif
   
   //SETUP LEDS FOR MAIN LOOP
-  channel_A.Led.t(50, 50);
-  channel_B.Led.t(50, 50);
+  LTChannelA.Led.t(50, 50);
+  LTChannelB.Led.t(50, 50);
 
   //set timer ready for measurements
-  channel_A.timer = channel_B.timer = millis(); 
+  LTChannelA.timer = LTChannelB.timer = millis(); 
 }
 
 void loop()
 {
 
-  MPP_update(&channel_A, DAC_SMU);
-  MPP_update(&channel_B, DAC_SMU);
+  IV_MpptUpdate(&LTChannelA, &DacSmu);
+  IV_MpptUpdate(&LTChannelB, &DacSmu);
 
   //LED will update every time the loop runs
-  channel_A.Led.update();
-  channel_B.Led.update();
+  LTChannelA.Led.update();
+  LTChannelB.Led.update();
 
-  T_sense.update();
+  TSense.update();
   
-  I2C_prepare_data(I2C_data);
+  I2C_PrepareData(I2CData);
 }
