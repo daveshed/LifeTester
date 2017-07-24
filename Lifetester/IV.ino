@@ -206,7 +206,7 @@ void IV_MpptUpdate(LifeTester_t* const lifeTester, MCP4822 const Dac)
         Serial.print(", ");
         Serial.print(lifeTester->error,DEC);
         Serial.print(", ");
-        Serial.print(analogRead(LDR_pin));
+        Serial.print(analogRead(LdrPin));
         Serial.print(", ");
         Serial.print(TSense.T_deg_C);
         Serial.print(", ");

@@ -6,7 +6,7 @@
 #include "MAX6675.h"
 
 //1 for serial communication, 0 to turn off.
-#define DEBUG 0
+#define DEBUG 1
 
 ////////////////
 //pin settings//
