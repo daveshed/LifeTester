@@ -24,9 +24,9 @@ void setup()
   LTChannelB.AdcInput.setMicroDelay(200);
 
   //MPP INITIAL SEARCH/SCAN
-  IV_Scan(&LTChannelA, VScanMin, VScanMax, dVScan, &DacSmu); 
+  IV_Scan(&LTChannelA, VScanMin, VScanMax, dVScan, DacSmu); 
   DacSmu.output(LTChannelA.DacChannel, LTChannelA.IVData.v); //initialise DAC to MPP initial guess
-  IV_Scan(&LTChannelB, VScanMin, VScanMax, dVScan, &DacSmu); 
+  IV_Scan(&LTChannelB, VScanMin, VScanMax, dVScan, DacSmu); 
   DacSmu.output(LTChannelB.DacChannel, LTChannelB.IVData.v); //initialise DAC to MPP initial guess  
 
   #if DEBUG

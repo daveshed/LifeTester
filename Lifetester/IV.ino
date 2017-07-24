@@ -6,7 +6,7 @@ also pass in objects referring to the led, DAC and ADC for this channel.
           Set voltage
 tElapsed  0----settleTime-----settleTime + sampleTime---- 
 */
-void IV_Scan(LifeTester_t* const lifeTester, const uint16_t startV, const uint16_t finV, const uint16_t dV, MCP4822 const Dac)
+void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint16_t finV, const uint16_t dV, MCP4822 Dac)
 {
   uint32_t v;
   uint32_t vMPP;   //everything needs to be defined as long to calculate power correctly
@@ -117,7 +117,7 @@ void IV_Scan(LifeTester_t* const lifeTester, const uint16_t startV, const uint16
  * start measuring after the tracking delay
  */
 
-void IV_MpptUpdate(LifeTester_t* const lifeTester, MCP4822 const Dac)
+void IV_MpptUpdate(LifeTester_t * const lifeTester, MCP4822 Dac)
 {
   uint32_t tElapsed = millis() - lifeTester->timer;
   
@@ -174,6 +174,7 @@ void IV_MpptUpdate(LifeTester_t* const lifeTester, MCP4822 const Dac)
       }
   
       DacErrmsg = Dac.readErrmsg();
+      Serial.println(DacErrmsg);
             
       //finished measurement now so do error detection
       if (lifeTester->IVData.pCurrent == 0)
