@@ -1,4 +1,5 @@
 #include "lifetester.h"
+#include "IV.h"
 
 void setup()
 { 
@@ -46,9 +47,8 @@ void setup()
 
 void loop()
 {
-
-  IV_MpptUpdate(&LTChannelA, &DacSmu);
-  IV_MpptUpdate(&LTChannelB, &DacSmu);
+  IV_MpptUpdate(&LTChannelA, DacSmu);
+  IV_MpptUpdate(&LTChannelB, DacSmu);
 
   //LED will update every time the loop runs
   LTChannelA.Led.update();
@@ -56,5 +56,5 @@ void loop()
 
   TSense.update();
   
-  I2C_PrepareData(I2CData);
+  I2C_PrepareData();
 }

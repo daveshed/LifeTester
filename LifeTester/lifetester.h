@@ -11,13 +11,35 @@
 ////////////////
 //pin settings//
 ////////////////
-const uint8_t AdcA_CSPin = 10;//ADC_A chip select. B is on pin8 
-const uint8_t AdcB_CSPin = 8; //ADC_A chip select. B is on pin8 
-const uint8_t Dac_CSPin  = 9; //DAC chip select 
+const uint8_t AdcA_CSPin = 8;//ADC_A chip select. B is on pin8 
+const uint8_t AdcB_CSPin = 9; //ADC_A chip select. B is on pin8 
+const uint8_t Dac_CSPin  = 7; //DAC chip select 
 const uint8_t LedA_Pin   = 6; //LED indicator
 const uint8_t LedB_Pin   = 5; //LED indicator
-const uint8_t Max_CSPin  = 7; //chip select for the MAX6675
+const uint8_t Max_CSPin  = 10; //chip select for the MAX6675
 const uint8_t LdrPin     = 0; //light intensity on A0
+
+//address for this slave device
+const uint8_t I2CAddress = 8;
+
+///////////
+//Globals//
+///////////
+const uint16_t tolerance = 20;  //number of allowed bad readings before there is an error
+const uint16_t VScanMin = 0;
+const uint16_t VScanMax = 2700;
+const uint16_t dVScan = 40;     //step size in MPP scan
+const uint16_t dVMPPT = 5;      //step size during MPPT - note that if this is too small,
+                                // there won't be a noticeable change in power between points and the alogorithm won't work.
+const uint16_t iThreshold = 50; //required threshold ADCreading in MPPscan for test to start
+
+//////////////////////
+//measurement timing//
+//////////////////////
+const uint16_t settleTime     = 200; //settle time after setting DAC to ADC measurement
+const uint16_t samplingTime   = 200; //time interval over which ADC measurements are made continuously then averaged afterward
+const uint16_t trackingDelay  = 200; //time period between tracking measurements
+
 
 typedef enum {
   ok,
@@ -28,7 +50,7 @@ typedef enum {
 } errorCode;
 
 typedef struct IVData_s {
-  uint32_t v;       //v_cur and v_next??
+  uint32_t v;
   uint32_t pCurrent;
   uint32_t pNext;
   uint32_t iCurrent;
@@ -40,9 +62,9 @@ typedef struct LifeTester_s {
   char          DacChannel;
   Flasher       Led;
   ADS1286       AdcInput;
-  uint16_t      nReadsCurrent,
-                nReadsNext,   //counting number of readings taken by ADC during sampling window
-                nErrorReads;  //number of readings outside allowed limits
+  uint16_t      nReadsCurrent;
+  uint16_t      nReadsNext;   //counting number of readings taken by ADC during sampling window
+  uint16_t      nErrorReads;  //number of readings outside allowed limits
   errorCode     error;          
   IVData_t      IVData;       //holds operating points
   uint32_t      timer;        //timer for tracking loop
@@ -53,34 +75,6 @@ typedef struct LifeTester_s {
 ////////////////
 uint8_t     DacErrmsg;      //error code from DACset
 const char  DacGain = 'l';  //gain setting for DAC
-
-///////////
-//Globals//
-///////////
-const uint8_t I2CAddress = 8;  //address for this slave device
-const uint16_t tolerance = 20;  //number of allowed bad readings before there is an error
-const uint16_t VScanMin = 0;
-const uint16_t VScanMax = 2700;
-const uint16_t dVScan = 40;     //step size in MPP scan
-const uint16_t dVMPPT = 5;      //step size during MPPT - note that if this is too small,
-                                // there won't be a noticeable change in power between points and the alogorithm won't work.
-const uint16_t iThreshold = 50; //required threshold ADCreading in MPPscan for test to start
-uint8_t I2CData[14] = {0};     //array to hold data to send over I2C
-
-//////////////////////
-//measurement timing//
-//////////////////////
-const uint16_t settleTime     = 200; //settle time after setting DAC to ADC measurement
-const uint16_t samplingTime   = 200; //time interval over which ADC measurements are made continuously then averaged afterward
-const uint16_t trackingDelay  = 200; //time period between tracking measurements
-
-///////////////////////
-//function prototypes//
-///////////////////////
-void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint16_t finV, const uint16_t dV, MCP4822 Dac);
-void IV_MpptUpdate(LifeTester_t * const lifeTester, MCP4822 Dac);
-void I2C_TransmitData(void); //I2C sender
-void I2C_PrepareData(uint8_t data[]); //helper function
 
 ///////////////////
 //class instances//

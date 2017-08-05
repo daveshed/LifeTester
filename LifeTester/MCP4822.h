@@ -7,17 +7,17 @@
 class MCP4822
 {
 	public:
-		MCP4822(unsigned int); //initialise
-		void output(char, unsigned int);
-  		void gainSet(char);
-  		unsigned int readErrmsg(void);
+		MCP4822(uint8_t); //initialise
+		void output(char, uint16_t);
+  	void gainSet(char);
+  	uint8_t readErrmsg(void);
 
 	private:
 		// Class Member Variables
-	  	byte MSB,LSB;
-	  	unsigned char gain;
-	  	unsigned int errmsg; //pass error code to user
-	  	unsigned int DAC_CS_pin; //chip select pin
+	  	uint8_t MSB, LSB;
+	  	uint8_t gain;
+	  	uint8_t errMsg; //pass error code to user
+	  	uint8_t DacCsPin; //chip select pin
 };
 
 #endif

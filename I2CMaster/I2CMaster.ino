@@ -1,72 +1,72 @@
 /*
-D. Mohamad 12/04/17
 sketch to be uploaded to lifetime testing master device
 for reading data from the slave test board
-data received as a string of 9 bytes:
-MSB//LSB(v) MSB/LSB(i) MSB/LSB(T) MSB/LSB(light intensity) error
+data received as a string of 17 bytes:
+time MSB//LSB(v) MSB/LSB(i) MSB/LSB(T) MSB/LSB(light intensity) error
 voltage first
 */
 
 #include <Wire.h>
 
-const int bytesToRead = 14; //bytes to read
+#define BYTES_TO_READ 17
 const int slaveAddress = 8; //address
-const unsigned int t_delay = 1000;
-
+const unsigned int tDelay = 1000;
+uint8_t I2CBuffer[BYTES_TO_READ];  
 unsigned int I2CReadData(void);
 
 void setup()
 {
   Wire.begin();        // join i2c bus (address optional for master)
   Serial.begin(9600);  // start serial for output
-  Serial.println("V_a, I_a, V_b, I_b, Temp, Intensity, err_a, err_b");
+  Serial.println("time, V_a, I_a, V_b, I_b, Temp, Intensity, err_a, err_b");
 }
 
-void loop() {
-  Wire.beginTransmission(slaveAddress);
-  byte buf[14];  
-  int n = Wire.requestFrom(slaveAddress, bytesToRead);
+void loop()
+{
+  I2CReadData(I2CBuffer, slaveAddress, BYTES_TO_READ);
+  
+  Serial.print(unpack(I2CBuffer, 0, 4));
+  Serial.print(", ");
+  for (int i = 0; i < 6; i++)
+  {
+    Serial.print(unpack(I2CBuffer, 4 + i * 2, 2));
+    Serial.print(", ");
+  }
+  Serial.print(I2CBuffer[15]);
+  Serial.print(", ");
+  Serial.print(I2CBuffer[15]);
+  Serial.println();
+  
+  delay(tDelay);
+}
 
-  for( int i = 0; i < n; i++)
+void I2CReadData(uint8_t buf[], uint8_t slaveAddress, uint8_t nBytes)
+{
+  Wire.beginTransmission(slaveAddress);
+  Wire.requestFrom(slaveAddress, nBytes);
+
+  for(int i = 0; i < nBytes; i++)
   {
     buf[i] = Wire.read();
   }
   
   Wire.endTransmission(slaveAddress);
-  
-  Serial.print((buf[0] << 8) | buf[1]);
-  Serial.print(", ");
-  Serial.print((buf[2] << 8) | buf[3]);
-  Serial.print(", ");
-  Serial.print((buf[4] << 8) | buf[5]);
-  Serial.print(", ");
-  Serial.print((buf[6] << 8) | buf[7]);
-  Serial.print(", ");
-  Serial.print((buf[8] << 8) | buf[9]);
-  Serial.print(", ");
-  Serial.print((buf[10] << 8) | buf[11]);
-  Serial.print(", ");
-  Serial.print(buf[12]);
-  Serial.print(", ");
-  Serial.print(buf[13]);
-  Serial.println();
-  
-  delay(t_delay);
 }
-
 /*
-//helper function to read two bytes from the slave device and return as int
-//note that all data is 12bits or narrower and are each transmitted as two bytes
-//apart from error which is one byte wide - don't use this function for error
-unsigned int I2C_receive_int(void)
+Helper function to read specified number of bytes from buffer byte array.
+Returns an int containing data. NB. MSB is at lowest index
+*/
+uint32_t unpack(const uint8_t byteArray[], uint8_t index, uint8_t numBytes)
 {
-  byte MSB,LSB;
-  unsigned int data=0;
+  uint32_t  data;
+  uint8_t   i;
+  uint8_t   j;
+  data = 0;
   
-  MSB = Wire.read();
-  LSB = Wire.read();  
-
-  data = (MSB<<8) | LSB;
+  for (i = index, j = numBytes - 1; i < index + numBytes; i++, j--)
+  {
+     data = byteArray[i] << (j * 8);
+  }
+  
   return(data);
 }
-*/

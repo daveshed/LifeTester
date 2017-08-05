@@ -1,11 +1,15 @@
+#include "IV.h"
+
 /*
 function to find MPP by scanning over voltages. Updates v to the MPP. 
-also pass in objects referring to the led, DAC and ADC for this channel.
+also pass in DAC and LifeTester objects.
 
-          STAGE 1
-          Set voltage
-tElapsed  0----settleTime-----settleTime + sampleTime---- 
+          STAGE 1             STAGE 2                   STAGE 3
+          Set V & wait        Read/Average current      Calculate P
+tElapsed  0-------------------settleTime----------------(settleTime + sampleTime) 
 */
+
+//scan voltage and look for max power point
 void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint16_t finV, const uint16_t dV, MCP4822 Dac)
 {
   uint32_t v;
@@ -16,7 +20,6 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
   uint32_t iMax;
   uint32_t timer = millis();
   uint32_t tElapsed;
-  
   uint16_t nSamples = 0; //number of readings taken during sample time
 
   #if DEBUG
@@ -25,10 +28,8 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
   #endif
   
   lifeTester->Led.t(25, 500);
- 
-  //scan voltage and look for max power point
-  v = startV;
   
+  v = startV;
   while(v <= finV)
   {
     tElapsed = millis() - timer;
@@ -68,10 +69,14 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
       }  
 
       if (iScan >= 4095)
+      {
         lifeTester->error = current_limit;  //reached current limit
+      }
       if (DacErrmsg != 0) //DAC writing error
+      {
         lifeTester->error = DAC_error;
-
+      }
+      
       #if DEBUG
         Serial.print(v);
         Serial.print(", ");
@@ -101,8 +106,10 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
   #endif
   
   if (iMax < iThreshold)
+  {
     lifeTester->error = threshold;  
-
+  }
+  
   lifeTester->IVData.v = vMPP;
   //reset DAC
   Dac.output(lifeTester->DacChannel, 0);    
@@ -174,7 +181,6 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester, MCP4822 Dac)
       }
   
       DacErrmsg = Dac.readErrmsg();
-      Serial.println(DacErrmsg);
             
       //finished measurement now so do error detection
       if (lifeTester->IVData.pCurrent == 0)
