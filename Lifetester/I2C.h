@@ -1,5 +1,5 @@
-#define MAX_DATA_SIZE     4 //4 bytes for a uint64_t
-#define BUFFER_ENTRIES    18
+#define MAX_DATA_SIZE     8 //8 bytes for a uint64_t
+#define BUFFER_ENTRIES    9
 #define BUFFER_MAX_SIZE   MAX_DATA_SIZE * BUFFER_ENTRIES
 
 //Declaration of array to hold data to send over I2C

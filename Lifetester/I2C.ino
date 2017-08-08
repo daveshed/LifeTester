@@ -12,6 +12,8 @@ MSB/LSB(T) MSB/LSB(intensity)error_A error B
 
 //Global variables declared in I2C.h. Defined here...
 uint8_t I2CByteBuffer[BUFFER_MAX_SIZE] = {0};
+
+//global variables only used in this file
 uint8_t bufferIdx = 0;
 
 /*
@@ -20,11 +22,11 @@ uint8_t bufferIdx = 0;
  * should be passed by value. Buffer idx global and incremented
  * according to data size.
  */
-#define BUFFER_WRITE(data)                                        \
+#define BUFFER_WRITE(data)                                            \
   I2C_PackIntToBytes(data, (I2CByteBuffer + bufferIdx), sizeof(data));\
   bufferIdx += sizeof(data)
 
-#define BUFFER_RST()                          \
+#define BUFFER_RST()                              \
   I2C_ClearArray(I2CByteBuffer, BUFFER_MAX_SIZE); \
   bufferIdx = 0
 
@@ -36,6 +38,10 @@ void I2C_ClearArray(uint8_t byteArray[], const uint8_t numBytes)
   }
 }
 
+/*
+ * packing an unsigned int into individual bytes and copying into the array arg
+ * LSB will be at the lower index ie. for a uint16_t byteArray[i] = LSB, [i+1] = MSB
+ */
 void I2C_PackIntToBytes(const uint64_t data, uint8_t byteArray[], const uint8_t numBytes)
 {
   //TO DO: assert statement to check the size of data does not exceed uint64_t
@@ -59,34 +65,27 @@ void I2C_PrintByteArray(const uint8_t byteArray[], const uint16_t n)
 
 void I2C_TransmitData(void)
 {
-  Wire.write(I2CByteBuffer, BUFFER_MAX_SIZE);  
+  Wire.write(I2CByteBuffer, bufferIdx);  
 }
 
 void I2C_PrepareData(void)
 {
   BUFFER_RST();
-
-  uint16_t  Temp = TSense.raw_data;
-  uint16_t  Intensity = analogRead(LdrPin);
-  uint32_t  tTransmit = 0.5 * (LTChannelA.timer + LTChannelB.timer);
   
-  //declare array to store variables that we want to transmit
-  uint32_t  I2CDataToTransmit[BUFFER_ENTRIES] =
-  {
-    tTransmit,
-    LTChannelA.IVData.v,
-    LTChannelA.IVData.iTransmit,
-    LTChannelB.IVData.v,
-    LTChannelB.IVData.iTransmit,
-    Temp,
-    Intensity,
-    LTChannelA.error,
-    LTChannelB.error
-  };
-
   // assign elements of the buffer
-  for (int i = 0; i < BUFFER_ENTRIES; i++)
-  {
-    BUFFER_WRITE(I2CDataToTransmit[i]);
-  }
+  
+  BUFFER_WRITE(0.5 * (LTChannelA.timer + LTChannelB.timer));
+  BUFFER_WRITE(LTChannelA.IVData.v);
+  BUFFER_WRITE(LTChannelA.IVData.iTransmit);
+  BUFFER_WRITE(LTChannelB.IVData.v);
+  BUFFER_WRITE(LTChannelB.IVData.iTransmit);
+  BUFFER_WRITE(TSense.raw_data);
+  BUFFER_WRITE(analogRead(LdrPin));
+  BUFFER_WRITE(LTChannelA.error);
+  BUFFER_WRITE(LTChannelB.error);
+
+  #if DEBUG
+    I2C_PrintByteArray(I2CByteBuffer, bufferIdx);
+    Serial.println(bufferIdx);
+  #endif
 }
