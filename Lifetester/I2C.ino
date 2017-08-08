@@ -74,15 +74,15 @@ void I2C_PrepareData(void)
   
   // assign elements of the buffer
   
-  BUFFER_WRITE(0.5 * (LTChannelA.timer + LTChannelB.timer));
-  BUFFER_WRITE(LTChannelA.IVData.v);
-  BUFFER_WRITE(LTChannelA.IVData.iTransmit);
-  BUFFER_WRITE(LTChannelB.IVData.v);
-  BUFFER_WRITE(LTChannelB.IVData.iTransmit);
-  BUFFER_WRITE(TSense.raw_data);
-  BUFFER_WRITE(analogRead(LdrPin));
-  BUFFER_WRITE(LTChannelA.error);
-  BUFFER_WRITE(LTChannelB.error);
+  BUFFER_WRITE(0.5 * (uint32_t)(LTChannelA.timer + LTChannelB.timer));
+  BUFFER_WRITE((uint16_t)LTChannelA.IVData.v);
+  BUFFER_WRITE((uint16_t)LTChannelA.IVData.iTransmit);
+  BUFFER_WRITE((uint16_t)LTChannelB.IVData.v);
+  BUFFER_WRITE((uint16_t)LTChannelB.IVData.iTransmit);
+  BUFFER_WRITE((uint16_t)TSense.raw_data);
+  BUFFER_WRITE((uint16_t)analogRead(LdrPin));
+  BUFFER_WRITE((uint8_t)LTChannelA.error);
+  BUFFER_WRITE((uint8_t)LTChannelB.error);
 
   #if DEBUG
     I2C_PrintByteArray(I2CByteBuffer, bufferIdx);
