@@ -20,7 +20,7 @@ const uint8_t Max_CSPin  = 10; //chip select for the MAX6675
 const uint8_t LdrPin     = 0; //light intensity on A0
 
 //address for this slave device
-const uint8_t I2CAddress = 8;
+const uint8_t I2CAddress = 10;
 
 ///////////
 //Globals//

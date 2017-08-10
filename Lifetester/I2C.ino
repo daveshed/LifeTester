@@ -74,7 +74,7 @@ void I2C_PrepareData(void)
   
   // assign elements of the buffer
   
-  BUFFER_WRITE(0.5 * (uint32_t)(LTChannelA.timer + LTChannelB.timer));
+  BUFFER_WRITE(millis());
   BUFFER_WRITE((uint16_t)LTChannelA.IVData.v);
   BUFFER_WRITE((uint16_t)LTChannelA.IVData.iTransmit);
   BUFFER_WRITE((uint16_t)LTChannelB.IVData.v);
@@ -84,8 +84,4 @@ void I2C_PrepareData(void)
   BUFFER_WRITE((uint8_t)LTChannelA.error);
   BUFFER_WRITE((uint8_t)LTChannelB.error);
 
-  #if DEBUG
-    I2C_PrintByteArray(I2CByteBuffer, bufferIdx);
-    Serial.println(bufferIdx);
-  #endif
 }
