@@ -11,7 +11,7 @@ ser.reset_output_buffer()
 time.sleep(1)
 
 serline = ''
-mylist = []
+data = []
 
 plt.ion()
 
@@ -22,12 +22,48 @@ try:
 
 			if serchar == '\n':
 				print(serline)
-				mylist.append(serline.split(','))
+				data.append(serline.split(','))
 				serline = ''
+
+				plt.figure(1)
+				plt.title('IV scan')
+				plt.ylabel('ADC code (current)')
+				plt.xlabel('DAC code (voltage)')
 				plt.plot(
-					[mylist[i][3] for i in range(len(mylist)) if mylist[i][0] == 'scan' and mylist[i][2] == 'a'],
-					[mylist[i][4] for i in range(len(mylist)) if mylist[i][0] == 'scan' and mylist[i][2] == 'a']
+					[x[3] for x in data if x[0] == 'scan' and x[2] == 'a'],
+					[x[4] for x in data if x[0] == 'scan' and x[2] == 'a'],
+					'r',
+					[x[3] for x in data if x[0] == 'scan' and x[2] == 'b'],
+					[x[4] for x in data if x[0] == 'scan' and x[2] == 'b'],
+					'b'
 						)
+
+				plt.figure(2)
+				plt.subplot(211)
+				plt.title('Tracking MPP')
+				plt.xlabel('time')
+				plt.ylabel('DAC code (voltage)')
+				plt.plot(
+					[x[1] for x in data if x[0] == 'track' and x[2] == 'a'],
+					[x[3] for x in data if x[0] == 'track' and x[2] == 'a'],
+					'r',
+					[x[1] for x in data if x[0] == 'track' and x[2] == 'b'],
+					[x[3] for x in data if x[0] == 'track' and x[2] == 'b'],
+					'b'
+						)
+
+				plt.subplot(212)
+				plt.xlabel('time')
+				plt.ylabel('ADC code (current)')
+				plt.plot(
+					[x[1] for x in data if x[0] == 'track' and x[2] == 'a'],
+					[x[4] for x in data if x[0] == 'track' and x[2] == 'a'],
+					'r',
+					[x[1] for x in data if x[0] == 'track' and x[2] == 'b'],
+					[x[4] for x in data if x[0] == 'track' and x[2] == 'b'],
+					'b'
+						)
+
 				plt.pause(0.001)
 				plt.clf()
 				plt.draw()
@@ -40,9 +76,3 @@ except KeyboardInterrupt:
 
 ser.close()
 ser.__del__()
-
-
-# how to print out the same element from lists within a list...
-# [[1,2,3],[4,5,6],[7,8,9]]
-# [a[i][0] for i in range(len(a))]
-# NB a[0] = [1,2,3]
