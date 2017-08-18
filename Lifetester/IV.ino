@@ -23,8 +23,7 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
   uint16_t nSamples = 0; //number of readings taken during sample time
 
   #if DEBUG
-    Serial.println("starting measurement");
-    Serial.println("V, I, P, error, channel");
+    Serial.println("mode,timer,channel,V,I,P,error");
   #endif
   
   lifeTester->Led.t(25, 500);
@@ -78,15 +77,19 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
       }
       
       #if DEBUG
-        Serial.print(v);
-        Serial.print(", ");
+        Serial.print("scan,");
+        Serial.print(millis());
+        Serial.print(",");
+        Serial.print(lifeTester->DacChannel);
+        Serial.print(",");
+        Serial.print(v);        
+        Serial.print(",");
         Serial.print(iScan);
-        Serial.print(", ");
+        Serial.print(",");
         Serial.print(pScan);
-        Serial.print(", ");
+        Serial.print(",");
         Serial.print(lifeTester->error);
-        Serial.print(", ");
-        Serial.println(lifeTester->DacChannel);
+        Serial.println();
       #endif
       
       timer = millis(); //reset timer
@@ -205,19 +208,22 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester, MCP4822 Dac)
       }
 
       #if DEBUG
-        Serial.print(lifeTester->IVData.v);
-        Serial.print(", ");
-        Serial.print(lifeTester->IVData.iCurrent);
-        Serial.print(", ");
-        Serial.print(lifeTester->IVData.pCurrent);
-        Serial.print(", ");
-        Serial.print(lifeTester->error,DEC);
-        Serial.print(", ");
-        Serial.print(analogRead(LdrPin));
-        Serial.print(", ");
-        Serial.print(TSense.T_deg_C);
-        Serial.print(", ");
+        Serial.print("track,");
+        Serial.print(millis());
+        Serial.print(",");
         Serial.print(lifeTester->DacChannel);
+        Serial.print(",");
+        Serial.print(lifeTester->IVData.v);
+        Serial.print(",");
+        Serial.print(lifeTester->IVData.iCurrent);
+        Serial.print(",");
+        Serial.print(lifeTester->IVData.pCurrent);
+        Serial.print(",");
+        Serial.print(lifeTester->error,DEC);
+        Serial.print(",");
+        Serial.print(analogRead(LdrPin));
+        Serial.print(",");
+        Serial.print(TSense.T_deg_C);       
         Serial.println();
       #endif
 

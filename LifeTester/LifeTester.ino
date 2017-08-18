@@ -33,8 +33,7 @@ void setup()
   #if DEBUG
     //DATA HEADINGS
     Serial.println();
-    Serial.println("Tracking max power point...");
-    Serial.println("DACx, ADCx, power, error, LDR, T(C), channel");
+    Serial.println("mode,timer,channel,DACx,ADCx,power,error,LDR,T(C)");
   #endif
   
   //SETUP LEDS FOR MAIN LOOP
