@@ -1,5 +1,5 @@
 #define SPI_SETTINGS  SPISettings(5000000, MSBFIRST, SPI_MODE3)
-#define T_DELAY       0u      //delay time in microseconds between chip select low/high and transfer
+#define CS_DELAY       0u      //delay time in microseconds between chip select low/high and transfer
 #define DEBUG         0       //do you want print statements?
 #define T_TIMEOUT     1000u   //timeout in ms
 #define PWMout        3       //pin to output clock timer to ADC (pin 3 is actually pin 5 on ATMEGA328)
@@ -173,13 +173,13 @@ void MX7705Write(uint8_t chipSelectPin, uint8_t sendByte)
 { 
   SPI.beginTransaction(SPI_SETTINGS); 
   digitalWrite(chipSelectPin,LOW);
-  delayMicroseconds(T_DELAY);
+  delayMicroseconds(CS_DELAY);
   #if DEBUG
     Serial.print("Sending... ");
     Serial.println(sendByte, BIN);
   #endif
   SPI.transfer(sendByte);
-  delayMicroseconds(T_DELAY);
+  delayMicroseconds(CS_DELAY);
   digitalWrite(chipSelectPin,HIGH);
   SPI.endTransaction();
 }
@@ -191,13 +191,13 @@ uint8_t MX7705ReadByte(uint8_t chipSelectPin)
   uint8_t readByte = 0u;
   SPI.beginTransaction(SPI_SETTINGS); 
   digitalWrite(chipSelectPin,LOW);
-  delayMicroseconds(T_DELAY);
+  delayMicroseconds(CS_DELAY);
   readByte = SPI.transfer(NULL);
   #if DEBUG
     Serial.print("data received... ");
     Serial.println(readByte, BIN);
   #endif
-  delayMicroseconds(T_DELAY);
+  delayMicroseconds(CS_DELAY);
   digitalWrite(chipSelectPin,HIGH);
   SPI.endTransaction();
   return readByte;
