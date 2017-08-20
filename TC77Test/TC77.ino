@@ -4,30 +4,32 @@
  * SPI_MODE0
  */
 
-#define DEBUG               0         //gives you additional print statements
-#define CS_DELAY            1u        //delay between CS logic and data read (us)
+#define DEBUG               1         //gives you additional print statements
+#define CS_DELAY            100u        //delay between CS logic and data read (us)
 #define CONVERSION_TIME     400u      //measurement conversion time (ms) - places upper limit on measurement rate
 #define CONVERSION_FACTOR   0.0625    //deg C per code
 #define MSB_OVERTEMP        B00111110 //reading this on MSB implies overtemperature
 #define SPI_SETTINGS SPISettings(7000000, MSBFIRST, SPI_MODE0)
 
-//TODO: query bit 2. assert if ic is ready for measurement after power on.
-
 /*
- * macro to open SPI connection on required CS pin
+ * function to open SPI connection on required CS pin
  */
-#define OPEN_SPI_CONNECTION(chipSelectPin)  \
-  SPI.beginTransaction(SPI_SETTINGS);       \
-  digitalWrite(chipSelectPin,LOW);          \
-  delayMicroseconds(CS_DELAY)
-
+void TC77OpenSpiConnection(uint8_t chipSelectPin)
+{
+  SPI.beginTransaction(SPI_SETTINGS);
+  digitalWrite(chipSelectPin,LOW);
+  delayMicroseconds(CS_DELAY);
+}
+  
 /*
- * macro to close SPI connection on required CS pin
+ * function to close SPI connection on required CS pin
  */
-#define CLOSE_SPI_CONNECTION(chipSelectPin) \
-  delayMicroseconds(CS_DELAY);               \
-  digitalWrite(chipSelectPin,HIGH);         \
+void TC77CloseSpiConnection(uint8_t chipSelectPin)
+{
+  delayMicroseconds(CS_DELAY);
+  digitalWrite(chipSelectPin,HIGH);
   SPI.endTransaction();
+} 
 
 /*
  * Function to read a single byte from the TC77
@@ -38,14 +40,14 @@ uint16_t TC77ReadRawData(uint8_t chipSelectPin)
   uint16_t rawData;
   
   //open connection
-  OPEN_SPI_CONNECTION(chipSelectPin);
+  TC77OpenSpiConnection(chipSelectPin);
 
   //read data
   MSB = SPI.transfer(NULL);
   LSB = SPI.transfer(NULL);
 
   //close connection. realese SPI
-  CLOSE_SPI_CONNECTION(chipSelectPin);
+  TC77CloseSpiConnection(chipSelectPin);
 
   //pack data into a single uint16_t
   rawData = (uint16_t)((MSB << 8) | LSB);
