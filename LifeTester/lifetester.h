@@ -1,7 +1,6 @@
 #include <SPI.h>
 #include <Wire.h>
 #include "LEDFlash.h"
-#include "MCP4822.h"
 #include "ADS1286.h"
 #include "MAX6675.h"
 
@@ -27,9 +26,9 @@ const uint8_t I2CAddress = 10;
 ///////////
 const uint16_t tolerance = 20;  //number of allowed bad readings before there is an error
 const uint16_t VScanMin = 0;
-const uint16_t VScanMax = 2700;
-const uint16_t dVScan = 40;     //step size in MPP scan
-const uint16_t dVMPPT = 5;      //step size during MPPT - note that if this is too small,
+const uint16_t VScanMax = 100;
+const uint16_t dVScan = 1;     //step size in MPP scan
+const uint16_t dVMPPT = 1;      //step size during MPPT - note that if this is too small,
                                 // there won't be a noticeable change in power between points and the alogorithm won't work.
 const uint16_t iThreshold = 50; //required threshold ADCreading in MPPscan for test to start
 
@@ -79,7 +78,6 @@ const char  DacGain = 'l';  //gain setting for DAC
 ///////////////////
 //class instances//
 ///////////////////
-MCP4822 DacSmu(Dac_CSPin); 
 MAX6675 TSense(Max_CSPin);
 
 //////////////////////////////////

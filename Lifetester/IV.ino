@@ -10,7 +10,7 @@ tElapsed  0-------------------settleTime----------------(settleTime + sampleTime
 */
 
 //scan voltage and look for max power point
-void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint16_t finV, const uint16_t dV, MCP4822 Dac)
+void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint16_t finV, const uint16_t dV)
 {
   uint32_t v;
   uint32_t vMPP;   //everything needs to be defined as long to calculate power correctly
@@ -39,9 +39,9 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
     //measurement speed defined by settle time and sample time
     if (tElapsed < settleTime)
     {
-      //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE 
-      Dac.output(lifeTester->DacChannel,v);    
-      DacErrmsg = Dac.readErrmsg();
+      //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
+      MCP48X2_Output(Dac_CSPin, v, lifeTester->DacChannel);
+      DacErrmsg = MCP48X2_GetErrmsg();
       iScan = 0;
     }
       
@@ -112,7 +112,7 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
   
   lifeTester->IVData.v = vMPP;
   //reset DAC
-  Dac.output(lifeTester->DacChannel, 0);    
+  MCP48X2_Output(Dac_CSPin, 0, lifeTester->DacChannel); 
 }
 
 /*
@@ -124,7 +124,7 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
  * start measuring after the tracking delay
  */
 
-void IV_MpptUpdate(LifeTester_t * const lifeTester, MCP4822 Dac)
+void IV_MpptUpdate(LifeTester_t * const lifeTester)
 {
   uint32_t tElapsed = millis() - lifeTester->timer;
   
@@ -134,7 +134,7 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester, MCP4822 Dac)
     if ((tElapsed >= trackingDelay) && tElapsed < (trackingDelay + settleTime))
     {
       //STAGE 1: SET INITIAL STATE OF DAC V0
-      Dac.output(lifeTester->DacChannel, lifeTester->IVData.v); //v is global
+      MCP48X2_Output(Dac_CSPin, lifeTester->IVData.v, lifeTester->DacChannel);
     }
     
     else if ((tElapsed >= (trackingDelay + settleTime)) && (tElapsed < (trackingDelay + settleTime + samplingTime)))  
@@ -147,7 +147,7 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester, MCP4822 Dac)
     else if (tElapsed >= (trackingDelay + settleTime + samplingTime) && (tElapsed < (trackingDelay + 2 * settleTime + samplingTime)))
     {
       //STAGE 3: STOP SAMPLING. SET DAC TO V1.
-      Dac.output(lifeTester->DacChannel, (lifeTester->IVData.v + dVMPPT));
+      MCP48X2_Output(Dac_CSPin, (lifeTester->IVData.v + dVMPPT), lifeTester->DacChannel);
     }
     
     else if (tElapsed >= (trackingDelay + 2*settleTime + samplingTime) && (tElapsed < (trackingDelay + 2 * settleTime + 2 * samplingTime)))
@@ -179,8 +179,8 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester, MCP4822 Dac)
         lifeTester->IVData.v -= dVMPPT;
         lifeTester->Led.stopAfter(1); //one flash
       }
-  
-      DacErrmsg = Dac.readErrmsg();
+ 
+      DacErrmsg = MCP48X2_GetErrmsg();
             
       //finished measurement now so do error detection
       if (lifeTester->IVData.pCurrent == 0)

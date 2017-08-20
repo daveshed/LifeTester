@@ -13,10 +13,7 @@ void setup()
   Wire.onRequest(I2C_TransmitData); // register event
 
   //INITIALISE DAC
-  DacSmu.gainSet(DacGain);
-  DacSmu.output('a', 0);
-  DacSmu.output('b', 0);
-  DacErrmsg = DacSmu.readErrmsg();
+  MCP48X2_Init(Dac_CSPin);
 
   //SETUP ADC
   //delay time between switching CS pin and reading data over SPI
@@ -25,10 +22,12 @@ void setup()
   LTChannelB.AdcInput.setMicroDelay(200);
 
   //MPP INITIAL SEARCH/SCAN
-  IV_Scan(&LTChannelA, VScanMin, VScanMax, dVScan, DacSmu); 
-  DacSmu.output(LTChannelA.DacChannel, LTChannelA.IVData.v); //initialise DAC to MPP initial guess
-  IV_Scan(&LTChannelB, VScanMin, VScanMax, dVScan, DacSmu); 
-  DacSmu.output(LTChannelB.DacChannel, LTChannelB.IVData.v); //initialise DAC to MPP initial guess  
+  IV_Scan(&LTChannelA, VScanMin, VScanMax, dVScan);
+  //initialise DAC to MPP initial guess - channel a
+  MCP48X2_Output(Dac_CSPin, LTChannelA.IVData.v, LTChannelA.DacChannel);
+  IV_Scan(&LTChannelB, VScanMin, VScanMax, dVScan); 
+  //initialise DAC to MPP initial guess - channel a
+  MCP48X2_Output(Dac_CSPin, LTChannelB.IVData.v, LTChannelB.DacChannel);
 
   #if DEBUG
     //DATA HEADINGS
@@ -47,8 +46,8 @@ void setup()
 
 void loop()
 {
-  IV_MpptUpdate(&LTChannelA, DacSmu);
-  IV_MpptUpdate(&LTChannelB, DacSmu);
+  IV_MpptUpdate(&LTChannelA);
+  IV_MpptUpdate(&LTChannelB);
 
   //LED will update every time the loop runs
   LTChannelA.Led.update();
