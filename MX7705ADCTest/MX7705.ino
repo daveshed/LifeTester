@@ -1,5 +1,5 @@
 #define SPI_SETTINGS  SPISettings(5000000, MSBFIRST, SPI_MODE3)
-#define CS_DELAY       0u      //delay time in microseconds between chip select low/high and transfer
+#define CS_DELAY      10u    //delay time in microseconds between chip select low/high and transfer
 #define DEBUG         0       //do you want print statements?
 #define T_TIMEOUT     1000u   //timeout in ms
 #define PWMout        3       //pin to output clock timer to ADC (pin 3 is actually pin 5 on ATMEGA328)
@@ -20,6 +20,8 @@
 
 #define MX7705_REQUEST_DATA_READ_CH0    B00111000
 #define MX7705_REQUEST_DATA_READ_CH1    B00111001
+
+static bool errorCondition = false;
 
 /*
  * Setup the MX7705 in unipolar, unbuffered mode. Allow the user to 
@@ -52,6 +54,26 @@ void MX7705Init(const uint8_t chipSelectPin, const uint8_t channel)
   MX7705Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_WRITE_CH0 : MX7705_REQUEST_SETUP_WRITE_CH1));
   //write to setup register: self calibration mode, unipolar, unbuffered, clear Fsync
   MX7705Write(chipSelectPin, MX7705_WRITE_SETUP_INIT);
+  //request read of setup register to verify state
+  MX7705Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1));
+
+  //now read setup register and verify that we have written the correct setup state
+  if (MX7705ReadByte(chipSelectPin) != MX7705_WRITE_SETUP_INIT)
+  {
+    errorCondition = true;
+    #ifdef DEBUG
+      Serial.println("Error condition");
+    #endif
+  }
+
+}
+
+/*
+ * Function to get the state of the error condition
+ */
+bool MX7705GetError(void)
+{
+  return errorCondition;
 }
 
 /*
