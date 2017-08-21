@@ -1,4 +1,4 @@
-#include "IV.h"
+#include "Config.h"
 
 /*
 function to find MPP by scanning over voltages. Updates v to the MPP. 
@@ -37,15 +37,14 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
     lifeTester->IVData.v = v;
     
     //measurement speed defined by settle time and sample time
-    if (tElapsed < settleTime)
+    if (tElapsed < SETTLE_TIME)
     {
       //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
-      MCP48X2_Output(Dac_CSPin, v, lifeTester->DacChannel);
-      DacErrmsg = MCP48X2_GetErrmsg();
+      MCP48X2_Output(DAC_CS_PIN, v, lifeTester->DacChannel);
       iScan = 0;
     }
       
-    else if ((tElapsed >= settleTime) && (tElapsed < (settleTime + samplingTime)))
+    else if ((tElapsed >= SAMPLING_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
     {  
       //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
       iScan += lifeTester->AdcInput.readInputSingleShot();
@@ -53,7 +52,7 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
       lifeTester->IVData.iTransmit = iScan / nSamples; //data requested by I2C
     }
 
-    else if (tElapsed >= (settleTime + samplingTime))
+    else if (tElapsed >= (SETTLE_TIME + SAMPLING_TIME))
     {
       //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
       iScan /= nSamples;
@@ -72,7 +71,7 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
       {
         lifeTester->error = current_limit;  //reached current limit
       }
-      if (DacErrmsg != 0) //DAC writing error
+      if (MCP48X2_GetErrmsg()!= 0) //DAC writing error
       {
         lifeTester->error = DAC_error;
       }
@@ -105,14 +104,14 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
     Serial.println(lifeTester->error, DEC);
   #endif
   
-  if (iMax < iThreshold)
+  if (iMax < I_THRESHOLD)
   {
     lifeTester->error = threshold;  
   }
   
   lifeTester->IVData.v = vMPP;
   //reset DAC
-  MCP48X2_Output(Dac_CSPin, 0, lifeTester->DacChannel); 
+  MCP48X2_Output(DAC_CS_PIN, 0, lifeTester->DacChannel); 
 }
 
 /*
@@ -128,36 +127,36 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
 {
   uint32_t tElapsed = millis() - lifeTester->timer;
   
-  if ((lifeTester->error != threshold) && (lifeTester->nErrorReads < tolerance))
+  if ((lifeTester->error != threshold) && (lifeTester->nErrorReads < MAX_ERROR_READS))
   {
     
-    if ((tElapsed >= trackingDelay) && tElapsed < (trackingDelay + settleTime))
+    if ((tElapsed >= TRACK_DELAY_TIME) && tElapsed < (TRACK_DELAY_TIME + SETTLE_TIME))
     {
       //STAGE 1: SET INITIAL STATE OF DAC V0
-      MCP48X2_Output(Dac_CSPin, lifeTester->IVData.v, lifeTester->DacChannel);
+      MCP48X2_Output(DAC_CS_PIN, lifeTester->IVData.v, lifeTester->DacChannel);
     }
     
-    else if ((tElapsed >= (trackingDelay + settleTime)) && (tElapsed < (trackingDelay + settleTime + samplingTime)))  
+    else if ((tElapsed >= (TRACK_DELAY_TIME + SETTLE_TIME)) && (tElapsed < (TRACK_DELAY_TIME + SETTLE_TIME + SAMPLING_TIME)))  
     {
       //STAGE 2: KEEP READING THE CURRENT AND SUMMING IT AFTER THE SETTLE TIME
       lifeTester->IVData.iCurrent += lifeTester->AdcInput.readInputSingleShot();
       lifeTester->nReadsCurrent++;
     }
     
-    else if (tElapsed >= (trackingDelay + settleTime + samplingTime) && (tElapsed < (trackingDelay + 2 * settleTime + samplingTime)))
+    else if (tElapsed >= (TRACK_DELAY_TIME + SETTLE_TIME + SAMPLING_TIME) && (tElapsed < (TRACK_DELAY_TIME + 2 * SETTLE_TIME + SAMPLING_TIME)))
     {
       //STAGE 3: STOP SAMPLING. SET DAC TO V1.
-      MCP48X2_Output(Dac_CSPin, (lifeTester->IVData.v + dVMPPT), lifeTester->DacChannel);
+      MCP48X2_Output(DAC_CS_PIN, (lifeTester->IVData.v + DV_MPPT), lifeTester->DacChannel);
     }
     
-    else if (tElapsed >= (trackingDelay + 2*settleTime + samplingTime) && (tElapsed < (trackingDelay + 2 * settleTime + 2 * samplingTime)))
+    else if (tElapsed >= (TRACK_DELAY_TIME + 2*SETTLE_TIME + SAMPLING_TIME) && (tElapsed < (TRACK_DELAY_TIME + 2 * SETTLE_TIME + 2 * SAMPLING_TIME)))
     {
       //STAGE 4: KEEP READING THE CURRENT AND SUMMING IT AFTER ANOTHER SETTLE TIME
       lifeTester->IVData.iNext += lifeTester->AdcInput.readInputSingleShot();
       lifeTester->nReadsNext++;
     }
     
-    else if (tElapsed >= (trackingDelay + 2 * settleTime + 2 * samplingTime))
+    else if (tElapsed >= (TRACK_DELAY_TIME + 2 * SETTLE_TIME + 2 * SAMPLING_TIME))
     {
       //STAGE 5: MEASUREMENTS DONE. DO CALCULATIONS
       lifeTester->IVData.iCurrent /= lifeTester->nReadsCurrent; //calculate average
@@ -165,22 +164,20 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
       lifeTester->nReadsCurrent = 0; //reset counter
 
       lifeTester->IVData.iNext /= lifeTester->nReadsNext;
-      lifeTester->IVData.pNext = (lifeTester->IVData.v + dVMPPT) * lifeTester->IVData.iNext;
+      lifeTester->IVData.pNext = (lifeTester->IVData.v + DV_MPPT) * lifeTester->IVData.iNext;
       lifeTester->nReadsNext = 0;
 
       //if power is lower here, we must be going downhill then move back one point for next loop
       if (lifeTester->IVData.pNext > lifeTester->IVData.pCurrent)
       {
-        lifeTester->IVData.v += dVMPPT;
+        lifeTester->IVData.v += DV_MPPT;
         lifeTester->Led.stopAfter(2); //two flashes
       }
       else
       {
-        lifeTester->IVData.v -= dVMPPT;
+        lifeTester->IVData.v -= DV_MPPT;
         lifeTester->Led.stopAfter(1); //one flash
       }
- 
-      DacErrmsg = MCP48X2_GetErrmsg();
             
       //finished measurement now so do error detection
       if (lifeTester->IVData.pCurrent == 0)
@@ -193,7 +190,7 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
         lifeTester->error = current_limit;  //reached current limit
         lifeTester->nErrorReads++;
       }
-      else if (DacErrmsg != 0)
+      else if (MCP48X2_GetErrmsg()!= 0)
       {
         lifeTester->error = DAC_error;  //DAC writing error
         lifeTester->nErrorReads++;
@@ -213,7 +210,7 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
         Serial.print(", ");
         Serial.print(lifeTester->error,DEC);
         Serial.print(", ");
-        Serial.print(analogRead(LdrPin));
+        Serial.print(analogRead(LDR_PIN));
         Serial.print(", ");
         Serial.print(TSense.T_deg_C);
         Serial.print(", ");

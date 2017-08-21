@@ -80,7 +80,7 @@ void I2C_PrepareData(void)
   BUFFER_WRITE((uint16_t)LTChannelB.IVData.v);
   BUFFER_WRITE((uint16_t)LTChannelB.IVData.iTransmit);
   BUFFER_WRITE((uint16_t)TSense.raw_data);
-  BUFFER_WRITE((uint16_t)analogRead(LdrPin));
+  BUFFER_WRITE((uint16_t)analogRead(LDR_PIN));
   BUFFER_WRITE((uint8_t)LTChannelA.error);
   BUFFER_WRITE((uint8_t)LTChannelB.error);
 

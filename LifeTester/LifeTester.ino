@@ -1,5 +1,9 @@
-#include "lifetester.h"
-#include "IV.h"
+#include <SPI.h>
+#include <Wire.h>
+#include "LEDFlash.h"
+#include "ADS1286.h"
+#include "MAX6675.h"
+#include "Config.h"
 
 void setup()
 { 
@@ -9,11 +13,11 @@ void setup()
   #endif
     
   //OPTION B: I2C COMMUNICATION WITH MASTER ARDUINO
-  Wire.begin(I2CAddress);           // join I2C bus with address specified (see header)
+  Wire.begin(I2C_ADDRESS);           // join I2C bus with address specified (see header)
   Wire.onRequest(I2C_TransmitData); // register event
 
   //INITIALISE DAC
-  MCP48X2_Init(Dac_CSPin);
+  MCP48X2_Init(DAC_CS_PIN);
 
   //SETUP ADC
   //delay time between switching CS pin and reading data over SPI
@@ -22,12 +26,12 @@ void setup()
   LTChannelB.AdcInput.setMicroDelay(200);
 
   //MPP INITIAL SEARCH/SCAN
-  IV_Scan(&LTChannelA, VScanMin, VScanMax, dVScan);
+  IV_Scan(&LTChannelA, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN);
   //initialise DAC to MPP initial guess - channel a
-  MCP48X2_Output(Dac_CSPin, LTChannelA.IVData.v, LTChannelA.DacChannel);
-  IV_Scan(&LTChannelB, VScanMin, VScanMax, dVScan); 
-  //initialise DAC to MPP initial guess - channel a
-  MCP48X2_Output(Dac_CSPin, LTChannelB.IVData.v, LTChannelB.DacChannel);
+  MCP48X2_Output(DAC_CS_PIN, LTChannelA.IVData.v, LTChannelA.DacChannel);
+  IV_Scan(&LTChannelB, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN); 
+  //initialise DAC to MPP initial guess - channel b
+  MCP48X2_Output(DAC_CS_PIN, LTChannelB.IVData.v, LTChannelB.DacChannel);
 
   #if DEBUG
     //DATA HEADINGS

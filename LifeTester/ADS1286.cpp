@@ -1,12 +1,10 @@
 /*
-helpful info on making a library herehttps://www.arduino.cc/en/Hacking/libraryTutorial
-
+ * helpful info on making a library herehttps://www.arduino.cc/en/Hacking/libraryTutorial
 */
 
 #include "ADS1286.h"
 #include "Arduino.h"
 #include <SPI.h>
-
 
 // Class Member Variables
 
