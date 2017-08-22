@@ -3,17 +3,33 @@
 
 #define DEBUG 1 //1 for serial communication, 0 to turn off.
 
-////////////////
-//pin settings//
-////////////////
-#define ADC_A_CS_PIN    8   //ADC_A chip select. B is on pin8 
-#define ADC_B_CS_PIN    9   //ADC_A chip select. B is on pin8 
-#define DAC_CS_PIN      7   //DAC chip select 
-#define LED_A_PIN       6   //LED indicator
-#define LED_B_PIN       5   //LED indicator
-#define MAX_CS_PIN      10  //chip select for the MAX6675
-#define LDR_PIN         0   //light intensity on A0
-////////////////
+///////////////////
+//Board Revisions//
+///////////////////
+#define BOARD_REV_1     //Revision number of Lifetester PCB
+
+//Hardward specific settings
+#if defined(BOARD_REV_0)
+  #define ADC_A_CS_PIN      8     //ADC_A chip select. B is on pin8 
+  #define ADC_B_CS_PIN      9     //ADC_A chip select. B is on pin8 
+  #define DAC_CS_PIN        7     //DAC chip select 
+  #define LED_A_PIN         6     //LED indicator
+  #define LED_B_PIN         5     //LED indicator
+  #define TEMP_CS_PIN       10    //chip select for the MAX6675
+  #define LIGHT_SENSOR_PIN  0     //light intensity on A0
+  #define ADC_CS_DELAY      200   //delay time between CS low/high and data transfer
+  #define MAX_CURRENT       4095  //maximum reading allowed by ADC
+#elif defined(BOARD_REV_1)
+  #define ADC_CS_PIN        9
+  #define DAC_CS_PIN        10 
+  #define LED_A_PIN         2
+  #define LED_B_PIN         4
+  #define TEMP_CS_PIN       7
+  #define LIGHT_SENSOR_PIN  0
+  #define MAX_CURRENT       65535
+#else
+  #error "Board not defined."
+#endif
 
 #define I2C_ADDRESS     10  //address for this I2C slave device
 
@@ -35,11 +51,6 @@
 #define SAMPLING_TIME     200 //time interval over which ADC measurements are made continuously then averaged afterward
 #define TRACK_DELAY_TIME  200 //time period between tracking measurements
 
-///////////////////
-//class instances//
-///////////////////
-MAX6675 TSense(MAX_CS_PIN);
-
 typedef enum {
   ok,
   low_current,
@@ -58,9 +69,8 @@ typedef struct IVData_s {
 } IVData_t;
 
 typedef struct LifeTester_s {
-  char          DacChannel;
+  char          channel;
   Flasher       Led;
-  ADS1286       AdcInput;
   uint16_t      nReadsCurrent;
   uint16_t      nReadsNext;   //counting number of readings taken by ADC during sampling window
   uint16_t      nErrorReads;  //number of readings outside allowed limits
@@ -75,7 +85,6 @@ typedef struct LifeTester_s {
 LifeTester_t LTChannelA = {
   'a',
   Flasher(LED_A_PIN),
-  ADS1286(ADC_A_CS_PIN),
   0,
   0,
   0,
@@ -87,7 +96,6 @@ LifeTester_t LTChannelA = {
 LifeTester_t LTChannelB = {
   'b',
   Flasher(LED_B_PIN),
-  ADS1286(ADC_B_CS_PIN),
   0,
   0,
   0,

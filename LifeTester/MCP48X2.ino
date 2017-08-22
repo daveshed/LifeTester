@@ -6,10 +6,10 @@
 
 #define SPI_SETTINGS  SPISettings(20000000, MSBFIRST, SPI_MODE0)
 #define CS_DELAY      10u       //CS delay in microseconds
-#define DAC_DEBUG     1
+#define DEBUG         0
 
 static char gain = 'l';
-static uint8_t errMsg = 0;;
+static uint8_t errMsg = 0;
 
 /*
  * Function to initialise the interface with DAC
@@ -86,7 +86,7 @@ void MCP48X2_Output(char chipSelectPin, uint8_t output, char channel)
     MSB = DacCommand >> 8;
     LSB = DacCommand;
 
-    #if DAC_DEBUG
+    #if DEBUG
       Serial.print(MSB, BIN);
       Serial.print(" ");
       Serial.println(LSB, BIN);

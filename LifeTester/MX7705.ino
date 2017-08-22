@@ -21,13 +21,13 @@
 #define MX7705_REQUEST_DATA_READ_CH0    B00111000
 #define MX7705_REQUEST_DATA_READ_CH1    B00111001
 
-static bool errorCondition = false;
+bool MX7705_errorCondition = false;
 
 /*
  * Setup the MX7705 in unipolar, unbuffered mode. Allow the user to 
  * select which channel they want. 0/1 = AIN1+ to AIN1-/AIN2+ to AIN2-.
  */
-void MX7705Init(const uint8_t chipSelectPin, const uint8_t channel)
+void MX7705_Init(const uint8_t chipSelectPin, const uint8_t channel)
 {
   //only initialise SPI once.
   static bool initInterface = true;
@@ -47,20 +47,20 @@ void MX7705Init(const uint8_t chipSelectPin, const uint8_t channel)
     initInterface = false;  //only initialise once
   }
   //request a write to the clock register
-  MX7705Write(chipSelectPin, MX7705_REQUEST_CLOCK_WRITE);
+  MX7705_Write(chipSelectPin, MX7705_REQUEST_CLOCK_WRITE);
   //turn on clockdis bit - using clock from ATMEGA. Turn off clk bit for optimum performance at 1MHz with clkdiv 0.
-  MX7705Write(chipSelectPin, MX7705_WRITE_CLOCK_SETTINGS);
+  MX7705_Write(chipSelectPin, MX7705_WRITE_CLOCK_SETTINGS);
   //write to comms register: request a write operation to the setup register of selected channel
-  MX7705Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_WRITE_CH0 : MX7705_REQUEST_SETUP_WRITE_CH1));
+  MX7705_Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_WRITE_CH0 : MX7705_REQUEST_SETUP_WRITE_CH1));
   //write to setup register: self calibration mode, unipolar, unbuffered, clear Fsync
-  MX7705Write(chipSelectPin, MX7705_WRITE_SETUP_INIT);
+  MX7705_Write(chipSelectPin, MX7705_WRITE_SETUP_INIT);
   //request read of setup register to verify state
-  MX7705Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1));
+  MX7705_Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1));
 
   //now read setup register and verify that we have written the correct setup state
-  if (MX7705ReadByte(chipSelectPin) != MX7705_WRITE_SETUP_INIT)
+  if (MX7705_ReadByte(chipSelectPin) != MX7705_WRITE_SETUP_INIT)
   {
-    errorCondition = true;
+    MX7705_errorCondition = true;
     #ifdef DEBUG
       Serial.println("Error condition");
     #endif
@@ -71,15 +71,15 @@ void MX7705Init(const uint8_t chipSelectPin, const uint8_t channel)
 /*
  * Function to get the state of the error condition
  */
-bool MX7705GetError(void)
+bool MX7705_GetError(void)
 {
-  return errorCondition;
+  return MX7705_errorCondition;
 }
 
 /*
  * Function to read two bytes from the ADC and convert to a 16Bit unsigned int  
  */
-uint16_t MX7705ReadData(const uint8_t chipSelectPin, const uint8_t channel)
+uint16_t MX7705_ReadData(const uint8_t chipSelectPin, const uint8_t channel)
 {
   uint8_t   MSB, LSB, commsRegister;
   uint32_t  tic, toc;
@@ -99,8 +99,8 @@ uint16_t MX7705ReadData(const uint8_t chipSelectPin, const uint8_t channel)
     toc = millis();
     timeout = ((toc - tic) > T_TIMEOUT);
     //select read of comms register
-    MX7705Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_COMMS_READ_CH0 : MX7705_REQUEST_COMMS_READ_CH1));
-    commsRegister = MX7705ReadByte(chipSelectPin);
+    MX7705_Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_COMMS_READ_CH0 : MX7705_REQUEST_COMMS_READ_CH1));
+    commsRegister = MX7705_ReadByte(chipSelectPin);
     pollCount++;
     //bit 7 of comms register
   } while (bitRead(commsRegister, 7) && !timeout);
@@ -116,15 +116,15 @@ uint16_t MX7705ReadData(const uint8_t chipSelectPin, const uint8_t channel)
 
   if (timeout)
   {
-    errorCondition = true;
+    MX7705_errorCondition = true;
     return 0u;
   }
   else
   {
     //request data register reading
-    MX7705Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_DATA_READ_CH0 : MX7705_REQUEST_DATA_READ_CH1));
-    MSB = MX7705ReadByte(chipSelectPin);
-    LSB = MX7705ReadByte(chipSelectPin);
+    MX7705_Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_DATA_READ_CH0 : MX7705_REQUEST_DATA_READ_CH1));
+    MSB = MX7705_ReadByte(chipSelectPin);
+    LSB = MX7705_ReadByte(chipSelectPin);
     return (uint16_t)((MSB << 8) | LSB);
   }
 }
@@ -132,15 +132,15 @@ uint16_t MX7705ReadData(const uint8_t chipSelectPin, const uint8_t channel)
 /*
  * Function to read gain of a given channel
  */
-uint8_t MX7705GetGain(const uint8_t chipSelectPin, const uint8_t channel)
+uint8_t MX7705_GetGain(const uint8_t chipSelectPin, const uint8_t channel)
 {
   uint8_t setupRegister, gainRegister;
   
   //request read of the setup register of the given channel
-  MX7705Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1));
+  MX7705_Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1));
   
   //now read setup register. Note that gain is indicated by bits 3-5
-  setupRegister = MX7705ReadByte(chipSelectPin);
+  setupRegister = MX7705_ReadByte(chipSelectPin);
   gainRegister = (setupRegister &= B00111000) >> 3;  //mask bits 3-5 and shift to rightmost bit.
   
   return gainRegister; 
@@ -149,7 +149,7 @@ uint8_t MX7705GetGain(const uint8_t chipSelectPin, const uint8_t channel)
 /*
  * Function to set gain of the MX7705. Note that gain is set as an unsigned int from 0 - 7 inclusive
  */
-void MX7705SetGain(const uint8_t chipSelectPin, const uint8_t requiredGain, const uint8_t channel)
+void MX7705_SetGain(const uint8_t chipSelectPin, const uint8_t requiredGain, const uint8_t channel)
 {
   uint8_t setupRegister;
   // required gain is unsigned so don't need to check values lower than 0
@@ -164,35 +164,36 @@ void MX7705SetGain(const uint8_t chipSelectPin, const uint8_t requiredGain, cons
   else
   {
     //request a read of the setup register for the given channel - store and amend gain bits. We don't want to change data that's already here.
-    MX7705Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1));
+    MX7705_Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1));
     
     //now read setup register. Note that gain is indicated by bits 3-5
-    setupRegister = MX7705ReadByte(chipSelectPin);
+    setupRegister = MX7705_ReadByte(chipSelectPin);
     
     //write the required gain onto setupRegister and write it back in
     setupRegister &= B11000111;               //delete current gain bits
     setupRegister |= (requiredGain << 3);     //replace with required gain  - note similarity with GetGain.
     
     //request write to setup register
-    MX7705Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_WRITE_CH0 : MX7705_REQUEST_SETUP_WRITE_CH1));
+    MX7705_Write(chipSelectPin, (channel == 0 ? MX7705_REQUEST_SETUP_WRITE_CH0 : MX7705_REQUEST_SETUP_WRITE_CH1));
     
     //write new setupRegister
-    MX7705Write(chipSelectPin, setupRegister);
+    MX7705_Write(chipSelectPin, setupRegister);
   }
 }
 
 /*
  * Function to increase the gain of selected channel by one step
  */
-void MX7705GainUp(const uint8_t chipSelectPin, const uint8_t channel)
+ //TODO: function not properly implemented
+void MX7705_GainUp(const uint8_t chipSelectPin, const uint8_t channel)
 {
-  MX7705Write(chipSelectPin, (channel == 0 ? B00001000 : B00001001));
+  MX7705_Write(chipSelectPin, (channel == 0 ? B00001000 : B00001001));
 }
 
 /*
  * function to send a byte over SPI to the MX7705
  */
-void MX7705Write(uint8_t chipSelectPin, uint8_t sendByte)
+static void MX7705_Write(uint8_t chipSelectPin, uint8_t sendByte)
 { 
   SPI.beginTransaction(SPI_SETTINGS); 
   digitalWrite(chipSelectPin,LOW);
@@ -209,7 +210,7 @@ void MX7705Write(uint8_t chipSelectPin, uint8_t sendByte)
 /*
  * Function to read a single byte from the MX7705
  */
-uint8_t MX7705ReadByte(uint8_t chipSelectPin)
+static uint8_t MX7705_ReadByte(uint8_t chipSelectPin)
 {
   uint8_t readByte = 0u;
   SPI.beginTransaction(SPI_SETTINGS); 

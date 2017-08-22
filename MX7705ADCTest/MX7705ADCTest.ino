@@ -31,17 +31,13 @@ void loop()
 {
   static uint32_t counter = 0;
   uint16_t ADCData = 0;
-  bool timeout_flag;
-  ADCData = MX7705ReadData(AdcCsPin, &timeout_flag, ADCChannel);
+  bool error_flag;
+  ADCData = MX7705ReadData(AdcCsPin, ADCChannel);
 
   if (MX7705GetError())
   {
     digitalWrite(LedPin, HIGH);
     
-  }
-  else if (timeout_flag)
-  {
-    Serial.println("measurement timeout.");
   }
   else
   {
