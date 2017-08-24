@@ -1,8 +1,12 @@
-#define SPI_SETTINGS  SPISettings(5000000, MSBFIRST, SPI_MODE3)
-#define CS_DELAY      10u    //delay time in microseconds between chip select low/high and transfer
-#define DEBUG         0       //do you want print statements?
-#define T_TIMEOUT     1000u   //timeout in ms
-#define PWMout        3       //pin to output clock timer to ADC (pin 3 is actually pin 5 on ATMEGA328)
+#include "Config.h"
+
+#define SPI_CLOCK_SPEED                 5000000     
+#define SPI_BIT_ORDER                   MSBFIRST
+#define SPI_DATA_MODE                   SPI_MODE3
+
+#define DEBUG                           1       //do you want print statements?
+#define T_TIMEOUT                       1000u   //timeout in ms
+#define PWMout                          3       //pin to output clock timer to ADC (pin 3 is actually pin 5 on ATMEGA328)
 
 //MX7705 commands - note these are not very portable.
 //TODO: rewrite binary commands in hex for portability
@@ -29,23 +33,17 @@ bool MX7705_errorCondition = false;
  */
 void MX7705_Init(const uint8_t chipSelectPin, const uint8_t channel)
 {
-  //only initialise SPI once.
-  static bool initInterface = true;
-  if (initInterface)
-  {
-    pinMode(chipSelectPin, OUTPUT); //chip select
-    pinMode(PWMout, OUTPUT);
-    
-    //sending clock pulses from pin3 at 1MHz to ADC
-    //see http://forum.arduino.cc/index.php?topic=22384.0
-    TCCR2A = 0xB3; // fast PWM with programmed TOP val
-    TCCR2B = 0x09; // divide by 1 prescale
-    TCNT2  = 0x00;
-    OCR2A  = 0x0F; // TOP = 15, cycles every 16 clocks
-    OCR2B  = 0x07; // COMP for pin3
- 
-    initInterface = false;  //only initialise once
-  }
+  SpiInit(chipSelectPin);
+  pinMode(PWMout, OUTPUT);
+  
+  //sending clock pulses from pin3 at 1MHz to ADC
+  //see http://forum.arduino.cc/index.php?topic=22384.0
+  TCCR2A = 0xB3; // fast PWM with programmed TOP val
+  TCCR2B = 0x09; // divide by 1 prescale
+  TCNT2  = 0x00;
+  OCR2A  = 0x0F; // TOP = 15, cycles every 16 clocks
+  OCR2B  = 0x07; // COMP for pin3
+
   //request a write to the clock register
   MX7705_Write(chipSelectPin, MX7705_REQUEST_CLOCK_WRITE);
   //turn on clockdis bit - using clock from ATMEGA. Turn off clk bit for optimum performance at 1MHz with clkdiv 0.
@@ -62,7 +60,7 @@ void MX7705_Init(const uint8_t chipSelectPin, const uint8_t channel)
   {
     MX7705_errorCondition = true;
     #ifdef DEBUG
-      Serial.println("Error condition");
+      Serial.println("MX7705: Error condition");
     #endif
   }
 
@@ -108,7 +106,7 @@ uint16_t MX7705_ReadData(const uint8_t chipSelectPin, const uint8_t channel)
 #if DEBUG
   if (pollCount > 0)
   {
-    Serial.print("DRDY bit polled... ");
+    Serial.print("MX7705: DRDY bit polled... ");
     Serial.print(pollCount);
     Serial.println(" times");
   }
@@ -156,7 +154,7 @@ void MX7705_SetGain(const uint8_t chipSelectPin, const uint8_t requiredGain, con
   if (requiredGain > 7)
   {
     #if DEBUG
-      Serial.print("Cannot set gain to ");
+      Serial.print("MX7705: Cannot set gain to ");
       Serial.print(requiredGain);
       Serial.println(". Maximum gain is 7.");
     #endif
@@ -195,17 +193,16 @@ void MX7705_GainUp(const uint8_t chipSelectPin, const uint8_t channel)
  */
 static void MX7705_Write(uint8_t chipSelectPin, uint8_t sendByte)
 { 
-  SPI.beginTransaction(SPI_SETTINGS); 
-  digitalWrite(chipSelectPin,LOW);
-  delayMicroseconds(CS_DELAY);
+  OpenSpiConnection(chipSelectPin, CS_DELAY, SPI_CLOCK_SPEED, SPI_BIT_ORDER, SPI_DATA_MODE);
+  
   #if DEBUG
-    Serial.print("Sending... ");
+    Serial.print("MX7705: Sending... ");
     Serial.println(sendByte, BIN);
   #endif
+  
   SPI.transfer(sendByte);
-  delayMicroseconds(CS_DELAY);
-  digitalWrite(chipSelectPin,HIGH);
-  SPI.endTransaction();
+  
+  CloseSpiConnection(chipSelectPin, CS_DELAY);
 }
 /*
  * Function to read a single byte from the MX7705
@@ -213,16 +210,21 @@ static void MX7705_Write(uint8_t chipSelectPin, uint8_t sendByte)
 static uint8_t MX7705_ReadByte(uint8_t chipSelectPin)
 {
   uint8_t readByte = 0u;
-  SPI.beginTransaction(SPI_SETTINGS); 
-  digitalWrite(chipSelectPin,LOW);
-  delayMicroseconds(CS_DELAY);
+  
+  OpenSpiConnection(chipSelectPin, CS_DELAY, SPI_CLOCK_SPEED, SPI_BIT_ORDER, SPI_DATA_MODE);
+  
   readByte = SPI.transfer(NULL);
+  
   #if DEBUG
-    Serial.print("data received... ");
+    Serial.print("MX7705: Data received... ");
     Serial.println(readByte, BIN);
   #endif
-  delayMicroseconds(CS_DELAY);
-  digitalWrite(chipSelectPin,HIGH);
-  SPI.endTransaction();
+  
+  CloseSpiConnection(chipSelectPin, CS_DELAY);
+  
   return readByte;
 }
+// undefine here so we don't end up with settings from another device
+#undef SPI_CLOCK_SPEED
+#undef SPI_BIT_ORDER
+#undef SPI_DATA_MODE

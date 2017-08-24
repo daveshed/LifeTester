@@ -2,9 +2,10 @@
  * The purpose of this module is to wrap hardward specific functions from different board revisions
  * into useful functions(abstraction) that are defined at compile time.
  */
-#include "Config.h"
 #include "ADS1286.h"
 #include "MAX6675.h"
+#include "LifeTesterTypes.h"
+#include "Config.h"
 
 ///////////////////
 //Class instances// - instead of making these global, why not make them static within the relevant wrapper?
@@ -21,11 +22,21 @@
 void DacInit(void)
 {
   MCP48X2_Init(DAC_CS_PIN);
+  #if DEBUG
+    if (DacGetErrmsg())
+    {
+      Serial.println("Dac error condition on init.");
+    }
+  #endif
 }
 
 void DacSetOutput(uint8_t output, char channel)
 {
   MCP48X2_Output(DAC_CS_PIN, output, channel);
+  #if DEBUG
+    Serial.print("Setting Dac output to ");
+    Serial.println(output);
+  #endif 
 }
 
 void DacSetGain(char requestedGain)
@@ -43,6 +54,9 @@ uint8_t DacGetErrmsg(void)
   return MCP48X2_GetErrmsg();
 }
 
+/////////////////
+//Adc functions//
+/////////////////
 void AdcInit(void)
 {
   #if defined(BOARD_REV_0)
@@ -153,6 +167,16 @@ void AdcSetGain(const uint8_t gain, const char channel)
       return 0;
     }
   #endif 
+}
+
+////////////////////////////////
+//Temperature sensor functions//
+////////////////////////////////
+void TempSenseInit(void)
+{
+  #ifdef BOARD_REV_1
+    TC77_Init(TEMP_CS_PIN);
+  #endif
 }
 
 void TempSenseUpdate(void)

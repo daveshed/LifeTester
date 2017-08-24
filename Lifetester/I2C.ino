@@ -1,4 +1,6 @@
-#include "I2C.h"
+#define MAX_DATA_SIZE     8 //8 bytes for a uint64_t
+#define BUFFER_ENTRIES    9
+#define BUFFER_MAX_SIZE   MAX_DATA_SIZE * BUFFER_ENTRIES
 
 /*
 function that executes whenever data is requested by master
@@ -10,10 +12,7 @@ timer (uint32_t) MSB/LSB(v_a) MSB/LSB(i_a) MSB/LSB(v_b) MSB/LSB(i_b)
 MSB/LSB(T) MSB/LSB(intensity)error_A error B
 */
 
-//Global variables declared in I2C.h. Defined here...
 uint8_t I2CByteBuffer[BUFFER_MAX_SIZE] = {0};
-
-//global variables only used in this file
 uint8_t bufferIdx = 0;
 
 /*

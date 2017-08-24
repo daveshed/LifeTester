@@ -1,6 +1,6 @@
 #define SPI_SETTINGS  SPISettings(5000000, MSBFIRST, SPI_MODE3)
-#define CS_DELAY      10u    //delay time in microseconds between chip select low/high and transfer
-#define DEBUG         0       //do you want print statements?
+#define CS_DELAY      200u    //delay time in microseconds between chip select low/high and transfer
+#define DEBUG         1       //do you want print statements?
 #define T_TIMEOUT     1000u   //timeout in ms
 #define PWMout        3       //pin to output clock timer to ADC (pin 3 is actually pin 5 on ATMEGA328)
 

@@ -1,5 +1,4 @@
-#include "Config.h"
-
+#include "LifeTesterTypes.h"
 /*
 function to find MPP by scanning over voltages. Updates v to the MPP. 
 also pass in DAC and LifeTester objects.

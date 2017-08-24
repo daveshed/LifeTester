@@ -1,12 +1,15 @@
+#include "Config.h"
+
 /*
  * library to control MCP48X2 DACs by microchip. Note that 12, 10, and 8 bit 
  * devices can be controlled with this library but that only 8 bit resolution is
  * used. The lifetester only requires this resolution which is < 0.01V.
  */
 
-#define SPI_SETTINGS  SPISettings(20000000, MSBFIRST, SPI_MODE0)
-#define CS_DELAY      10u       //CS delay in microseconds
-#define DEBUG         0
+#define SPI_CLOCK_SPEED  20000000     
+#define SPI_BIT_ORDER    MSBFIRST
+#define SPI_DATA_MODE    SPI_MODE0
+#define DEBUG            1
 
 static char gain = 'l';
 static uint8_t errMsg = 0;
@@ -17,8 +20,8 @@ static uint8_t errMsg = 0;
 void MCP48X2_Init(uint8_t chipSelectPin)
 {
   errMsg = 0;
-  pinMode(chipSelectPin, OUTPUT);
-  digitalWrite(chipSelectPin,HIGH);
+  SpiInit(chipSelectPin);
+  
   MCP48X2_SetGain(gain);
   MCP48X2_Output(chipSelectPin, 0, 'a');
   MCP48X2_Output(chipSelectPin, 0, 'b');
@@ -87,26 +90,20 @@ void MCP48X2_Output(char chipSelectPin, uint8_t output, char channel)
     LSB = DacCommand;
 
     #if DEBUG
+      Serial.print("MCP48X2 sending: ");
       Serial.print(MSB, BIN);
       Serial.print(" ");
       Serial.println(LSB, BIN);
     #endif
     
     //now write to DAC
-    SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
-    
-    // take the CS pin low to select the chip:
-    digitalWrite(chipSelectPin,LOW);
-    delayMicroseconds(CS_DELAY);
+    OpenSpiConnection(chipSelectPin, CS_DELAY, SPI_CLOCK_SPEED, SPI_BIT_ORDER, SPI_DATA_MODE);
     
     //  send in the address and value via SPI:
     SPI.transfer(MSB);
     SPI.transfer(LSB);
     
-    delayMicroseconds(CS_DELAY);
-    // take the CS pin high to de-select the chip:
-    digitalWrite(chipSelectPin,HIGH);
-    SPI.endTransaction();
+    CloseSpiConnection(chipSelectPin, CS_DELAY);
   }
 }
 
@@ -124,4 +121,8 @@ uint8_t MCP48X2_GetErrmsg(void)
 {
   return errMsg;
 }
+// undefine here so we don't end up with settings from another device
+#undef SPI_CLOCK_SPEED
+#undef SPI_BIT_ORDER
+#undef SPI_DATA_MODE
 

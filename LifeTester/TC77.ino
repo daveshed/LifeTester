@@ -1,15 +1,12 @@
-/*
- * CPOL = 0
- * CPHA = 0 Data read on falling clock edge
- * SPI_MODE0
- */
+#include "Config.h"
 
 #define DEBUG               0         //gives you additional print statements
-#define CS_DELAY            100u        //delay between CS logic and data read (us)
 #define CONVERSION_TIME     400u      //measurement conversion time (ms) - places upper limit on measurement rate
 #define CONVERSION_FACTOR   0.0625    //deg C per code
 #define MSB_OVERTEMP        B00111110 //reading this on MSB implies overtemperature
-#define SPI_SETTINGS SPISettings(7000000, MSBFIRST, SPI_MODE0)
+#define SPI_CLOCK_SPEED     7000000     
+#define SPI_BIT_ORDER       MSBFIRST
+#define SPI_DATA_MODE       SPI_MODE0
 
 /* TODO: static bool would be better here but because ino files are just concatenated
  *  we just end up redefining variables when two have ths same name...
@@ -21,25 +18,10 @@ bool TC77_errorCondition = false;
 //raw uint16_t read from chip without conversion
 static uint16_t rawData = 0;
 
-/*
- * function to open SPI connection on required CS pin
- */
-static void TC77_OpenSpiConnection(uint8_t chipSelectPin)
+void TC77_Init(uint8_t chipSelectPin)
 {
-  SPI.beginTransaction(SPI_SETTINGS);
-  digitalWrite(chipSelectPin,LOW);
-  delayMicroseconds(CS_DELAY);
+  SpiInit(TEMP_CS_PIN);
 }
-  
-/*
- * function to close SPI connection on required CS pin
- */
-static void TC77_CloseSpiConnection(uint8_t chipSelectPin)
-{
-  delayMicroseconds(CS_DELAY);
-  digitalWrite(chipSelectPin,HIGH);
-  SPI.endTransaction();
-} 
 
 /*
  * Function to read a single two bytes from the TC77 and convert them to uint16_t
@@ -48,16 +30,14 @@ static uint16_t TC77_ReadRawData(uint8_t chipSelectPin)
 {
   uint8_t  MSB, LSB;
   uint16_t rawData;
-  
-  //open connection
-  TC77_OpenSpiConnection(chipSelectPin);
+
+  OpenSpiConnection(chipSelectPin, CS_DELAY, SPI_CLOCK_SPEED, SPI_BIT_ORDER, SPI_DATA_MODE);
 
   //read data
   MSB = SPI.transfer(NULL);
   LSB = SPI.transfer(NULL);
 
-  //close connection. realese SPI
-  TC77_CloseSpiConnection(chipSelectPin);
+  CloseSpiConnection(chipSelectPin, CS_DELAY);
 
   //pack data into a single uint16_t
   rawData = (uint16_t)((MSB << 8) | LSB);
@@ -133,7 +113,6 @@ void TC77_Update(uint8_t chipSelectPin)
   {
     TC77_errorCondition = true;
     Serial.println("TC77 overtemperature error.");
-    return NULL;
   }
   else if (!TC77_IsReady(measurement)) 
   {
@@ -157,4 +136,7 @@ bool TC77_GetError(void)
 {
   return TC77_errorCondition;
 }
-
+// undefine here so we don't end up with settings from another device
+#undef SPI_CLOCK_SPEED
+#undef SPI_BIT_ORDER
+#undef SPI_DATA_MODE

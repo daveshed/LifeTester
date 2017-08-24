@@ -14,6 +14,10 @@ void setup() {
 void loop()
 {
   static uint8_t dacCodeRequest = 0;
+  if (dacCodeRequest > 100)
+  {
+    dacCodeRequest = 0;
+  }
   MCP48X2_Output(DacCsPin, dacCodeRequest, 'a');
   MCP48X2_Output(DacCsPin, dacCodeRequest, 'b');
   Serial.print(dacCodeRequest);
