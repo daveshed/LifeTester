@@ -9,7 +9,7 @@
 #define SPI_CLOCK_SPEED  20000000     
 #define SPI_BIT_ORDER    MSBFIRST
 #define SPI_DATA_MODE    SPI_MODE0
-#define DEBUG            1
+#define DEBUG            0
 
 static char gain = 'l';
 static uint8_t errMsg = 0;

@@ -4,7 +4,7 @@
 #define SPI_BIT_ORDER                   MSBFIRST
 #define SPI_DATA_MODE                   SPI_MODE3
 
-#define DEBUG                           1       //do you want print statements?
+#define DEBUG                           0       //do you want print statements?
 #define T_TIMEOUT                       1000u   //timeout in ms
 #define PWMout                          3       //pin to output clock timer to ADC (pin 3 is actually pin 5 on ATMEGA328)
 

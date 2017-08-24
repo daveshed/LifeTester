@@ -4,26 +4,50 @@
 #include "LifeTesterTypes.h"
 #include "Config.h"
 
+//////////////////////////////////
+//Initialise lifetester channels//
+////////////////////////////////// 
+LifeTester_t LTChannelA = {
+  'a',
+  Flasher(LED_A_PIN),
+  0,
+  0,
+  0,
+  ok,
+  {0},
+  0
+};
+
+LifeTester_t LTChannelB = {
+  'b',
+  Flasher(LED_B_PIN),
+  0,
+  0,
+  0,
+  ok,
+  {0},
+  0
+};
+
 void setup()
 { 
   //SERIAL PORT COMMUNICATION WITH PC VIA UART
   Serial.begin(9600);
+  SPI.begin();
     
   //OPTION B: I2C COMMUNICATION WITH MASTER ARDUINO
   Wire.begin(I2C_ADDRESS);          // join I2C bus with address specified (see header)
   Wire.onRequest(I2C_TransmitData); // register event
 
   //INITIALISE I/O
-  #if DEBUG
-    Serial.println("Initialising IO...");
-  #endif
-    
+  Serial.println("Initialising IO...");
+  
   DacInit();
   AdcInit();
-
-  #if DEBUG
-    Serial.println("Scanning for MPP...");
-  #endif
+  TempSenseInit();
+  
+  Serial.println("Scanning for MPP...");
+  
   //MPP INITIAL SEARCH/SCAN
   IV_Scan(&LTChannelA, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN);
   //initialise DAC to MPP initial guess - channel a
@@ -37,7 +61,7 @@ void setup()
   Serial.println();
   Serial.println("Tracking max power point...");
   Serial.println("DACx, ADCx, power, error, Light Sensor, T(C), channel");
-  
+
   //SETUP LEDS FOR MAIN LOOP
   LTChannelA.Led.t(50, 50);
   LTChannelB.Led.t(50, 50);
@@ -45,9 +69,7 @@ void setup()
   //set timer ready for measurements
   LTChannelA.timer = LTChannelB.timer = millis();
 
-  #if DEBUG
-    Serial.println("Finished setup. Entering main loop.");
-  #endif
+  Serial.println("Finished setup. Entering main loop.");
 }
 
 void loop()
@@ -63,3 +85,4 @@ void loop()
   
   I2C_PrepareData();
 }
+

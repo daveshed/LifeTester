@@ -2,7 +2,7 @@
 #define CONFIG_H
 #include "LifeTesterTypes.h"
 
-#define DEBUG 1 //1 for serial communication, 0 to turn off.
+#define DEBUG 0
 
 ///////////////////
 //Board Revisions//
@@ -22,7 +22,7 @@
   #define MAX_CURRENT       4095u  //maximum reading allowed by ADC
 #elif defined(BOARD_REV_1)
   #define ADC_CS_PIN        9u
-  #define DAC_CS_PIN        10u 
+  #define DAC_CS_PIN        10u
   #define LED_A_PIN         2u
   #define LED_B_PIN         4u
   #define TEMP_CS_PIN       7u
@@ -33,7 +33,7 @@
 #endif
 
 #define I2C_ADDRESS     10    //address for this I2C slave device
-#define CS_DELAY        100u  //delay between CS edge and spi transfer in ms
+#define CS_DELAY        10u  //delay between CS edge and spi transfer in ms
 
 ////////////////////////
 //Measurement settings//
@@ -52,30 +52,5 @@
 #define SETTLE_TIME       200u //settle time after setting DAC to ADC measurement
 #define SAMPLING_TIME     200u //time interval over which ADC measurements are made continuously then averaged afterward
 #define TRACK_DELAY_TIME  200u //time period between tracking measurements
-
-//////////////////////////////////
-//Initialise lifetester channels//
-////////////////////////////////// 
-LifeTester_t LTChannelA = {
-  'a',
-  Flasher(LED_A_PIN),
-  0,
-  0,
-  0,
-  ok,
-  {0},
-  0
-};
-
-LifeTester_t LTChannelB = {
-  'b',
-  Flasher(LED_B_PIN),
-  0,
-  0,
-  0,
-  ok,
-  {0},
-  0
-};
 
 #endif

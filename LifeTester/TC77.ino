@@ -20,7 +20,7 @@ static uint16_t rawData = 0;
 
 void TC77_Init(uint8_t chipSelectPin)
 {
-  SpiInit(TEMP_CS_PIN);
+  SpiInit(chipSelectPin);
 }
 
 /*

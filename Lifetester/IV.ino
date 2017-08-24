@@ -21,10 +21,8 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
   uint32_t tElapsed;
   uint16_t nSamples = 0; //number of readings taken during sample time
 
-  #if DEBUG
-    Serial.println("starting measurement");
-    Serial.println("V, I, P, error, channel");
-  #endif
+  Serial.println("IV scan...");
+  Serial.println("V, I, P, error, channel");
   
   lifeTester->Led.t(25, 500);
   
@@ -75,17 +73,15 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
         lifeTester->error = DAC_error;
       }
       
-      #if DEBUG
-        Serial.print(v);
-        Serial.print(", ");
-        Serial.print(iScan);
-        Serial.print(", ");
-        Serial.print(pScan);
-        Serial.print(", ");
-        Serial.print(lifeTester->error);
-        Serial.print(", ");
-        Serial.println(lifeTester->channel);
-      #endif
+      Serial.print(v);
+      Serial.print(", ");
+      Serial.print(iScan);
+      Serial.print(", ");
+      Serial.print(pScan);
+      Serial.print(", ");
+      Serial.print(lifeTester->error);
+      Serial.print(", ");
+      Serial.println(lifeTester->channel);
       
       timer = millis(); //reset timer
       
@@ -93,15 +89,13 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
     }
   }
 
-  #if DEBUG
-    Serial.println();
-    Serial.print("iMax = ");
-    Serial.print(iMax);
-    Serial.print(", Vmpp = ");
-    Serial.print(vMPP);
-    Serial.print(", error = ");
-    Serial.println(lifeTester->error, DEC);
-  #endif
+  Serial.println();
+  Serial.print("iMax = ");
+  Serial.print(iMax);
+  Serial.print(", Vmpp = ");
+  Serial.print(vMPP);
+  Serial.print(", error = ");
+  Serial.println(lifeTester->error, DEC);
   
   if (iMax < I_THRESHOLD)
   {
@@ -200,22 +194,20 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
         lifeTester->nErrorReads = 0;
       }
 
-      #if DEBUG
-        Serial.print(lifeTester->IVData.v);
-        Serial.print(", ");
-        Serial.print(lifeTester->IVData.iCurrent);
-        Serial.print(", ");
-        Serial.print(lifeTester->IVData.pCurrent);
-        Serial.print(", ");
-        Serial.print(lifeTester->error,DEC);
-        Serial.print(", ");
-        Serial.print(analogRead(LIGHT_SENSOR_PIN));
-        Serial.print(", ");
-        Serial.print(TempReadDegC());
-        Serial.print(", ");
-        Serial.print(lifeTester->channel);
-        Serial.println();
-      #endif
+      Serial.print(lifeTester->IVData.v);
+      Serial.print(", ");
+      Serial.print(lifeTester->IVData.iCurrent);
+      Serial.print(", ");
+      Serial.print(lifeTester->IVData.pCurrent);
+      Serial.print(", ");
+      Serial.print(lifeTester->error,DEC);
+      Serial.print(", ");
+      Serial.print(analogRead(LIGHT_SENSOR_PIN));
+      Serial.print(", ");
+      Serial.print(TempReadDegC());
+      Serial.print(", ");
+      Serial.print(lifeTester->channel);
+      Serial.println();
 
       lifeTester->IVData.iTransmit =
         0.5 * (lifeTester->IVData.iCurrent + lifeTester->IVData.iNext);
