@@ -1,12 +1,10 @@
 /*
-helpful info on making a library herehttps://www.arduino.cc/en/Hacking/libraryTutorial
-
+ * helpful info on making a library herehttps://www.arduino.cc/en/Hacking/libraryTutorial
 */
 
 #include "ADS1286.h"
 #include "Arduino.h"
 #include <SPI.h>
-
 
 // Class Member Variables
 
@@ -87,35 +85,6 @@ unsigned int ADS1286::readInputSingleShot()
 
 	SPI.endTransaction(); //close connection
 	
- 	/*byte mask;
- 	mask = 1;
- 	mask <<= 7;
-
- 	for (int i = 0; i < 8; i++)
- 	{
- 		if (mask & MSB)
- 			Serial.print(1);
- 		else
- 			Serial.print(0);
- 		mask >>= 1;
- 	}
-
- 	Serial.print(" ");
- 	
- 	mask = 1;
- 	mask <<= 7;
- 	for (int i = 0; i < 8; i++)
- 	{
- 		if (mask & LSB)
- 			Serial.print(1);
- 		else
- 			Serial.print(0);
- 		mask >>= 1;
- 	}
- 	
- 	Serial.print(", ");
- 	Serial.println(ADCval);
-*/
 	return(ADCval);
 }
 

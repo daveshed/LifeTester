@@ -1,4 +1,3 @@
-
 /*
   MAX6675.h - Library for SPI communication with MAX6675 thermocouple reader
   more info here https://www.maximintegrated.com/en/products/analog/sensors-and-sensor-interface/MAX6675.html
