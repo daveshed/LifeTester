@@ -1,5 +1,6 @@
-#include <SPI.h>
 #include "MCP48X2.h"
+#include "SPI.h"
+
 const uint8_t DacCsPin = 10;
 
 void setup() {

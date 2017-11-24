@@ -3,8 +3,11 @@
  * whichever channel that you like.
  * this version uses an external clock from the Arduino pin3 (pin 5 really). Is this more reliable
 */
+#include "Arduino.h"
+#include "MX7705.h"
+#include "Print.h"
+#include "SPI.h"
 
-#include <SPI.h>
 const uint8_t AdcCsPin = 9;
 const uint8_t LedPin = 8;
 const uint8_t ADCChannel = 1;
@@ -14,13 +17,13 @@ void setup()
 { 
   Serial.begin(9600);
   SPI.begin();
-  MX7705Init(AdcCsPin, ADCChannel);
+  MX7705_Init(AdcCsPin, ADCChannel);
   Serial.print("getting gain...");
-  Serial.println(MX7705GetGain(AdcCsPin, ADCChannel));
+  Serial.println(MX7705_GetGain(AdcCsPin, ADCChannel));
   Serial.println("setting gain...");
-  MX7705SetGain(AdcCsPin, 0, ADCChannel);
+  MX7705_SetGain(AdcCsPin, 0, ADCChannel);
   Serial.print("getting gain...");
-  Serial.println(MX7705GetGain(AdcCsPin, ADCChannel));
+  Serial.println(MX7705_GetGain(AdcCsPin, ADCChannel));
 
   pinMode(LedPin, OUTPUT); //LED select
   digitalWrite(LedPin, LOW);
@@ -32,9 +35,9 @@ void loop()
   static uint32_t counter = 0;
   uint16_t ADCData = 0;
   bool error_flag;
-  ADCData = MX7705ReadData(AdcCsPin, ADCChannel);
+  ADCData = MX7705_ReadData(AdcCsPin, ADCChannel);
 
-  if (MX7705GetError())
+  if (MX7705_GetError())
   {
     digitalWrite(LedPin, HIGH);
     

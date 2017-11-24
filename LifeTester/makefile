@@ -8,9 +8,9 @@
 # You can optionally compile only or upload only. Both happen by default
 
 PROGRAM=Lifetester
-STUFF=../Arduino ../LifeTester ../Hardware
-IDIRS=$(patsubst %,-I%,$(subst :, ,$(STUFF)))
-DEPS=*.cpp ../Arduino/*.cpp ../Arduino/*.c ../Arduino/*.S *.cpp ../Hardware/*.cpp 
+LIBS=../Arduino ../LifeTester ../Hardware ../Common
+IDIRS=$(patsubst %,-I%,$(subst :, ,$(LIBS)))
+DEPS=*.cpp ../Arduino/*.cpp ../Arduino/*.c ../Arduino/*.S *.cpp ../Hardware/*.cpp ../Common/*.cpp 
 BUILD_DIR=Build
 CC=avr-gcc
 OBJCOPY=avr-objcopy

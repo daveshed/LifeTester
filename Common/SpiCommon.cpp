@@ -9,6 +9,7 @@ void SpiInit(uint8_t chipSelectPin)
 {
   pinMode(chipSelectPin, OUTPUT);
   digitalWrite(chipSelectPin, HIGH);
+  //TODO: call to Spi.begin() ??
 }
 
 /*

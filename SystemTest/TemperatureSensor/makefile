@@ -7,16 +7,16 @@
 # 4. finally the .hex is uploaded on the specified port
 # You can optionally compile only or upload only. Both happen by default
 
-PROGRAM=MyBlinkTest
-VPATH=/usr/share/arduino/hardware/arduino/cores/arduino
-VARIANTS=/usr/share/arduino/hardware/arduino/variants/standard
-# All c and cpp files in the arduino cores are compiled to o files
-DEPS=${VPATH}/*.c ${VPATH}/*.cpp MyBlinkTest.cpp
+PROGRAM=TC77Test
+LIBS=../../Arduino ../../LifeTester ../../Hardware ../../Common
+IDIRS=$(patsubst %,-I%,$(subst :, ,$(LIBS)))
+DEPS=${PROGRAM}.cpp ../../Arduino/*.c* ../../Arduino/*.S ../../Hardware/TC77.cpp ../../Common/*.c*
 BUILD_DIR=Build
 CC=avr-gcc
 OBJCOPY=avr-objcopy
 MMCU=-mmcu=atmega328p
 CFLAGS=-Os -DF_CPU=16000000UL ${MMCU}
+UPLOADER=avrdude
 PORT=/dev/ttyACM0
 
 # $@ = name of the target recipe being run
@@ -29,13 +29,13 @@ PORT=/dev/ttyACM0
 all: ${BUILD_DIR}/*.o ${PROGRAM}.elf ${PROGRAM}.hex upload
 
 # option to compile only without upload/install
-compile: ${BUILD_DIR}/*.o ${PROGRAM}.elf ${PROGRAM}.hex
+build: ${BUILD_DIR}/*.o ${PROGRAM}.elf ${PROGRAM}.hex
 
 # compile rule - all files in DEPS list turned into .o
 # then move to build directory
 ${BUILD_DIR}/*.o: ${DEPS}
 	mkdir -p Build/
-	${CC} ${CFLAGS} -c $^ -I ${VARIANTS} -I ${VPATH}
+	${CC} ${CFLAGS} -c $^ ${IDIRS}
 	mv *.o ${BUILD_DIR}/
 
 # linking rule
@@ -47,7 +47,7 @@ ${PROGRAM}.hex: ${BUILD_DIR}/${PROGRAM}.elf
 	${OBJCOPY} -O ihex -R .eeprom $< ${BUILD_DIR}/$@
 
 upload: ${BUILD_DIR}/${PROGRAM}.hex
-	avrdude -F -V -c arduino -p ATMEGA328P -P ${PORT} -b 115200 -U flash:w:${BUILD_DIR}/$<
+	${UPLOADER} -F -V -c arduino -p ATMEGA328P -P ${PORT} -b 115200 -U flash:w:${BUILD_DIR}/$<
 
 clean:
 	rm -f ${BUILD_DIR}/*
