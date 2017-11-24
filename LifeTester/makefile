@@ -8,15 +8,15 @@
 # You can optionally compile only or upload only. Both happen by default
 
 PROGRAM=Lifetester
-VPATH=../arduino
-# COMPILER_PATH=/usr/share/arduino/hardware/tools/avr/bin
-# All c and cpp files in arduino and current dir are converted to .o
-DEPS=${VPATH}/*.c ${VPATH}/*.cpp ${VPATH}/*.S *.cpp 
+STUFF=../Arduino ../LifeTester ../Hardware
+IDIRS=$(patsubst %,-I%,$(subst :, ,$(STUFF)))
+DEPS=*.cpp ../Arduino/*.cpp ../Arduino/*.c ../Arduino/*.S *.cpp ../Hardware/*.cpp 
 BUILD_DIR=Build
 CC=avr-gcc
 OBJCOPY=avr-objcopy
 MMCU=-mmcu=atmega328p
 CFLAGS=-Os -DF_CPU=16000000UL ${MMCU}
+UPLOADER=avrdude
 PORT=/dev/ttyACM0
 
 # $@ = name of the target recipe being run
@@ -35,23 +35,19 @@ build: ${BUILD_DIR}/*.o ${PROGRAM}.elf ${PROGRAM}.hex
 # then move to build directory
 ${BUILD_DIR}/*.o: ${DEPS}
 	mkdir -p Build/
-	${CC} ${CFLAGS} -c $^ -I ${VPATH}/
-	# ${COMPILER_PATH}/${CC} ${CFLAGS} -c $^ -I ${VPATH}
+	${CC} ${CFLAGS} -c $^ ${IDIRS}
 	mv *.o ${BUILD_DIR}/
 
 # linking rule
 ${PROGRAM}.elf: ${BUILD_DIR}/*.o
-	# ${COMPILER_PATH}/${CC} ${MMCU} $^ -o ${BUILD_DIR}/$@
 	${CC} ${MMCU} $^ -o ${BUILD_DIR}/$@
 
 # make hex file - the default goal must go first
 ${PROGRAM}.hex: ${BUILD_DIR}/${PROGRAM}.elf
 	${OBJCOPY} -O ihex -R .eeprom $< ${BUILD_DIR}/$@
-	# ${COMPILER_PATH}/${OBJCOPY} -O ihex -R .eeprom $< ${BUILD_DIR}/$@
 
 upload: ${BUILD_DIR}/${PROGRAM}.hex
-	avrdude -F -V -c arduino -p ATMEGA328P -P ${PORT} -b 115200 -U flash:w:${BUILD_DIR}/$<
-	# ${COMPILER_PATH}/avrdude -F -V -c arduino -p ATMEGA328P -P ${PORT} -b 115200 -U flash:w:${BUILD_DIR}/$<
+	${UPLOADER} -F -V -c arduino -p ATMEGA328P -P ${PORT} -b 115200 -U flash:w:${BUILD_DIR}/$<
 
 clean:
 	rm -f ${BUILD_DIR}/*
