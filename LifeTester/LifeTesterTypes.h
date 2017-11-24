@@ -1,6 +1,14 @@
 #ifndef LIFETESTERTYPES_H
 #define LIFETESTERTYPES_H
 
+#ifdef _cplusplus
+extern "C"
+{
+#endif
+
+#include <stdint.h>
+#include "LedFlash.h"
+
 typedef enum {
   ok,
   low_current,
@@ -29,4 +37,8 @@ typedef struct LifeTester_s {
   uint32_t      timer;        //timer for tracking loop
 } LifeTester_t;
 
+#ifdef _cplusplus
+}
 #endif
+
+#endif //include guard
