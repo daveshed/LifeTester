@@ -1,7 +1,8 @@
+#include "Config.h"
 #include "MCP48X2.h"
 #include "SPI.h"
 
-const uint8_t DacCsPin = 10;
+const uint8_t DacCsPin = DAC_CS_PIN;
 
 void setup() {
   // put your setup code here, to run once:

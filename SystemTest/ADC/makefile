@@ -47,7 +47,7 @@ ${PROGRAM}.hex: ${BUILD_DIR}/${PROGRAM}.elf
 	${OBJCOPY} -O ihex -R .eeprom $< ${BUILD_DIR}/$@
 
 upload: ${BUILD_DIR}/${PROGRAM}.hex
-	${UPLOADER} -F -V -c arduino -p ATMEGA328P -P ${PORT} -b 115200 -U flash:w:${BUILD_DIR}/$<
+	${UPLOADER} -V -c arduino -p ATMEGA328P -P ${PORT} -b 57600 -D -U flash:w:$<
 
 clean:
 	rm -f ${BUILD_DIR}/*

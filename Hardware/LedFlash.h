@@ -10,9 +10,9 @@
 #ifndef LEDFLASH_H
 #define LEDFLASH_H
 
-#ifdef _cplusplus
-extern "C" {
-#endif
+// #ifdef _cplusplus
+// extern "C" {
+// #endif
 
 #include "Arduino.h"
 
@@ -41,7 +41,7 @@ class Flasher
     int flashConst;
 };
 
-#ifdef _cplusplus
-}
-#endif
+// #ifdef _cplusplus
+// }
+// #endif
 #endif

@@ -1,5 +1,6 @@
 #include "Config.h"
 #include "MCP48X2.h"
+#include "Print.h"
 #include "SPI.h" //for SPI #defines
 #include "SpiCommon.h"
 

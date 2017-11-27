@@ -7,11 +7,11 @@ extern "C" {
 
 #define DEBUG 0
 
-#define ADC_CS_PIN        9u
-#define DAC_CS_PIN        10u
-#define LED_A_PIN         2u
-#define LED_B_PIN         4u
-#define TEMP_CS_PIN       7u
+#define ADC_CS_PIN        10u
+#define DAC_CS_PIN        9u
+#define LED_A_PIN         5u
+#define LED_B_PIN         6u
+#define TEMP_CS_PIN       8u
 #define LIGHT_SENSOR_PIN  0u
 #define MAX_CURRENT       65535u
 

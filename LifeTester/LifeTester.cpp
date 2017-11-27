@@ -5,6 +5,7 @@
 #include "I2C.h"
 #include "LedFlash.h"
 #include "LifeTesterTypes.h"
+#include "Print.h"
 #include <SPI.h>
 #include <Wire.h>
 

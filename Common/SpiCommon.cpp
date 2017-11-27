@@ -1,7 +1,7 @@
 #include "Arduino.h"
 #include "SPI.h"
 #include "SpiCommon.h"
-//file for common SPI functions
+
 /*
  * initialisation only
  */
@@ -9,7 +9,7 @@ void SpiInit(uint8_t chipSelectPin)
 {
   pinMode(chipSelectPin, OUTPUT);
   digitalWrite(chipSelectPin, HIGH);
-  //TODO: call to Spi.begin() ??
+  SPI.begin();
 }
 
 /*

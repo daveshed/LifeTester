@@ -7,10 +7,10 @@
 # 4. finally the .hex is uploaded on the specified port
 # You can optionally compile only or upload only. Both happen by default
 
-PROGRAM=TC77Test
+PROGRAM=LedFlashTest
 LIBS=../../Arduino ../../LifeTester ../../Hardware ../../Common
 IDIRS=$(patsubst %,-I%,$(subst :, ,$(LIBS)))
-DEPS=${PROGRAM}.cpp ../../Arduino/*.c* ../../Arduino/*.S ../../Hardware/TC77.cpp ../../Common/*.c*
+DEPS=${PROGRAM}.cpp ../../Arduino/*.c* ../../Arduino/*.S ../../Hardware/*.c* ../../Common/*.c*
 BUILD_DIR=Build
 CC=avr-gcc
 OBJCOPY=avr-objcopy

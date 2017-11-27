@@ -4,13 +4,14 @@
  * this version uses an external clock from the Arduino pin3 (pin 5 really). Is this more reliable
 */
 #include "Arduino.h"
+#include "Config.h"
 #include "MX7705.h"
 #include "Print.h"
 #include "SPI.h"
 
-const uint8_t AdcCsPin = 9;
-const uint8_t LedPin = 8;
-const uint8_t ADCChannel = 1;
+const uint8_t AdcCsPin = ADC_CS_PIN;
+const uint8_t LedPin = LED_A_PIN;
+const uint8_t ADCChannel = 0;
 //const uint8_t gain = 0; //note this isn't gain but the index of the gain table
 
 void setup()
