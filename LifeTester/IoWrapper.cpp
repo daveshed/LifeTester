@@ -137,7 +137,7 @@ void TempSenseInit(void)
 
 void TempSenseUpdate(void)
 {
-  TC77_Update(TEMP_CS_PIN);
+  TC77_Update();
 }
 
 uint16_t TempGetRawData(void)
