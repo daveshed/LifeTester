@@ -3,20 +3,14 @@
   LedFlash.h - Library for flashing LED code.
   more info here https://www.arduino.cc/en/Tutorial/BlinkWithoutDelay
   Adapted by D. Mohamad as a library
-  Released into the public domain.
 */
 
 // ensure this library description is only included once
 #ifndef LEDFLASH_H
 #define LEDFLASH_H
 
-// #ifdef _cplusplus
-// extern "C" {
-// #endif
-
 #include "Arduino.h"
 
-// library for flashing LEDs
 class Flasher
 {
   public:
@@ -36,12 +30,10 @@ class Flasher
 
     // These maintain the current state
     int ledState;                 // ledState used to set the LED
-    unsigned long currentMillis,previousMillis;
+    unsigned long currentMillis;
+    unsigned long previousMillis;
     int nFlash;
     int flashConst;
 };
 
-// #ifdef _cplusplus
-// }
-// #endif
 #endif

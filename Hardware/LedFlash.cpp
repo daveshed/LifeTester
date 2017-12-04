@@ -15,7 +15,8 @@ long OffTime;    // milliseconds of off-time
 
 // These maintain the current state
 int ledState;                 // ledState used to set the LED
-unsigned long previousMillis, currentMillis;   // will store last time LED was updated
+unsigned long previousMillis;
+unsigned long currentMillis;   // will store last time LED was updated
 int nFlash;  //number of blinks to complete
 int flashConst; //state used to tell us if LED is blinking constantly or for a fixed number
 
