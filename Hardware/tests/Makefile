@@ -1,33 +1,17 @@
-# autogenerates mock functions from c files only using Cmock
+BUILD_DIR = Build
+CPPUTEST_HOME = /usr/local
+PROJECT_HOME = $(shell cd ../../ && pwd)
+INCLUDES = -I${CPPUTEST_HOME} -I${PROJECT_HOME}/Arduino -I${PROJECT_HOME}/Hardware
+LIBS = -L${CPPUTEST_HOME}/lib -lCppUTest -lCppUTestExt
 
-# configuration options
-CONFIG=project.yml
-# things to mock
-HEADERS=../../Arduino/Arduino.h
-# path to cmock
-CMOCK=/var/lib/gems/2.3.0/gems/ceedling-0.28.2/vendor/cmock/lib/cmock.rb
-# mocks output directory
-MOCK_DIR=mocks
-# put buld files in another directory
-BUILD_DIR=Build
+all: make_tests run_tests
 
-run_gtests: ${BUILD_DIR}/runTests
-	./$<
-	
-# builds executable
-${BUILD_DIR}/runTests: ${BUILD_DIR}/Makefile 
-	cd ${BUILD_DIR} && ${MAKE}
+make_tests:
+	mkdir -p ${BUILD_DIR}
+	g++ AllTests.cpp tests.cpp ../LedFlash.cpp ${INCLUDES} ${LIBS} -DUNIT_TEST -o ${BUILD_DIR}/tests
 
-# builds makefile
-${BUILD_DIR}/Makefile: ${MOCK_DIR}/Mock*
-	mkdir -p ${BUILD_DIR}/
-	cmake -H/home/dave/sketchbook/LifeTester_Unit_Tests/Hardware/tests -B/home/dave/sketchbook/LifeTester_Unit_Tests/Hardware/tests/Build/
-
-# rule to make mock files
-${MOCK_DIR}/Mock*: ${HEADERS}
-	mkdir -p ${MOCK_DIR}/
-	ruby ${CMOCK} -o${CONFIG} ${HEADERS}
+run_tests: make_tests
+	./${BUILD_DIR}/tests
 
 clean:
-	rm -rf ${MOCK_DIR}
-	rm -rf ${BUILD_DIR}
+	rm -r ${BUILD_DIR}

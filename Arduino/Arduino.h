@@ -25,9 +25,14 @@
 #include <string.h>
 #include <math.h>
 
-#include <avr/pgmspace.h>
-#include <avr/io.h>
-#include <avr/interrupt.h>
+#ifndef UNIT_TEST
+    #include <avr/pgmspace.h>
+    #include <avr/io.h>
+    #include <avr/interrupt.h>
+#else
+    #include <stdint.h>
+    #define PROGMEM // compile out PROGMEM calls
+#endif
 
 #include "binary.h"
 
@@ -128,7 +133,9 @@ typedef uint8_t byte;
 void init(void);
 void initVariant(void);
 
-int atexit(void (*func)()) __attribute__((weak));
+#ifndef UNIT_TEST
+  int atexit(void (*func)()) __attribute__((weak));
+#endif
 
 void pinMode(uint8_t, uint8_t);
 void digitalWrite(uint8_t, uint8_t);
@@ -246,11 +253,13 @@ unsigned long pulseInLong(uint8_t pin, uint8_t state, unsigned long timeout = 10
 void tone(uint8_t _pin, unsigned int frequency, unsigned long duration = 0);
 void noTone(uint8_t _pin);
 
+#ifndef UNIT_TEST
 // WMath prototypes
 long random(long);
 long random(long, long);
 void randomSeed(unsigned long);
 long map(long, long, long, long, long);
+#endif //UNIT_TEST
 
 #endif
 

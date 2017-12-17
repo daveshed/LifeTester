@@ -9,8 +9,6 @@
 #ifndef LEDFLASH_H
 #define LEDFLASH_H
 
-#include "Arduino.h"
-
 class Flasher
 {
   public:

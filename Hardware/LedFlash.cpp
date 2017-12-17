@@ -27,7 +27,8 @@ Flasher::Flasher(int pin)
   ledPin = pin;
   pinMode(ledPin, OUTPUT);    
 
-  ledState = LOW; 
+  ledState = LOW;
+  // now set the state?
   previousMillis = 0;
   //initialise to a value so we don't have errors
   //eg if someone tries to update without calling t method first.
