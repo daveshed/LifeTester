@@ -9,29 +9,32 @@
 #ifndef LEDFLASH_H
 #define LEDFLASH_H
 
+#include <stdint.h>
+#include <stdbool.h>
+
 class Flasher
 {
   public:
-    Flasher(int);
-    void t(long, long);
-    void update();
-    void on();
-    void off();
-    void stopAfter(int);
-    void keepFlashing();
+    Flasher(uint8_t);
+    void t(uint32_t onTime, uint32_t offTime);
+    void update(void);
+    void on(void);
+    void off(void);
+    void stopAfter(int16_t);
+    void keepFlashing(void);
   private:
     // Class Member Variables
     // These are initialized at startup
-    int ledPin;      // the number of the LED pin
-    long OnTime;     // milliseconds of on-time
-    long OffTime;    // milliseconds of off-time
+    uint8_t  ledPin;     // the number of the LED pin
+    uint32_t onTime;     // milliseconds of on-time
+    uint32_t offTime;    // milliseconds of off-time
 
     // These maintain the current state
-    int ledState;                 // ledState used to set the LED
-    unsigned long currentMillis;
-    unsigned long previousMillis;
-    int nFlash;
-    int flashConst;
+    bool     ledState;       // led output state
+    uint32_t currentMillis;
+    uint32_t previousMillis;
+    uint16_t nFlash;
+    bool     flashConst;
 };
 
 #endif
