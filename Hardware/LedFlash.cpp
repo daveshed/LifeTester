@@ -5,8 +5,9 @@
   Released into the public domain.
 */
 
-#include "LedFlash.h"
 #include "Arduino.h"
+#include "LedFlash.h"
+#include "LedFlashPrivate.h"
 
 //initilize class varibles
 int ledPin;      // the number of the LED pin
@@ -27,13 +28,15 @@ Flasher::Flasher(int pin)
   ledPin = pin;
   pinMode(ledPin, OUTPUT);    
 
+  // Initialise led in off state
   ledState = LOW;
-  // now set the state?
+  digitalWrite(pin, ledState);
+
   previousMillis = 0;
   //initialise to a value so we don't have errors
   //eg if someone tries to update without calling t method first.
-  OnTime = 200; 
-  OffTime = 800;
+  OnTime = DEFAULT_ON_TIME; 
+  OffTime = DEFAULT_OFF_TIME;
   flashConst=1;
 }
 
@@ -68,13 +71,13 @@ void Flasher::update()
     // check to see if it's time to change the state of the LED
     currentMillis = millis();
      
-    if((ledState == HIGH) && (currentMillis - previousMillis >= OnTime))
+    if((ledState == HIGH) && (currentMillis - previousMillis > OnTime))
     {
       ledState = LOW;  // Turn it off
       previousMillis = currentMillis;  // Remember the time
       digitalWrite(ledPin, ledState);  // Update the actual LED
     }
-    else if ((ledState == LOW) && (currentMillis - previousMillis >= OffTime))
+    else if ((ledState == LOW) && (currentMillis - previousMillis > OffTime))
     {
       ledState = HIGH;  // turn it on
       previousMillis = currentMillis;   // Remember the time

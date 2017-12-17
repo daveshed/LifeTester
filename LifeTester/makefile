@@ -33,7 +33,7 @@ build: ${BUILD_DIR}/*.o ${PROGRAM}.elf ${PROGRAM}.hex
 # compile rule - all files in DEPS list turned into .o
 # then move to build directory
 ${BUILD_DIR}/*.o: ${DEPS}
-	mkdir -p Build/
+	mkdir -p ${BUILD_DIR}/
 	${CC} ${CFLAGS} -c $^ ${IDIRS}
 	mv *.o ${BUILD_DIR}/
 
@@ -49,4 +49,4 @@ upload: ${BUILD_DIR}/${PROGRAM}.hex
 	${UPLOADER} -V -c arduino -p ATMEGA328P -P ${PORT} -b 57600 -D -U flash:w:$<
 
 clean:
-	rm -f ${BUILD_DIR}/*
+	rm -r ${BUILD_DIR}
