@@ -5,7 +5,7 @@
 extern "C" {
 #endif 
 
-#define DEBUG 0
+// #define DEBUG
 
 #define ADC_CS_PIN        10u
 #define DAC_CS_PIN        9u

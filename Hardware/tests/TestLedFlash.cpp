@@ -8,55 +8,12 @@
 
 // support
 #include "Arduino.h"
-#include <stdbool.h>
-
-/*******************************************************************************
- * Private data and defines
- ******************************************************************************/
-#define N_DIGITAL_PINS  (14U)
-
-/*******************************************************************************
- * Private data types used in tests
- ******************************************************************************/
-// types to hold information about mock digital pins.
-typedef enum pinAssignment_e{
-    input,
-    output,
-    unassigned
-} pinAssignment_t;
-
-typedef struct pinState_s{
-    pinAssignment_t mode;
-    bool            outputOn;
-} pinState_t;
-
-/*******************************************************************************
- * Private test data
- ******************************************************************************/
-/*
- Mock digital pin states are held in an array. digital pin 0 is element 0, pin 1
- will be element 1 and so forth. Note that the assignment and output state are
- both held in each element.
- */
-static pinState_t mockDigitalPins[N_DIGITAL_PINS];
-
-// value to be returned by millis()
-static unsigned long mockMillis;
+#include "MockArduino.h" // mockDigitalPins, mockMillis
+#include "TestUtils.h"   // digital pin mocking
 
 /*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
-static void ResetDigitalPins(pinState_t *pins, uint8_t nPins)
-{
-    // default value for reset
-    const pinState_t initValue = {unassigned, false};
-
-    // apply to each pin in turn
-    for (int i = 0; i < nPins; i++)
-    {
-        pins[i] = initValue;
-    }
-}
 
 // Creates mock calls for Flahser instantiation
 static void MockForFlasherCreateInstance(int pinNum)
@@ -84,16 +41,6 @@ static void MockForFlasherUpdateSwitchOn(int pinNum)
 static void MockForFlasherUpdateNoSwitch(void)
 {
     mock().expectOneCall("millis");
-}
-
-// Check that the mock digital pin matches input args
-static void CheckMockPinOutputState(int pinNum, bool expectedOn)
-{
-    // Check that pin has been assigned as output before setting the state
-    CHECK_TEXT(mockDigitalPins[pinNum].mode == output,
-        "digitalWrite cannot set mode. pinMode not assiged as output.");
-    CHECK_TEXT(mockDigitalPins[pinNum].outputOn == expectedOn,
-        "pin output state does not match expected state.");
 }
 
 /*
@@ -137,77 +84,14 @@ static void RunMockLedFlashCycle(Flasher *led, int pinNum, long onTime, long off
 }
 
 /*******************************************************************************
- * Mock necessary functions from Arduino.h
+ * Mock functions
  ******************************************************************************/
-// Sets the mode of digital pins 2-13 as input/output
-void pinMode(uint8_t pin, uint8_t mode)
-{
-    // check that pin request is in range
-    CHECK_TEXT(((pin >= 2U) && (pin <= 13U)),
-        "invalid pin number arg in pinMode call.");
-
-    // update mock digital pins
-    if (mode == INPUT)
-    {
-        mockDigitalPins[pin].mode = input;
-    }
-    else if (mode == OUTPUT)
-    {
-        mockDigitalPins[pin].mode = output;
-    }
-    else
-    {
-        FAIL("invalid mode arg passed to pinMode.");
-    }
-
-    // mock function behaviour
-    mock().actualCall("pinMode")
-        .withParameter("pin", pin).withParameter("mode", mode);
-}
-
-/*
- sets the state of digital pins 2-13. Note that they must be asigned as output
- first with pinMode.
-*/
-void digitalWrite(uint8_t pin, uint8_t value)
-{
-    // check that pin request is in range
-    CHECK_TEXT(((pin >= 2U) && (pin <= 13U)),
-        "invalid pin number arg in digitalWrite call");
-
-    // Check that pin has been assigned as output before setting the state
-    CHECK_TEXT(mockDigitalPins[pin].mode == output,
-        "digitalWrite cannot set mode. pinMode not assiged as output.");
-
-    // Now we can write the output state to the selected pin
-    if (value == HIGH)
-    {
-        mockDigitalPins[pin].outputOn = true;
-    }
-    else if (value == LOW)
-    {
-        mockDigitalPins[pin].outputOn = false;
-    }
-    else
-    {
-        FAIL("Unkown value arg passed to digitalWrite.");
-    }
-
-    // Mock low-level Arduino function call
-    mock().actualCall("digitalWrite")
-        .withParameter("pin", pin).withParameter("value", value);
-}
-
-unsigned long millis(void)
-{
-    mock().actualCall("millis");
-    return mockMillis;
-}
+/* see MockArduino.c */
 
 /*******************************************************************************
  * Unit tests
  ******************************************************************************/
-// Define a test group for LedFlash - all tests share common teardown
+// Define a test group for LedFlash - all tests share common setup/teardown
 TEST_GROUP(LedFlashTestGroup)
 {
     void setup(void)

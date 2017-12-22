@@ -20,11 +20,11 @@ void setup()
   SPI.begin();
   MX7705_Init(AdcCsPin, ADCChannel);
   Serial.print("getting gain...");
-  Serial.println(MX7705_GetGain(AdcCsPin, ADCChannel));
+  Serial.println(MX7705_GetGain(ADCChannel));
   Serial.println("setting gain...");
-  MX7705_SetGain(AdcCsPin, 0, ADCChannel);
+  MX7705_SetGain(0u, ADCChannel);
   Serial.print("getting gain...");
-  Serial.println(MX7705_GetGain(AdcCsPin, ADCChannel));
+  Serial.println(MX7705_GetGain(ADCChannel));
 
   pinMode(LedPin, OUTPUT); //LED select
   digitalWrite(LedPin, LOW);
@@ -36,7 +36,7 @@ void loop()
   static uint32_t counter = 0;
   uint16_t ADCData = 0;
   bool error_flag;
-  ADCData = MX7705_ReadData(AdcCsPin, ADCChannel);
+  ADCData = MX7705_ReadData(ADCChannel);
 
   if (MX7705_GetError())
   {
