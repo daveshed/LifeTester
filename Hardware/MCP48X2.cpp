@@ -4,7 +4,7 @@
 #include "Print.h"
 #include "SPI.h" //for SPI #defines
 #include "SpiCommon.h"
-#include "SpiPrivate.h"
+#include "SpiConfig.h"
 
 /*
  * library to control MCP48X2 DACs by microchip. Note that 12, 10, and 8 bit 
@@ -19,7 +19,7 @@
 static char gain = 'l';
 static uint8_t errMsg;
 
-static SpiSettings_t settings = {
+static SpiSettings_t mcp48x2SpiSettings = {
     0U,
     CS_DELAY,       // defined in Config.h
     SPI_CLOCK_SPEED,// default values
@@ -32,9 +32,9 @@ static SpiSettings_t settings = {
  */
 void MCP48X2_Init(uint8_t pin)
 {
-  settings.chipSelectPin = pin;
+  mcp48x2SpiSettings.chipSelectPin = pin;
   errMsg = 0u;
-  SpiInit(settings);
+  InitChipSelectPin(pin);
   
   MCP48X2_SetGain(gain);
   MCP48X2_Output(0u, 'a');
@@ -113,13 +113,13 @@ void MCP48X2_Output(uint8_t output, char channel)
     #endif
     
     //now write to DAC
-    OpenSpiConnection(settings);
+    OpenSpiConnection(&mcp48x2SpiSettings);
     
     //  send in the address and value via SPI:
     SpiTransferByte(MSB);
     SpiTransferByte(LSB);
     
-    CloseSpiConnection(settings);
+    CloseSpiConnection(&mcp48x2SpiSettings);
   }
 }
 

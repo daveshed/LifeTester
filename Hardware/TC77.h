@@ -13,6 +13,8 @@ void TC77_Update(void);
 uint16_t TC77_GetRawData(void);
 bool TC77_GetError(void);
 
+void ResetTimer(void);
+
 #ifdef _cplusplus
 }
 #endif

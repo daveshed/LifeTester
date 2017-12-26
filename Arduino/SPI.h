@@ -15,7 +15,7 @@
 #define _SPI_H_INCLUDED
 
 #include <Arduino.h>
-#include "SpiPrivate.h"
+#include "SpiConfig.h"
 
 class SPISettings {
 public:

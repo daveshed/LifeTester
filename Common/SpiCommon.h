@@ -14,17 +14,20 @@ typedef struct SpiSettings_s{
     uint8_t  dataMode;
 } SpiSettings_t;
 
-// Initialisation only
-void SpiInit(SpiSettings_t settings);
+// Opens the Spi bus only - needs to be called once during setup
+void SpiBegin(void);
+
+// Initialises the chip select pin only - must be called during setup
+void InitChipSelectPin(const uint8_t pin);
 
 // Function to open SPI connection on required CS pin
-void OpenSpiConnection(SpiSettings_t settings);
+void OpenSpiConnection(const SpiSettings_t *settings);
 
 // Transmits and receives a byte
-uint8_t SpiTransferByte(uint8_t transmit);
+uint8_t SpiTransferByte(const uint8_t transmit);
 
 // Function to close SPI connection on required CS pin
-void CloseSpiConnection(SpiSettings_t settings);
+void CloseSpiConnection(const SpiSettings_t *settings);
 
 #ifdef _cplusplus
 }

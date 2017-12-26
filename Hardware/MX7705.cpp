@@ -3,7 +3,7 @@
 #include "MX7705.h"
 #include <stdint.h>
 #include "SpiCommon.h"
-#include "SpiPrivate.h"
+#include "SpiConfig.h"
 
 #define SPI_CLOCK_SPEED                 5000000     
 #define SPI_BIT_ORDER                   MSBFIRST
@@ -31,7 +31,7 @@
 #define MX7705_REQUEST_DATA_READ_CH1    B00111001
 
 static bool MX7705_errorCondition = false;
-static SpiSettings_t settings = {
+static SpiSettings_t mx7705SpiSettings = {
     0U,
     CS_DELAY,       // defined in Config.h
     SPI_CLOCK_SPEED,// default values
@@ -48,10 +48,10 @@ static uint8_t MX7705_ReadByte(void);
  */
 void MX7705_Init(const uint8_t pin, const uint8_t channel)
 {
-    // set the value of the chip select pin in settings global
-    settings.chipSelectPin = pin;
+    // set the value of the chip select pin in mx7705SpiSettings global
+    mx7705SpiSettings.chipSelectPin = pin;
 
-    SpiInit(settings);
+    InitChipSelectPin(pin);
     pinMode(PWMout, OUTPUT);
 
     //sending clock pulses from pin3 at 1MHz to ADC
@@ -211,7 +211,7 @@ void MX7705_GainUp(const uint8_t channel)
  */
 static void MX7705_Write(uint8_t sendByte)
 { 
-  OpenSpiConnection(settings);
+  OpenSpiConnection(&mx7705SpiSettings);
   
   #if DEBUG
     Serial.print("MX7705: Sending... ");
@@ -220,7 +220,7 @@ static void MX7705_Write(uint8_t sendByte)
   
   SpiTransferByte(sendByte);
   
-  CloseSpiConnection(settings);
+  CloseSpiConnection(&mx7705SpiSettings);
 }
 /*
  * Function to read a single byte from the MX7705
@@ -229,7 +229,7 @@ static uint8_t MX7705_ReadByte(void)
 {
   uint8_t readByte = 0u;
   
-  OpenSpiConnection(settings);
+  OpenSpiConnection(&mx7705SpiSettings);
   
   readByte = SpiTransferByte(0u);
   
@@ -238,7 +238,7 @@ static uint8_t MX7705_ReadByte(void)
     Serial.println(readByte, BIN);
   #endif
   
-  CloseSpiConnection(settings);
+  CloseSpiConnection(&mx7705SpiSettings);
   
   return readByte;
 }
