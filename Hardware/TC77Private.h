@@ -1,5 +1,4 @@
 #include "Config.h"    // CS_DELAY
-#include "Macros.h"
 #include "SpiCommon.h" // SpiSettings_t
 #include "SpiConfig.h" // spi #defines
 
@@ -10,4 +9,5 @@
 #define SPI_BIT_ORDER       (MSBFIRST)
 #define SPI_DATA_MODE       (SPI_MODE0)
 
-extern STATIC SpiSettings_t tc77SpiSettings;  // TODO: is extern needed?
+// extern required so we can access from tests
+extern SpiSettings_t tc77SpiSettings;
