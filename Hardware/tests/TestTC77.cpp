@@ -12,9 +12,6 @@
 #include "MockArduino.h" // mockDigitalPins, mockMillis, private variables
 #include "SpiCommon.h"   // spi function prototypes - mocks implemented here.
 #include <stdint.h>
-#include "TestUtils.h"   // digital pin mocking
-
-#include <stdio.h>
 
 /*******************************************************************************
  * Private data types used in tests
@@ -32,7 +29,7 @@ typedef struct MockSpiState_s {
  * Private data and defines
  ******************************************************************************/
 // Spi hardware state variables held in struct
-MockSpiState_t mockSpiState;
+static MockSpiState_t mockSpiState;
 /*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
@@ -55,11 +52,13 @@ static void SetSpiReadReg(uint16_t data)
     mockSpiState.readIdx = 0U;
 }
 
+// set the status of mock hardware to ready
 static void SetTC77RegReady(uint16_t *readReg)
 {
     bitSet(*readReg, 2U);
 }
 
+// set the status of mock hardware to busy
 static void SetTC77RegNotReady(uint16_t *readReg)
 {
     bitClear(*readReg, 2U);
@@ -93,6 +92,7 @@ static uint16_t GetTC77RawDataExpected(void)
     return (uint16_t)((mockSpiState.readRegMsb << 8U) | mockSpiState.readRegLsb);
 }
 
+// Mocks needed for reading data in update function
 static void MockForTC77ReadRawData(void)
 {
     mock().expectOneCall("OpenSpiConnection")
@@ -256,7 +256,6 @@ TEST(TC77TestGroup, ReadingTC77AfterConversionNotReady)
     mock().checkExpectations();
 }
 
-
 /*
  Test for calling update function on TC77 device after conversion time. We expect
  data to be available and for it to be returned over spi bus. 
@@ -281,7 +280,6 @@ TEST(TC77TestGroup, ReadingTC77AfterConversionExpectData)
     // mock spi calls when data is read from TC77 device.
     mock().expectOneCall("millis");
     MockForTC77ReadRawData();
-    mock().expectOneCall("millis");
     
     TC77_Update();
 
@@ -327,7 +325,6 @@ TEST(TC77TestGroup, ReadingTC77AfterConversionWithOverTemp)
     // mock spi calls when data is read from TC77 device.
     mock().expectOneCall("millis");
     MockForTC77ReadRawData();
-    mock().expectOneCall("millis");
     
     // now call the update function
     TC77_Update();

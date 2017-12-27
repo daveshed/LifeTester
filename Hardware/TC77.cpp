@@ -8,7 +8,7 @@
 #include "TC77.h"
 #include "TC77Private.h"
 
-STATIC SpiSettings_t tc77SpiSettings = {
+SpiSettings_t tc77SpiSettings = {
     0U,
     CS_DELAY,  // defined in Config.h
     SPI_CLOCK_SPEED,
@@ -16,9 +16,9 @@ STATIC SpiSettings_t tc77SpiSettings = {
     SPI_DATA_MODE
 };
 
-static bool          TC77_errorCondition;
-static uint16_t      rawData;
-static uint32_t      timer;    //timer set to last measurement
+static bool     errorCondition;
+static uint16_t previousReading;
+static uint32_t previousTime;    //previousTime set to last measurement
 
 // reads TC77 data ready bit
 static bool TC77_IsReady(uint16_t readReg)
@@ -27,9 +27,9 @@ static bool TC77_IsReady(uint16_t readReg)
 }
 
 // reads MSB returned from TC77 for overtemp warning
-static bool TC77_IsOverTemp(uint8_t MSB)
+static bool TC77_IsOverTemp(uint8_t msb)
 {
-  if (MSB >= MSB_OVERTEMP)
+  if (msb >= MSB_OVERTEMP)
   {
     return true;
   }
@@ -42,30 +42,31 @@ static bool TC77_IsOverTemp(uint8_t MSB)
 // reads raw data from TC77 for conversion elsewhere
 static uint16_t TC77_ReadRawData(void)
 {
-  uint8_t  MSB, LSB;
-  uint16_t currentReading;
+  uint8_t msb; // most sig byte read first
+  uint8_t lsb; // then least sig
+  uint16_t readReg;
 
   OpenSpiConnection(&tc77SpiSettings);
 
   //read data
-  MSB = SpiTransferByte(0u);
-  LSB = SpiTransferByte(0u);
+  msb = SpiTransferByte(0u);
+  lsb = SpiTransferByte(0u);
 
   CloseSpiConnection(&tc77SpiSettings);
 
   //pack data into a single uint16_t
-  currentReading = (uint16_t)((MSB << 8) | LSB);
+  readReg = (uint16_t)((msb << 8U) | lsb);
   
   #ifdef DEBUG
     Serial.print("bytes read: ");
-    Serial.print(MSB, BIN);
+    Serial.print(msb, BIN);
     Serial.print(" ");
-    Serial.println(LSB, BIN);
+    Serial.println(lsb, BIN);
     Serial.print("Raw data output: ");
-    Serial.println(currentReading);
+    Serial.println(readReg);
   #endif
 
-  return currentReading;
+  return readReg;
 }
 
 void TC77_Init(uint8_t pin)
@@ -73,18 +74,18 @@ void TC77_Init(uint8_t pin)
   tc77SpiSettings.chipSelectPin = pin;
   InitChipSelectPin(pin);
 
-  TC77_errorCondition = false;
-  rawData = 0U;
-  timer = 0U;
+  errorCondition = false;
+  previousReading = 0U;
+  previousTime = 0U;
 }
 
-float TC77_ConvertToTemp(uint16_t rawData)
+float TC77_ConvertToTemp(uint16_t readReg)
 {
   int16_t signedData;
   float   temperature;
-  //remove 3 least sig bits convert to signed
-  signedData = (int16_t)(rawData >> 3);
-  //convert to temperature
+  // Remove 3 least sig bits convert to signed
+  signedData = (int16_t)(readReg >> 3U);
+  // Convert to temperature using conversion factor
   temperature = (float)signedData * CONVERSION_FACTOR;
   
   #ifdef DEBUG
@@ -99,44 +100,47 @@ float TC77_ConvertToTemp(uint16_t rawData)
 
 void TC77_Update(void)
 {
-  uint16_t currentReading;
-  //update data only if the last measurement was longer than conversion time ago. 
-  if ((millis() - timer) > CONVERSION_TIME)
-  {
-    currentReading = TC77_ReadRawData();
-    //reset the timer
-    timer = millis();
-  }
+    const uint32_t currentTime = millis();
+    
+    //update data only if the last measurement was longer than conversion time ago. 
+    if ((currentTime - previousTime) > CONVERSION_TIME)
+    {
+        uint16_t currentReading;
+        currentReading = TC77_ReadRawData();
+        //reset the previousTime
+        previousTime = currentTime;
 
-  //shift out data to leave only the MSB
-  if (TC77_IsOverTemp(currentReading >> 8))
-  {
-    // rawData is not updated.
-    TC77_errorCondition = true;
-    #ifdef DEBUG
-      Serial.println("TC77 overtemperature error.");
-    #endif
-    rawData = currentReading;
-  }
-  else if (!TC77_IsReady(currentReading)) 
-  {
-    // rawData is not updated.
-    #ifdef DEBUG
-      Serial.println("TC77 not ready.");
-    #endif
-  }
-  else
-  {
-    rawData = currentReading;
-  }
+        // Now check the reading - should we update our data or not?
+        if (TC77_IsOverTemp(currentReading >> 8U))
+        {
+            // previousReading is not updated.
+            errorCondition = true;
+            #ifdef DEBUG
+            Serial.println("TC77 overtemperature error.");
+            #endif
+            previousReading = currentReading;
+        }
+        else if (!TC77_IsReady(currentReading)) 
+        {
+            // previousReading is not updated.
+            #ifdef DEBUG
+            Serial.println("TC77 not ready.");
+            #endif
+        }
+        else
+        {
+            // only update if there are no error conditions
+            previousReading = currentReading;
+        }
+    }
 }
 
 uint16_t TC77_GetRawData(void)
 {
-  return rawData;
+  return previousReading;
 }
 
 bool TC77_GetError(void)
 {
-  return TC77_errorCondition;
+  return errorCondition;
 }
