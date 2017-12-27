@@ -116,6 +116,7 @@ void TC77_Update(void)
     #ifdef DEBUG
       Serial.println("TC77 overtemperature error.");
     #endif
+    rawData = currentReading;
   }
   else if (!TC77_IsReady(currentReading)) 
   {
