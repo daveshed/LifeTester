@@ -23,87 +23,82 @@ static uint32_t previousTime;    //previousTime set to last measurement
 // reads TC77 data ready bit
 static bool TC77_IsReady(uint16_t readReg)
 {
-  return bitRead(readReg, 2U);
+    return bitRead(readReg, 2U);
 }
 
 // reads MSB returned from TC77 for overtemp warning
 static bool TC77_IsOverTemp(uint8_t msb)
 {
-  if (msb >= MSB_OVERTEMP)
-  {
-    return true;
-  }
-  else
-  {
-    return false;
-  }
+    return (msb >= MSB_OVERTEMP); 
 }
 
 // reads raw data from TC77 for conversion elsewhere
 static uint16_t TC77_ReadRawData(void)
 {
-  uint8_t msb; // most sig byte read first
-  uint8_t lsb; // then least sig
-  uint16_t readReg;
+    uint8_t msb; // most sig byte read first
+    uint8_t lsb; // then least sig
+    uint16_t readReg;
 
-  OpenSpiConnection(&tc77SpiSettings);
+    OpenSpiConnection(&tc77SpiSettings);
 
-  //read data
-  msb = SpiTransferByte(0u);
-  lsb = SpiTransferByte(0u);
+    //read data
+    msb = SpiTransferByte(0u);
+    lsb = SpiTransferByte(0u);
 
-  CloseSpiConnection(&tc77SpiSettings);
+    CloseSpiConnection(&tc77SpiSettings);
 
-  //pack data into a single uint16_t
-  readReg = (uint16_t)((msb << 8U) | lsb);
-  
-  #ifdef DEBUG
-    Serial.print("bytes read: ");
-    Serial.print(msb, BIN);
-    Serial.print(" ");
-    Serial.println(lsb, BIN);
-    Serial.print("Raw data output: ");
-    Serial.println(readReg);
-  #endif
+    //pack data into a single uint16_t
+    readReg = (uint16_t)((msb << 8U) | lsb);
 
-  return readReg;
+    #ifdef DEBUG
+        Serial.print("bytes read: ");
+        Serial.print(msb, BIN);
+        Serial.print(" ");
+        Serial.println(lsb, BIN);
+        Serial.print("Raw data output: ");
+        Serial.println(readReg);
+    #endif
+
+    return readReg;
 }
 
 void TC77_Init(uint8_t pin)
 {
-  tc77SpiSettings.chipSelectPin = pin;
-  InitChipSelectPin(pin);
+    tc77SpiSettings.chipSelectPin = pin;
+    InitChipSelectPin(pin);
 
-  errorCondition = false;
-  previousReading = 0U;
-  previousTime = 0U;
+    errorCondition = false;
+    previousReading = 0U;
+    previousTime = 0U;
 }
 
 float TC77_ConvertToTemp(uint16_t readReg)
 {
-  int16_t signedData;
-  float   temperature;
-  // Remove 3 least sig bits convert to signed
-  signedData = (int16_t)(readReg >> 3U);
-  // Convert to temperature using conversion factor
-  temperature = (float)signedData * CONVERSION_FACTOR;
-  
-  #ifdef DEBUG
-    Serial.print("Raw data (signed int): ");
-    Serial.println(signedData);
-    Serial.print("Temperature (C): ");
-    Serial.println(temperature);
-  #endif
-  
-  return temperature;
+    // Remove 3 least sig bits convert to signed
+    int16_t signedData;
+    signedData = (int16_t)(readReg >> 3U);
+    
+    // Convert to temperature using conversion factor
+    float   temperature;
+    temperature = (float)signedData * CONVERSION_FACTOR;
+
+    #ifdef DEBUG
+        Serial.print("Raw data (signed int): ");
+        Serial.println(signedData);
+        Serial.print("Temperature (C): ");
+        Serial.println(temperature);
+    #endif
+
+    return temperature;
 }
 
 void TC77_Update(void)
 {
     const uint32_t currentTime = millis();
-    
+    const uint32_t elapsedTime = currentTime - previousTime;
+
     //update data only if the last measurement was longer than conversion time ago. 
-    if ((currentTime - previousTime) > CONVERSION_TIME)
+    if (elapsedTime > CONVERSION_TIME)
     {
         uint16_t currentReading;
         currentReading = TC77_ReadRawData();
@@ -116,7 +111,7 @@ void TC77_Update(void)
             // previousReading is not updated.
             errorCondition = true;
             #ifdef DEBUG
-            Serial.println("TC77 overtemperature error.");
+                Serial.println("TC77 overtemperature error.");
             #endif
             previousReading = currentReading;
         }
@@ -124,7 +119,7 @@ void TC77_Update(void)
         {
             // previousReading is not updated.
             #ifdef DEBUG
-            Serial.println("TC77 not ready.");
+                Serial.println("TC77 not ready.");
             #endif
         }
         else
@@ -137,10 +132,10 @@ void TC77_Update(void)
 
 uint16_t TC77_GetRawData(void)
 {
-  return previousReading;
+    return previousReading;
 }
 
 bool TC77_GetError(void)
 {
-  return errorCondition;
+    return errorCondition;
 }

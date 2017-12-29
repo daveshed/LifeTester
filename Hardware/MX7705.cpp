@@ -1,43 +1,17 @@
 #include "Arduino.h"
 #include "Config.h"
 #include "MX7705.h"
-#include <stdint.h>
-#include "SpiCommon.h"
-#include "SpiConfig.h"
+#include "MX7705Private.h"
 
-#define SPI_CLOCK_SPEED                 5000000     
-#define SPI_BIT_ORDER                   MSBFIRST
-#define SPI_DATA_MODE                   SPI_MODE3
-
-#define DEBUG                           0       //do you want print statements?
-#define T_TIMEOUT                       1000u   //timeout in ms
-#define PWMout                          3       //pin to output clock timer to ADC (pin 3 is actually pin 5 on ATMEGA328)
-
-//MX7705 commands - note these are not very portable.
-//TODO: rewrite binary commands in hex for portability
-#define MX7705_REQUEST_CLOCK_WRITE      B00100000
-#define MX7705_WRITE_CLOCK_SETTINGS     B10010001
-
-#define MX7705_REQUEST_SETUP_READ_CH0   B00011000
-#define MX7705_REQUEST_SETUP_READ_CH1   B00011001
-#define MX7705_REQUEST_SETUP_WRITE_CH0  B00010000
-#define MX7705_REQUEST_SETUP_WRITE_CH1  B00010001
-#define MX7705_WRITE_SETUP_INIT         B01000100
-
-#define MX7705_REQUEST_COMMS_READ_CH0   B00001000
-#define MX7705_REQUEST_COMMS_READ_CH1   B00001001
-
-#define MX7705_REQUEST_DATA_READ_CH0    B00111000
-#define MX7705_REQUEST_DATA_READ_CH1    B00111001
-
-static bool MX7705_errorCondition = false;
-static SpiSettings_t mx7705SpiSettings = {
+SpiSettings_t mx7705SpiSettings = {
     0U,
     CS_DELAY,       // defined in Config.h
     SPI_CLOCK_SPEED,// default values
     SPI_BIT_ORDER,
     SPI_DATA_MODE
 };
+
+static bool MX7705_errorCondition = false;
 
 static void MX7705_Write(uint8_t sendByte);
 static uint8_t MX7705_ReadByte(void);
@@ -52,8 +26,8 @@ void MX7705_Init(const uint8_t pin, const uint8_t channel)
     mx7705SpiSettings.chipSelectPin = pin;
 
     InitChipSelectPin(pin);
+#ifndef UNIT_TEST  // TODO fix tests. Need definitions to remove compile guards
     pinMode(PWMout, OUTPUT);
-
     //sending clock pulses from pin3 at 1MHz to ADC
     //see http://forum.arduino.cc/index.php?topic=22384.0
     TCCR2A = 0xB3; // fast PWM with programmed TOP val
@@ -61,25 +35,25 @@ void MX7705_Init(const uint8_t pin, const uint8_t channel)
     TCNT2  = 0x00;
     OCR2A  = 0x0F; // TOP = 15, cycles every 16 clocks
     OCR2B  = 0x07; // COMP for pin3
-
+#endif
     //request a write to the clock register
     MX7705_Write(MX7705_REQUEST_CLOCK_WRITE);
     //turn on clockdis bit - using clock from ATMEGA. Turn off clk bit for optimum performance at 1MHz with clkdiv 0.
     MX7705_Write(MX7705_WRITE_CLOCK_SETTINGS);
     //write to comms register: request a write operation to the setup register of selected channel
-    MX7705_Write(channel == 0u ? MX7705_REQUEST_SETUP_WRITE_CH0 : MX7705_REQUEST_SETUP_WRITE_CH1);
+    MX7705_Write(channel == 0U ? MX7705_REQUEST_SETUP_WRITE_CH0 : MX7705_REQUEST_SETUP_WRITE_CH1);
     //write to setup register: self calibration mode, unipolar, unbuffered, clear Fsync
     MX7705_Write(MX7705_WRITE_SETUP_INIT);
     //request read of setup register to verify state
-    MX7705_Write(channel == 0 ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1);
+    MX7705_Write(channel == 0U ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1);
 
     //now read setup register and verify that we have written the correct setup state
     if (MX7705_ReadByte() != MX7705_WRITE_SETUP_INIT)
     {
-    MX7705_errorCondition = true;
-    #ifdef DEBUG
-        Serial.println("MX7705: Error condition");
-    #endif
+        MX7705_errorCondition = true;
+        #ifdef DEBUG
+            Serial.println("MX7705: Error condition");
+        #endif
     }
 
 }
@@ -113,7 +87,7 @@ uint16_t MX7705_ReadData(const uint8_t channel)
     //polling DRDYpin bit of comms register waiting for measurement to finish    
     //DRDY = 0/1 measurement not/is ready
     toc = millis();
-    timeout = ((toc - tic) > T_TIMEOUT);
+    timeout = ((toc - tic) > TIMEOUT_MS);
     //select read of comms register
     MX7705_Write(channel == 0 ? MX7705_REQUEST_COMMS_READ_CH0 : MX7705_REQUEST_COMMS_READ_CH1);
     commsRegister = MX7705_ReadByte();

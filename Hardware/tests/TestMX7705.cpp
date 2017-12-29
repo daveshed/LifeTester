@@ -4,113 +4,146 @@
 #include "CppUTestExt/MockSupportPlugin.h"
 
 // Code under test
-#include "TC77.h"
-#include "TC77Private.h"   // Spi settings
+#include "MX7705.h"
+#include "MX7705Private.h" // defines and mx7705SpiSettings
 
 // support
 #include "Arduino.h"       // arduino function prototypes - implemented MockAduino.c
 #include "MockArduino.h"   // mockDigitalPins, mockMillis, private variables
 #include "MockSpiCommon.h" // Mock spi interface
 #include "SpiCommon.h"     // spi function prototypes - mocks implemented here.
-#include <stdint.h>
+
+#define REG_SELECT_OFFSET   (4U)
+#define REG_SELECT_MASK     (7U)
+
+#define CH0_OFFSET          (0U)
+#define CH1_OFFSET          (1U)
+
+#define RW_SELECT_OFFSET    (3U)
+
+typedef enum RegisterSelection_e {
+    CommsReg,
+    SetupReg,
+    ClockReg,
+    DataReg,
+    TestReg,
+    NoOperation,
+    OffsetReg,
+    GainReg,
+    NumberOfEntries
+} RegisterSelection_t;
+
 
 /*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
-
-/* Return data depending on how many bytes we've already read. First MSB then
- LSB then nothing. Similar for writing data too. */
-static uint8_t TransferDataFromReadReg(const uint8_t transmit)
-{
-    (void)transmit; // unused variable
-    
-    uint8_t retVal;
-    if (mockSpiState.transferIdx == 0U)
-    {
-        // first send msb
-        retVal = mockSpiState.readReg.msb;
-
-        // now write data
-        // mockSpiState.writeReg.msb = byteToSpiBus;
-
-        mockSpiState.transferIdx++;
-    }
-    else if (mockSpiState.transferIdx == 1U)
-    {
-        // send lsb next
-        retVal = mockSpiState.readReg.lsb;
-        
-        // now write data
-        // mockSpiState.writeReg.lsb = byteToSpiBus;
-        
-        mockSpiState.transferIdx++;
-    }
-    else
-    {
-        // now send/write nothing
-        retVal = 0U;
-    }
-    return retVal;
-}
-
-// set the status of mock hardware to ready
-static void SetReadRegReady(uint16_t *readReg)
-{
-    bitSet(*readReg, 2U);
-}
-
-// set the status of mock hardware to busy
-static void SetReadRegNotReady(uint16_t *readReg)
-{
-    bitClear(*readReg, 2U);
-}
-
-/* Puts some data into the spi read register given by the temperature it's
-exposed to. See datasheet for details on calculation. */
-static void UpdateReadReg(float temperature, bool ready)
-{
-    // convert temp into binary
-    const int16_t signedData = (int16_t)(temperature / CONVERSION_FACTOR);
-
-    uint16_t rawData = (uint16_t)(signedData << 3U);
-    if (ready)
-    {
-        SetReadRegReady(&rawData);
-    }
-    else
-    {
-        SetReadRegNotReady(&rawData);
-    }
-    // Put the data into the register
-    SetSpiReadReg(rawData);
-}
-
-// Mocks needed for reading data in update function
-static void MockForTC77ReadRawData(void)
+// Mocks needed for writing data into mock spi reg
+static void MockForMX7705Write(uint8_t sendByte)
 {
     mock().expectOneCall("OpenSpiConnection")
-        .withParameter("settings", &tc77SpiSettings);
+        .withParameter("settings", &mx7705SpiSettings);
     mock().expectOneCall("SpiTransferByte")
-        .withParameter("byteToSpiBus", 0U);
+        .withParameter("byteToSpiBus", sendByte);
+    mock().expectOneCall("CloseSpiConnection")
+        .withParameter("settings", &mx7705SpiSettings);
+}
+
+// Mocks needed for reading data from mock spi reg
+static uint8_t MockForMX7705Read(void)
+{
+    mock().expectOneCall("OpenSpiConnection")
+        .withParameter("settings", &mx7705SpiSettings);
     mock().expectOneCall("SpiTransferByte")
         .withParameter("byteToSpiBus", 0U);
     mock().expectOneCall("CloseSpiConnection")
-        .withParameter("settings", &tc77SpiSettings);
+        .withParameter("settings", &mx7705SpiSettings);
+}
+
+uint8_t commsRegData;
+uint8_t clockRegDataCh1;
+uint8_t clockRegDataCh2;
+uint8_t setupRegDataCh1;
+uint8_t setupRegDataCh2;
+
+/*
+ Manages commands transferred to the spi bus and data is returned to the output.
+ A pointer to this function is passed to the source when SpiTransferByte is called.
+ */
+static uint8_t UpdateMockSpiRegs(uint8_t byteReceived)
+{
+    // Check data in comms reg and determine register selection
+    RegisterSelection_t requestedRegister = 
+        (RegisterSelection_t)((commsRegData >> REG_SELECT_OFFSET) & REG_SELECT_MASK);
+    printf("requestedRegister = %u\n", (unsigned int)requestedRegister);
+    printf( "byteReceived %u\n", byteReceived);
+    // Which channel is selected
+    bool chZeroSelected = bitRead(commsRegData, CH0_OFFSET);
+    bool chOneSelected = bitRead(commsRegData, CH1_OFFSET);
+    // Only modes 0 (AIN1+/-) and 1(AIN2+/-) implemented at present
+    CHECK(!chOneSelected);
+
+    // Read or write
+    bool writeOp = !bitRead(commsRegData, RW_SELECT_OFFSET);
+    
+    // static uint8_t byteStored;
+    uint8_t byteToTransmit = 0U;
+
+    switch(requestedRegister)
+    {
+        case CommsReg:
+            if (writeOp)
+            {
+                commsRegData = byteReceived;
+            }
+            else //read operation
+            {
+                byteToTransmit = commsRegData;
+            }
+            break;
+        case SetupReg:
+            if (writeOp)
+            {
+                chZeroSelected ?
+                    (setupRegDataCh2 = byteReceived):
+                    (setupRegDataCh1 = byteReceived);
+            }
+            else //read operation
+            {
+                byteToTransmit = chZeroSelected ? setupRegDataCh2 : setupRegDataCh1;
+            }
+            commsRegData = 0U;  // now reset to default ready for next command
+            break;
+        case ClockReg:
+            if (writeOp)
+            {
+                chZeroSelected ?
+                    (clockRegDataCh2 = byteReceived):
+                    (clockRegDataCh1 = byteReceived);
+            }
+            else //read operation
+            {
+                byteToTransmit = chZeroSelected ? clockRegDataCh2 : clockRegDataCh1;
+            }
+            commsRegData = 0U;  // now reset to default
+            break;
+        default:
+            break;
+    }
+    printf("byteToTransmit = %u\n", byteToTransmit);
+    return byteToTransmit;
 }
 
 /*******************************************************************************
  * Unit tests
  ******************************************************************************/
-// Define a test group for TC77 - all tests share common setup/teardown
-TEST_GROUP(TC77TestGroup)
+// Define a test group - all tests share common setup/teardown
+TEST_GROUP(MX7705TestGroup)
 {
     void setup(void)
     {
-        // Set function pointer from MockSpiCommon.h
-        SpiTransferByte_Callback = &TransferDataFromReadReg;
-        // Clear mock spi data
-        InitialiseMockSpiBus(&tc77SpiSettings);
+        InitialiseMockSpiBus(&mx7705SpiSettings);
         mockMillis = 0U;
+        SpiTransferByte_Callback = &UpdateMockSpiRegs;
     }
 
     void teardown(void)
@@ -119,28 +152,45 @@ TEST_GROUP(TC77TestGroup)
     }
 };
 
-// Test for initialising TC77 device.
-TEST(TC77TestGroup, InitialiseTC77)
+// Test for initialising MX7705 device.
+TEST(MX7705TestGroup, InitialiseMX7705)
 {
     const uint8_t pinNum = 1U;
+    const uint8_t channel = 0U;
+    
     // Mock calls to low level spi function
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
-    TC77_Init(pinNum);
+    
+    MockForMX7705Write(MX7705_REQUEST_CLOCK_WRITE);
+    MockForMX7705Write(MX7705_WRITE_CLOCK_SETTINGS);
+    MockForMX7705Write(MX7705_REQUEST_SETUP_WRITE_CH0);
+    MockForMX7705Write(MX7705_WRITE_SETUP_INIT);
+    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH0);
+    MockForMX7705Read();
+    
+    printf("comms reg %u\n", commsRegData);
+    printf("clock reg %u\n", clockRegDataCh1);
 
+    MX7705_Init(pinNum, channel);
+#if 0
     CHECK_EQUAL(CS_DELAY, tc77SpiSettings.chipSelectDelay);
     CHECK_EQUAL(SPI_CLOCK_SPEED, tc77SpiSettings.clockSpeed);
     CHECK_EQUAL(SPI_BIT_ORDER, tc77SpiSettings.bitOrder);
     CHECK_EQUAL(SPI_DATA_MODE, tc77SpiSettings.dataMode);
-
+#endif
+    printf("comms reg %u\n", commsRegData);
+    printf("clock reg %u\n", clockRegDataCh1);
     // check function calls
     mock().checkExpectations();
 }
 
+#if 0
 /*
  Test for initialising then calling update function on TC77 device before 
  conversion has taken place. So 0 should be returned.
  */
+
 TEST(TC77TestGroup, ReadingTC77BeforeConversionNoData)
 {
     const uint8_t pinNum = 1U;
@@ -161,6 +211,7 @@ TEST(TC77TestGroup, ReadingTC77BeforeConversionNoData)
  returned even though there is data in the register ie. initial data doesn't get
  updated and 0 remains.
  */
+
 TEST(TC77TestGroup, ReadingTC77AfterConversionNotReady)
 {
     const uint8_t pinNum = 1U;
@@ -174,7 +225,7 @@ TEST(TC77TestGroup, ReadingTC77AfterConversionNotReady)
     // Put data into read register - do not expect to see this. Device not ready.
     const float mockTemperature = 25.2F;
     // Now update read reg but set state to busy
-    UpdateReadReg(mockTemperature, false);
+    UpdateTC77ReadReg(mockTemperature, false);
     TC77_Update();
     
     CHECK_EQUAL(0U, TC77_GetRawData());   
@@ -198,7 +249,7 @@ TEST(TC77TestGroup, ReadingTC77AfterConversionExpectData)
 
     // Put data into read register
     const float mockTemperature = 25.2F;
-    UpdateReadReg(mockTemperature, true);
+    UpdateTC77ReadReg(mockTemperature, true);
     // increment timer to take us over the conversion time.
     mockMillis = CONVERSION_TIME + 10U;
     
@@ -243,7 +294,7 @@ TEST(TC77TestGroup, ReadingTC77AfterConversionWithOverTemp)
     const float mockTemperature = 128.4F;  // f for float not farenheit!  
     /* Now that the temperature is set, we can update the contents of the TC77's
     read register with a mock value that corresponds to it.*/
-    UpdateReadReg(mockTemperature, true);
+    UpdateTC77ReadReg(mockTemperature, true);
     // increment timer to take us over the conversion time.
     mockMillis = CONVERSION_TIME + 10U;
 
@@ -266,3 +317,4 @@ TEST(TC77TestGroup, ReadingTC77AfterConversionWithOverTemp)
     // Checking mock function calls
     mock().checkExpectations();
 }
+#endif
