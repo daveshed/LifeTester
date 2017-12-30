@@ -14,15 +14,30 @@
 #include "SpiCommon.h"     // spi function prototypes - mocks implemented here.
 #include <string.h>
 
-#define REG_SELECT_OFFSET   (4U)
-#define REG_SELECT_MASK     (7U)
+// Comms reg
+#define REG_SELECT_OFFSET       (4U)
+#define REG_SELECT_MASK         (7U)
+#define CH0_BIT                 (0U)
+#define CH1_BIT                 (1U)
+#define CH_SELECT_MASK          (3U)
+#define RW_SELECT_OFFSET        (3U)
 
-#define CH0_OFFSET          (0U)
-#define CH1_OFFSET          (1U)
+// Setup Reg
+#define FSYNC_BIT               (0U)
+#define BUFFER_BIT              (1U)
+#define BIPOLAR_UNIPOLAR_BIT    (2U)
+#define PGA_OFFSET              (3U)
+#define PGA_MASK                (7U)
+#define MODE_OFFSET             (6U)
+#define MODE_MASK               (3U)
 
-#define RW_SELECT_OFFSET    (3U)
+// Clock reg - note bits 5-7 are reserved/read-only
+#define FS0_BIT                 (0U)
+#define FS1_BIT                 (1U)
+#define CLK_BIT                 (2U)
+#define CLK_DIV                 (3U)
+#define CLK_DIS                 (4U)
 
-#define CH_SELECT_MASK      (3U)
 #define MAX_CHANNELS        (CH_SELECT_MASK + 1U)
 #define MAX_REG_SIZE        (4U)  // max reg width in bytes
 #define BUFFER_SIZE         (16U)
@@ -43,50 +58,36 @@ typedef enum RegisterSelection_e {
     NumberOfEntries
 } RegisterSelection_t;
 
-/* A single register can be 8, 16 or 24 bits wide and must have space for all 
-possible channels */
+/*
+ Type holds all data contained in MX7705 i/o registers. Up to four channels are
+ available however hardware implements two channels: one to read the current for
+ each device under test.
+ chA = Ain1+/-
+ chB = Ain2+/-
+ Note that a single register can be 8, 16 or 24 bits wide and must have space for
+ all possible channels.
+*/
 typedef struct IoRegister_s {
     uint8_t data[MAX_CHANNELS][MAX_REG_SIZE];
     uint8_t nBytes; //TODO make this const
 } IoRegister_t;
 
-#if 0
-/*There is only one comms register which is one byte wide. It's padded to the 
- same width as other IoRegisters which means that all registers can be stored in
- an array - see below.*/
-typedef struct CommsRegister_s {
-    uint8_t padding[sizeof(IoRegister_t) - sizeof(uint8_t)];  // TODO: make const
-    uint8_t data;
-} CommsRegister_t;
-#endif
+// There is only one comms register which is one byte wide.
 typedef uint8_t CommsRegister_t;
 
-#if 0
 /*
- Up to four channels can be accessed from bits 0 and 1 in the comms reg. This
- means that there needs to be space for this data.
-*/
-typedef struct MultiChannelReg_s {
-    IoRegister_t chA;
-    IoRegister_t chB;
-} MultiChannelReg_t;
-/*
- Union of a single and multi channel io register so that each register can be
- addressed.  Type holds all data contained in MX7705 i/o registers. Up to four
- channels are available however hardware implements two channels: one to
- read the current for each device under test.
- chA = Ain1+/-
- chB = Ain2+/-
-*/
-typedef union AdcIoRegister_u {
-    IoRegister_t singleCh;
-    IoRegister_t multiCh[MAX_CHANNELS];
-} AdcIoRegister_t;
-#endif
+ Create Adc variables to hold all registers relating to the MX7705. Note that 
+ the comms register is a separate type. Do not access mx7705Adc[CommsReg]. The
+ data here is the wrong type. mx7705AdcCommsReg is for this purpose.
+ */
+static CommsRegister_t mx7705AdcCommsReg;
+static IoRegister_t    mx7705Adc[NumberOfEntries];
 
-// Create Adc variable to hold all registers relating to the MX7705
-CommsRegister_t mx7705AdcCommsReg;
-IoRegister_t    mx7705Adc[NumberOfEntries];
+/* Mock spi buffers used in transferring data
+TODO: move to mockSpiState defined in MockSpiCommon.cpp */
+static uint8_t inputBuffer[BUFFER_SIZE];
+static uint8_t outputBuffer[BUFFER_SIZE];
+static uint8_t counter;
 
 /*******************************************************************************
  * Private function implementations for tests
@@ -113,6 +114,17 @@ static uint8_t MockForMX7705Read(void)
         .withParameter("settings", &mx7705SpiSettings);
 }
 
+// Mocks for calling MX7705_Init
+static void MockForMX7705Init(void)
+{
+    MockForMX7705Write(MX7705_REQUEST_CLOCK_WRITE);
+    MockForMX7705Write(MX7705_WRITE_CLOCK_SETTINGS);
+    MockForMX7705Write(MX7705_REQUEST_SETUP_WRITE_CH0);
+    MockForMX7705Write(MX7705_WRITE_SETUP_INIT);
+    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH0);
+    MockForMX7705Read();    
+}
+
 // Initialises the adc registers with default data from the datasheet.
 static void InitAdcRegsData(void)
 {
@@ -125,12 +137,34 @@ static void InitAdcRegsData(void)
           {{{0U}, {0U}, {0U}, {0U}}, 2U}, // DataReg
         };  // other elements will be initialised to 0U.
 
-    // TODO: only first two channels are initialised
+    // TODO: four channels initialised but what if the number changes
     memcpy(mx7705Adc, initData, (sizeof(IoRegister_t) * NumberOfEntries));
 }
-    static uint8_t inputBuffer[BUFFER_SIZE];
-    static uint8_t outputBuffer[BUFFER_SIZE];
-    static uint8_t counter;
+
+// reset the buffers and counter
+static void ResetMockSpiBuffers(void)
+{
+    memset(inputBuffer, 0U, BUFFER_SIZE);
+    memset(outputBuffer, 0U, BUFFER_SIZE);
+    counter = 0U;    
+}
+
+// Gets the requested register from comms reg data
+static RegisterSelection_t GetRequestedRegister(CommsRegister_t reg)
+{
+    return (RegisterSelection_t)((reg >> REG_SELECT_OFFSET) & REG_SELECT_MASK);
+    
+}
+
+static bool IsReadOp(CommsRegister_t reg)
+{
+    return bitRead(mx7705AdcCommsReg, RW_SELECT_OFFSET);   
+}
+
+static uint8_t GetChannel(CommsRegister_t reg)
+{
+    return mx7705AdcCommsReg & CH_SELECT_MASK;
+}
 
 /*
  Manages commands transferred to the spi bus and data is returned to the output.
@@ -148,57 +182,49 @@ static uint8_t TransferMockSpiData(uint8_t byteReceived)
 // write the data from the input buffer into the io registers
 static void TeardownMockSpiConnection(const SpiSettings_t *settings)
 {
-    const RegisterSelection_t requestedRegister = 
-        (RegisterSelection_t)((mx7705AdcCommsReg >> REG_SELECT_OFFSET) & REG_SELECT_MASK);
+    const RegisterSelection_t regRequest = GetRequestedRegister(mx7705AdcCommsReg);
 
-    // if it's a readOp, then load data into the output buffer
-    const bool writeOp = !bitRead(mx7705AdcCommsReg, RW_SELECT_OFFSET);
-
-    const uint8_t ch = mx7705AdcCommsReg & CH_SELECT_MASK;
-    if (writeOp)
+    if (IsReadOp(mx7705AdcCommsReg))
     {
-        if (requestedRegister == CommsReg)
+        // Command done so reset the register.
+        mx7705AdcCommsReg = 0U;
+    }
+    else
+    {
+        if (regRequest == CommsReg)
         {
             /*write requested into comms reg - copy from bytes captured in the
             mock spi input buffer*/
             mx7705AdcCommsReg = inputBuffer[0U];
+
+            // No need to reset the register as we've just written in a command.
         }
-        else
+        else //writeop, then data is copied into the relevant reg from inputBuffer
         {
             /*write requested into other reg - copy from bytes captured in the
             mock spi input buffer*/
-            memcpy(mx7705Adc[requestedRegister].data[ch],
+            memcpy(mx7705Adc[regRequest].data[GetChannel(mx7705AdcCommsReg)],
                 inputBuffer,
-                mx7705Adc[requestedRegister].nBytes);
+                mx7705Adc[regRequest].nBytes);
             
+            // Command done so reset the register.
             mx7705AdcCommsReg = 0U;
         }
     }
-    else
-    {
-        mx7705AdcCommsReg = 0U;
-    }
 }
 
-// 
+// Loads data into the spi output buffer if a read is requested in the comms reg
 static void SetupMockSpiConnection(const SpiSettings_t *settings)
 {
-    // reset the buffers and counter
-    memset(inputBuffer, 0U, BUFFER_SIZE);
-    memset(outputBuffer, 0U, BUFFER_SIZE);
-    counter = 0U;
+    ResetMockSpiBuffers();
 
-    const RegisterSelection_t requestedRegister = 
-        (RegisterSelection_t)((mx7705AdcCommsReg >> REG_SELECT_OFFSET) & REG_SELECT_MASK);
-    printf("requestedRegister = %u\n", (unsigned int)requestedRegister);
-    
-    const bool readOp = bitRead(mx7705AdcCommsReg, RW_SELECT_OFFSET);   
-    const uint8_t ch = mx7705AdcCommsReg & CH_SELECT_MASK;
+    const RegisterSelection_t regRequest = GetRequestedRegister(mx7705AdcCommsReg);
+    printf("regRequest = %u\n", (unsigned int)regRequest);
 
     // if it's a readOp, then load data into the output buffer
-    if (readOp)
+    if (IsReadOp(mx7705AdcCommsReg))
     {
-        if (requestedRegister == CommsReg)
+        if (regRequest == CommsReg)
         {
             /* Data copied into the mock spi output buffer to be transffered */
             outputBuffer[0U] = mx7705AdcCommsReg;  // only 1 byte
@@ -207,11 +233,10 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
         {
             /* Data copied into the mock spi output buffer to be transffered */
             memcpy(outputBuffer,
-                mx7705Adc[requestedRegister].data[ch],
-                mx7705Adc[requestedRegister].nBytes);
+                mx7705Adc[regRequest].data[GetChannel(mx7705AdcCommsReg)],
+                mx7705Adc[regRequest].nBytes);
         }
     }
-
 }
 
 /*******************************************************************************
@@ -246,12 +271,7 @@ TEST(MX7705TestGroup, InitialiseMX7705)
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705Write(MX7705_REQUEST_CLOCK_WRITE);
-    MockForMX7705Write(MX7705_WRITE_CLOCK_SETTINGS);
-    MockForMX7705Write(MX7705_REQUEST_SETUP_WRITE_CH0);
-    MockForMX7705Write(MX7705_WRITE_SETUP_INIT);
-    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH0);
-    MockForMX7705Read();
+    MockForMX7705Init();
     
     printf("comms reg %u\n", mx7705AdcCommsReg);
     printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
@@ -267,139 +287,16 @@ TEST(MX7705TestGroup, InitialiseMX7705)
     printf("comms reg %u\n", mx7705AdcCommsReg);
     printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
 
+    const uint8_t clockRegExp = MX7705_WRITE_CLOCK_SETTINGS;
+    const uint8_t clockRegAct = mx7705Adc[ClockReg].data[channel][0U];
+    CHECK_EQUAL(clockRegExp, clockRegAct);
+
+    const uint8_t setupRegExp = MX7705_WRITE_SETUP_INIT;
+    const uint8_t setupRegAct = mx7705Adc[SetupReg].data[channel][0U];
+    CHECK_EQUAL(setupRegExp, setupRegAct);
+
+    CHECK_EQUAL(false, MX7705_GetError()); 
+
     // check function calls
     mock().checkExpectations();
 }
-#if 0
-/*
- Test for initialising then calling update function on TC77 device before 
- conversion has taken place. So 0 should be returned.
- */
-
-TEST(TC77TestGroup, ReadingTC77BeforeConversionNoData)
-{
-    const uint8_t pinNum = 1U;
-    // Mock calls to low level spi function
-    mock().expectOneCall("InitChipSelectPin")
-        .withParameter("pin", pinNum);
-    TC77_Init(pinNum);
-
-    mock().expectOneCall("millis");
-    TC77_Update();
-    CHECK_EQUAL(0U, TC77_GetRawData());   
-    mock().checkExpectations();
-}
-
-/*
- Test for initialising then calling update function on TC77 device before 
- the device is ready - reading the ready bit of the read register. Expect 0 to be
- returned even though there is data in the register ie. initial data doesn't get
- updated and 0 remains.
- */
-
-TEST(TC77TestGroup, ReadingTC77AfterConversionNotReady)
-{
-    const uint8_t pinNum = 1U;
-    // Mock calls to low level spi function
-    mock().expectOneCall("InitChipSelectPin")
-        .withParameter("pin", pinNum);
-    TC77_Init(pinNum);
-
-    mock().expectOneCall("millis");
-    
-    // Put data into read register - do not expect to see this. Device not ready.
-    const float mockTemperature = 25.2F;
-    // Now update read reg but set state to busy
-    UpdateTC77ReadReg(mockTemperature, false);
-    TC77_Update();
-    
-    CHECK_EQUAL(0U, TC77_GetRawData());   
-    mock().checkExpectations();
-}
-
-/*
- Test for calling update function on TC77 device after conversion time. We expect
- data to be available and for it to be returned over spi bus. 
- */
-TEST(TC77TestGroup, ReadingTC77AfterConversionExpectData)
-{
-    const uint8_t pinNum = 1U;
-    // Mock calls to low level spi function for init
-    mock().expectOneCall("InitChipSelectPin")
-        .withParameter("pin", pinNum);
-    TC77_Init(pinNum);
-
-    // Do not expect error condition
-    CHECK(!TC77_GetError());
-
-    // Put data into read register
-    const float mockTemperature = 25.2F;
-    UpdateTC77ReadReg(mockTemperature, true);
-    // increment timer to take us over the conversion time.
-    mockMillis = CONVERSION_TIME + 10U;
-    
-    // mock spi calls when data is read from TC77 device.
-    mock().expectOneCall("millis");
-    MockForTC77ReadRawData();
-    
-    TC77_Update();
-
-    // Check data returned against expectations
-    const uint16_t rawDataActual = TC77_GetRawData();
-    const uint16_t rawDataExpected = GetSpiReadReg();
-    CHECK_EQUAL(rawDataExpected, rawDataActual);
-    DOUBLES_EQUAL(mockTemperature, TC77_ConvertToTemp(rawDataActual), 0.1);
-    // Do not expect error condition
-    CHECK(!TC77_GetError());
-    
-    // Checking mock function calls
-    mock().checkExpectations();
-}
-
-/*
- Test for calling update function on TC77 device after conversion time with an
- overtemp condition. Data should be returned but with error condition must be
- set to true.
- */
-TEST(TC77TestGroup, ReadingTC77AfterConversionWithOverTemp)
-{
-    const uint8_t pinNum = 1U;
-    
-    // Mock calls to low level spi function for init
-    mock().expectOneCall("InitChipSelectPin")
-        .withParameter("pin", pinNum);
-    
-    // Call init function with required pin setting - chip select
-    TC77_Init(pinNum);
-    // Should be no error condition at this point.
-    CHECK(!TC77_GetError());
-
-    /* max temperature is 125C. So setting the temperature above this should
-    trigger an overtemperature error */
-    const float mockTemperature = 128.4F;  // f for float not farenheit!  
-    /* Now that the temperature is set, we can update the contents of the TC77's
-    read register with a mock value that corresponds to it.*/
-    UpdateTC77ReadReg(mockTemperature, true);
-    // increment timer to take us over the conversion time.
-    mockMillis = CONVERSION_TIME + 10U;
-
-    // mock spi calls when data is read from TC77 device.
-    mock().expectOneCall("millis");
-    MockForTC77ReadRawData();
-    
-    // now call the update function
-    TC77_Update();
-
-    // Compare returned data against expectations
-    const uint16_t rawDataExpected = GetSpiReadReg();
-    const uint16_t rawDataActual = TC77_GetRawData();
-    CHECK_EQUAL(rawDataExpected, rawDataActual);
-    DOUBLES_EQUAL(mockTemperature, TC77_ConvertToTemp(rawDataActual), 0.1);
-    
-    // expect error condition because of over temperature
-    CHECK(TC77_GetError());
-
-    // Checking mock function calls
-    mock().checkExpectations();
-}
-#endif
