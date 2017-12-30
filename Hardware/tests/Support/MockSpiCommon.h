@@ -20,6 +20,9 @@ typedef struct MockSpiState_s {
 
 extern MockSpiState_t mockSpiState;
 extern uint8_t (*SpiTransferByte_Callback)(uint8_t);
+extern void (*OpenSpiConnection_Callback)(const SpiSettings_t*);
+extern void (*CloseSpiConnection_Callback)(const SpiSettings_t*);
+
 
 // Reset all data in the mock spi bus excluding the data pointed at in settings
 void InitialiseMockSpiBus(SpiSettings_t *settings);

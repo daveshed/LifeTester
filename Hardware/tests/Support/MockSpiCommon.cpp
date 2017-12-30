@@ -13,6 +13,8 @@ MockSpiState_t mockSpiState;
  SpiTransferByte, it actually calls a function implemented in the test code.
  */
 uint8_t (*SpiTransferByte_Callback)(uint8_t);
+void (*OpenSpiConnection_Callback)(const SpiSettings_t*);
+void (*CloseSpiConnection_Callback)(const SpiSettings_t*);
 
 // Initialisation only
 void InitChipSelectPin(uint8_t pin)
@@ -37,6 +39,9 @@ void OpenSpiConnection(const SpiSettings_t *settings)
         .withParameter("settings", (void *)settings);
     
     mockSpiState.connectionOpen = true;
+
+    // Callback function accessible from source via function pointer.
+    OpenSpiConnection_Callback(settings);
 }
 
 // Transmits and receives a byte at the same time.
@@ -59,6 +64,9 @@ void CloseSpiConnection(const SpiSettings_t *settings)
     mock().actualCall("CloseSpiConnection")
         .withParameter("settings", (void *)settings);
     mockSpiState.connectionOpen = false;
+
+    // Callback function accessible from source via function pointer.
+    CloseSpiConnection_Callback(settings);
 }
 
 void InitialiseMockSpiBus(SpiSettings_t *settings)
