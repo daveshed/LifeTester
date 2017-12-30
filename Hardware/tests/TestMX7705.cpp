@@ -9,54 +9,15 @@
 
 // support
 #include "Arduino.h"       // arduino function prototypes - implemented MockAduino.c
+#include "Config.h"
 #include "MockArduino.h"   // mockDigitalPins, mockMillis, private variables
 #include "MockSpiCommon.h" // Mock spi interface
 #include "SpiCommon.h"     // spi function prototypes - mocks implemented here.
 #include <string.h>
 
-// Comms reg
-#define REG_SELECT_OFFSET       (4U)
-#define REG_SELECT_MASK         (7U)
-#define CH0_BIT                 (0U)
-#define CH1_BIT                 (1U)
-#define CH_SELECT_MASK          (3U)
-#define RW_SELECT_OFFSET        (3U)
-
-// Setup Reg
-#define FSYNC_BIT               (0U)
-#define BUFFER_BIT              (1U)
-#define BIPOLAR_UNIPOLAR_BIT    (2U)
-#define PGA_OFFSET              (3U)
-#define PGA_MASK                (7U)
-#define MODE_OFFSET             (6U)
-#define MODE_MASK               (3U)
-
-// Clock reg - note bits 5-7 are reserved/read-only
-#define FS0_BIT                 (0U)
-#define FS1_BIT                 (1U)
-#define CLK_BIT                 (2U)
-#define CLK_DIV                 (3U)
-#define CLK_DIS                 (4U)
-
-#define MAX_CHANNELS        (CH_SELECT_MASK + 1U)
-#define MAX_REG_SIZE        (4U)  // max reg width in bytes
-#define BUFFER_SIZE         (16U)
-
-/*
- enum containing all available registers that can be selected from RS0-2 bits
- of the comms register.
-*/
-typedef enum RegisterSelection_e {
-    CommsReg,
-    SetupReg,
-    ClockReg,
-    DataReg,
-    TestReg,
-    NoOperation,
-    OffsetReg,
-    GainReg,
-    NumberOfEntries
-} RegisterSelection_t;
+#define MAX_CHANNELS             (CH_SELECT_MASK + 1U)
+#define MAX_REG_SIZE             (4U)  // max reg width in bytes
+#define BUFFER_SIZE              (16U) // mock spi buffer size in bytes 
 
 /*
  Type holds all data contained in MX7705 i/o registers. Up to four channels are
@@ -78,9 +39,9 @@ typedef uint8_t CommsRegister_t;
 /*
  Create Adc variables to hold all registers relating to the MX7705. Note that 
  the comms register is a separate type. Do not access mx7705Adc[CommsReg]. The
- data here is the wrong type. mx7705AdcCommsReg is for this purpose.
+ data here is the wrong type. adcCommsReg is for this purpose.
  */
-static CommsRegister_t mx7705AdcCommsReg;
+static CommsRegister_t adcCommsReg;
 static IoRegister_t    mx7705Adc[NumberOfEntries];
 
 /* Mock spi buffers used in transferring data
@@ -89,6 +50,8 @@ static uint8_t inputBuffer[BUFFER_SIZE];
 static uint8_t outputBuffer[BUFFER_SIZE];
 static uint8_t counter;
 
+// Used to mock read error for verification failure in init for example.
+bool mockReadError = false;
 /*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
@@ -115,9 +78,9 @@ static uint8_t MockForMX7705Read(void)
 }
 
 // Mocks for calling MX7705_Init
-static void MockForMX7705Init(void)
+static void MockForMX7705InitCh0(void)
 {
-    MockForMX7705Write(MX7705_REQUEST_CLOCK_WRITE);
+    MockForMX7705Write(MX7705_REQUEST_CLOCK_WRITE_CH0);
     MockForMX7705Write(MX7705_WRITE_CLOCK_SETTINGS);
     MockForMX7705Write(MX7705_REQUEST_SETUP_WRITE_CH0);
     MockForMX7705Write(MX7705_WRITE_SETUP_INIT);
@@ -125,10 +88,21 @@ static void MockForMX7705Init(void)
     MockForMX7705Read();    
 }
 
+// Mocks for calling MX7705_Init
+static void MockForMX7705InitCh1(void)
+{
+    MockForMX7705Write(MX7705_REQUEST_CLOCK_WRITE_CH1);
+    MockForMX7705Write(MX7705_WRITE_CLOCK_SETTINGS);
+    MockForMX7705Write(MX7705_REQUEST_SETUP_WRITE_CH1);
+    MockForMX7705Write(MX7705_WRITE_SETUP_INIT);
+    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
+    MockForMX7705Read();    
+}
+
 // Initialises the adc registers with default data from the datasheet.
 static void InitAdcRegsData(void)
 {
-    mx7705AdcCommsReg = 0U;
+    adcCommsReg = 0U;
     // Taken from MX7705 data sheet - see table 7 register selection
     const IoRegister_t initData[NumberOfEntries] = 
         { {0U},                           // CommsReg - placeholder don't use this
@@ -156,14 +130,25 @@ static RegisterSelection_t GetRequestedRegister(CommsRegister_t reg)
     
 }
 
+// Gets read or write op request from the comms reg data
 static bool IsReadOp(CommsRegister_t reg)
 {
-    return bitRead(mx7705AdcCommsReg, RW_SELECT_OFFSET);   
+    return bitRead(adcCommsReg, RW_SELECT_OFFSET);   
 }
 
+// Get the channel index from the comms reg data 
 static uint8_t GetChannel(CommsRegister_t reg)
 {
-    return mx7705AdcCommsReg & CH_SELECT_MASK;
+    return adcCommsReg & CH_SELECT_MASK;
+}
+
+// Checks the contets of the spi settings data agrees with private data
+static void CheckSpiSettings(const SpiSettings_t *settings)
+{
+    CHECK_EQUAL(CS_DELAY, settings->chipSelectDelay);
+    CHECK_EQUAL(SPI_CLOCK_SPEED, settings->clockSpeed);
+    CHECK_EQUAL(SPI_BIT_ORDER, settings->bitOrder);
+    CHECK_EQUAL(SPI_DATA_MODE, settings->dataMode);
 }
 
 /*
@@ -182,33 +167,35 @@ static uint8_t TransferMockSpiData(uint8_t byteReceived)
 // write the data from the input buffer into the io registers
 static void TeardownMockSpiConnection(const SpiSettings_t *settings)
 {
-    const RegisterSelection_t regRequest = GetRequestedRegister(mx7705AdcCommsReg);
+    CheckSpiSettings(settings);
 
-    if (IsReadOp(mx7705AdcCommsReg))
+    const RegisterSelection_t regRequest = GetRequestedRegister(adcCommsReg);
+
+    if (IsReadOp(adcCommsReg))
     {
         // Command done so reset the register.
-        mx7705AdcCommsReg = 0U;
+        adcCommsReg = 0U;
     }
-    else
+    else //writeop, then data is copied into the relevant reg from inputBuffer
     {
         if (regRequest == CommsReg)
         {
             /*write requested into comms reg - copy from bytes captured in the
             mock spi input buffer*/
-            mx7705AdcCommsReg = inputBuffer[0U];
+            adcCommsReg = inputBuffer[0U];
 
             // No need to reset the register as we've just written in a command.
         }
-        else //writeop, then data is copied into the relevant reg from inputBuffer
+        else 
         {
             /*write requested into other reg - copy from bytes captured in the
             mock spi input buffer*/
-            memcpy(mx7705Adc[regRequest].data[GetChannel(mx7705AdcCommsReg)],
+            memcpy(mx7705Adc[regRequest].data[GetChannel(adcCommsReg)],
                 inputBuffer,
                 mx7705Adc[regRequest].nBytes);
             
             // Command done so reset the register.
-            mx7705AdcCommsReg = 0U;
+            adcCommsReg = 0U;
         }
     }
 }
@@ -216,24 +203,27 @@ static void TeardownMockSpiConnection(const SpiSettings_t *settings)
 // Loads data into the spi output buffer if a read is requested in the comms reg
 static void SetupMockSpiConnection(const SpiSettings_t *settings)
 {
+    CheckSpiSettings(settings);
+
     ResetMockSpiBuffers();
 
-    const RegisterSelection_t regRequest = GetRequestedRegister(mx7705AdcCommsReg);
-    printf("regRequest = %u\n", (unsigned int)regRequest);
+    const RegisterSelection_t regRequest = GetRequestedRegister(adcCommsReg);
+    printf("regRequest = %u channel = %u\n",
+        (unsigned int)regRequest, GetChannel(adcCommsReg));
 
     // if it's a readOp, then load data into the output buffer
-    if (IsReadOp(mx7705AdcCommsReg))
+    if (IsReadOp(adcCommsReg) && !mockReadError)
     {
         if (regRequest == CommsReg)
         {
             /* Data copied into the mock spi output buffer to be transffered */
-            outputBuffer[0U] = mx7705AdcCommsReg;  // only 1 byte
+            outputBuffer[0U] = adcCommsReg;  // only 1 byte
         }
         else
         {
             /* Data copied into the mock spi output buffer to be transffered */
             memcpy(outputBuffer,
-                mx7705Adc[regRequest].data[GetChannel(mx7705AdcCommsReg)],
+                mx7705Adc[regRequest].data[GetChannel(adcCommsReg)],
                 mx7705Adc[regRequest].nBytes);
         }
     }
@@ -248,11 +238,14 @@ TEST_GROUP(MX7705TestGroup)
     void setup(void)
     {
         InitialiseMockSpiBus(&mx7705SpiSettings);
+        InitAdcRegsData();
         mockMillis = 0U;
+        
         SpiTransferByte_Callback = &TransferMockSpiData;
         OpenSpiConnection_Callback = &SetupMockSpiConnection;
         CloseSpiConnection_Callback = &TeardownMockSpiConnection;
-        InitAdcRegsData();
+        
+        mockReadError = false;
     }
 
     void teardown(void)
@@ -261,30 +254,25 @@ TEST_GROUP(MX7705TestGroup)
     }
 };
 
-// Test for initialising MX7705 device.
-TEST(MX7705TestGroup, InitialiseMX7705)
+// Test for initialising MX7705 device on channel 0.
+TEST(MX7705TestGroup, InitialiseMX7705ChannelZero)
 {
     const uint8_t pinNum = 1U;
     const uint8_t channel = 0U;
     
+    CHECK_EQUAL(0xFF, mx7705SpiSettings.chipSelectPin);
     // Mock calls to low level spi function
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705Init();
+    MockForMX7705InitCh0();
     
-    printf("comms reg %u\n", mx7705AdcCommsReg);
+    printf("comms reg %u\n", adcCommsReg);
     printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
 
     MX7705_Init(pinNum, channel);
-#if 0
-    CHECK_EQUAL(CS_DELAY, tc77SpiSettings.chipSelectDelay);
-    CHECK_EQUAL(SPI_CLOCK_SPEED, tc77SpiSettings.clockSpeed);
-    CHECK_EQUAL(SPI_BIT_ORDER, tc77SpiSettings.bitOrder);
-    CHECK_EQUAL(SPI_DATA_MODE, tc77SpiSettings.dataMode);
-#endif
 
-    printf("comms reg %u\n", mx7705AdcCommsReg);
+    printf("comms reg %u\n", adcCommsReg);
     printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
 
     const uint8_t clockRegExp = MX7705_WRITE_CLOCK_SETTINGS;
@@ -296,6 +284,78 @@ TEST(MX7705TestGroup, InitialiseMX7705)
     CHECK_EQUAL(setupRegExp, setupRegAct);
 
     CHECK_EQUAL(false, MX7705_GetError()); 
+    CHECK_EQUAL(pinNum, mx7705SpiSettings.chipSelectPin = pinNum);
+
+    // check function calls
+    mock().checkExpectations();
+}
+
+// Test for initialising MX7705 device on channel 1.
+TEST(MX7705TestGroup, InitialiseMX7705ChannelOne)
+{
+    const uint8_t pinNum = 1U;
+    const uint8_t channel = 1U;
+    
+    CHECK_EQUAL(0xFF, mx7705SpiSettings.chipSelectPin);
+    // Mock calls to low level spi function
+    mock().expectOneCall("InitChipSelectPin")
+        .withParameter("pin", pinNum);
+    
+    MockForMX7705InitCh1();
+    
+    printf("comms reg %u\n", adcCommsReg);
+    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+
+    MX7705_Init(pinNum, channel);
+
+    printf("comms reg %u\n", adcCommsReg);
+    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+
+    const uint8_t clockRegExp = MX7705_WRITE_CLOCK_SETTINGS;
+    const uint8_t clockRegAct = mx7705Adc[ClockReg].data[channel][0U];
+    CHECK_EQUAL(clockRegExp, clockRegAct);
+
+    const uint8_t setupRegExp = MX7705_WRITE_SETUP_INIT;
+    const uint8_t setupRegAct = mx7705Adc[SetupReg].data[channel][0U];
+    CHECK_EQUAL(setupRegExp, setupRegAct);
+
+    CHECK_EQUAL(false, MX7705_GetError()); 
+    CHECK_EQUAL(pinNum, mx7705SpiSettings.chipSelectPin);
+
+    // check function calls
+    mock().checkExpectations();
+}
+
+/*
+ Test for initialising MX7705 device on channel 1. Error condition is raised
+ because there is a failure to verify data stored in setup reg.
+ */
+TEST(MX7705TestGroup, InitialiseMX7705ChannelOneVerifyFail)
+{
+    const uint8_t pinNum = 1U;
+    const uint8_t channel = 1U;
+    
+    CHECK_EQUAL(0xFF, mx7705SpiSettings.chipSelectPin);
+    // Mock calls to low level spi function
+    mock().expectOneCall("InitChipSelectPin")
+        .withParameter("pin", pinNum);
+    
+    MockForMX7705InitCh1();
+    
+    printf("comms reg %u\n", adcCommsReg);
+    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+
+    // allows us to mock a read fail which triggers verification fail
+    mockReadError = true;
+    // call function under test
+    MX7705_Init(pinNum, channel);
+
+    CHECK_EQUAL(pinNum, mx7705SpiSettings.chipSelectPin);
+    
+    printf("comms reg %u\n", adcCommsReg);
+    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+
+    CHECK_EQUAL(true, MX7705_GetError()); 
 
     // check function calls
     mock().checkExpectations();

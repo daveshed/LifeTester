@@ -13,20 +13,66 @@ SpiSettings_t mx7705SpiSettings = {
 
 static bool MX7705_errorCondition = false;
 
-static void MX7705_Write(uint8_t sendByte);
-static uint8_t MX7705_ReadByte(void);
+/*
+ * function to send a byte over SPI to the MX7705
+ */
+static void MX7705_Write(uint8_t sendByte)
+{ 
+  OpenSpiConnection(&mx7705SpiSettings);
+  
+  #if DEBUG
+    Serial.print("MX7705: Sending... ");
+    Serial.println(sendByte, BIN);
+  #endif
+  
+  SpiTransferByte(sendByte);
+  
+  CloseSpiConnection(&mx7705SpiSettings);
+}
 
 /*
- * Setup the MX7705 in unipolar, unbuffered mode. Allow the user to 
- * select which channel they want. 0/1 = AIN1+ to AIN1-/AIN2+ to AIN2-.
+ * Function to read a single byte from the MX7705
  */
-void MX7705_Init(const uint8_t pin, const uint8_t channel)
+static uint8_t MX7705_ReadByte(void)
 {
-    // set the value of the chip select pin in mx7705SpiSettings global
-    mx7705SpiSettings.chipSelectPin = pin;
+  uint8_t readByte = 0u;
+  
+  OpenSpiConnection(&mx7705SpiSettings);
+  
+  readByte = SpiTransferByte(0u);
+  
+  #if DEBUG
+    Serial.print("MX7705: Data received... ");
+    Serial.println(readByte, BIN);
+  #endif
+  
+  CloseSpiConnection(&mx7705SpiSettings);
+  
+  return readByte;
+}
 
-    InitChipSelectPin(pin);
-#ifndef UNIT_TEST  // TODO fix tests. Need definitions to remove compile guards
+// Reads a uint16_t over spi. Used in reading data
+static uint16_t MX7705_Read16Bit(void)
+{
+  OpenSpiConnection(&mx7705SpiSettings);
+  
+  const uint8_t msb = SpiTransferByte(0u);
+  const uint8_t lsb = SpiTransferByte(0u);
+  const uint16_t retVal = (msb << 8U) | lsb;
+
+  #if DEBUG
+    Serial.print("MX7705: Data received... ");
+    Serial.print(msb, BIN);
+    Serial.println(lsb, BIN);
+  #endif
+  
+  CloseSpiConnection(&mx7705SpiSettings);
+  return retVal;
+}
+
+#ifndef UNIT_TEST
+static void InitClockOuput(uint8_t pin)
+{
     pinMode(PWMout, OUTPUT);
     //sending clock pulses from pin3 at 1MHz to ADC
     //see http://forum.arduino.cc/index.php?topic=22384.0
@@ -35,9 +81,25 @@ void MX7705_Init(const uint8_t pin, const uint8_t channel)
     TCNT2  = 0x00;
     OCR2A  = 0x0F; // TOP = 15, cycles every 16 clocks
     OCR2B  = 0x07; // COMP for pin3
+}
+#endif // UNIT_TEST
+
+/*
+ * Setup the MX7705 in unipolar, unbuffered mode. Allow the user to 
+ * select which channel they want. 0/1 = AIN1+ to AIN1-/AIN2+ to AIN2-.
+ */
+void MX7705_Init(const uint8_t pin, const uint8_t channel)
+{
+    MX7705_errorCondition = false;
+    // set the value of the chip select pin in mx7705SpiSettings global
+    mx7705SpiSettings.chipSelectPin = pin;
+
+    InitChipSelectPin(pin);
+#ifndef UNIT_TEST  // TODO fix tests. Need definitions to remove compile guards
+    InitClockOuput(PWMout);
 #endif
     //request a write to the clock register
-    MX7705_Write(MX7705_REQUEST_CLOCK_WRITE);
+    MX7705_Write(channel == 0U ? MX7705_REQUEST_CLOCK_WRITE_CH0 : MX7705_REQUEST_CLOCK_WRITE_CH1);
     //turn on clockdis bit - using clock from ATMEGA. Turn off clk bit for optimum performance at 1MHz with clkdiv 0.
     MX7705_Write(MX7705_WRITE_CLOCK_SETTINGS);
     //write to comms register: request a write operation to the setup register of selected channel
@@ -55,7 +117,6 @@ void MX7705_Init(const uint8_t pin, const uint8_t channel)
             Serial.println("MX7705: Error condition");
         #endif
     }
-
 }
 
 /*
@@ -71,13 +132,11 @@ bool MX7705_GetError(void)
  */
 uint16_t MX7705_ReadData(const uint8_t channel)
 {
-  uint8_t   MSB, LSB, commsRegister;
+  uint8_t   commsRegister;
   uint32_t  tic, toc;
   uint16_t  pollCount = 0u;
   bool timeout = false;
   
-  MSB = 0u;
-  LSB = 0u;
   commsRegister = 0u;
   
   tic = millis();
@@ -113,9 +172,8 @@ uint16_t MX7705_ReadData(const uint8_t channel)
   {
     //request data register reading
     MX7705_Write((channel == 0 ? MX7705_REQUEST_DATA_READ_CH0 : MX7705_REQUEST_DATA_READ_CH1));
-    MSB = MX7705_ReadByte();
-    LSB = MX7705_ReadByte();
-    return (uint16_t)((MSB << 8) | LSB);
+
+    return MX7705_Read16Bit();
   }
 }
 
@@ -180,39 +238,3 @@ void MX7705_GainUp(const uint8_t channel)
   MX7705_Write(channel == 0u ? B00001000 : B00001001);
 }
 
-/*
- * function to send a byte over SPI to the MX7705
- */
-static void MX7705_Write(uint8_t sendByte)
-{ 
-  OpenSpiConnection(&mx7705SpiSettings);
-  
-  #if DEBUG
-    Serial.print("MX7705: Sending... ");
-    Serial.println(sendByte, BIN);
-  #endif
-  
-  SpiTransferByte(sendByte);
-  
-  CloseSpiConnection(&mx7705SpiSettings);
-}
-/*
- * Function to read a single byte from the MX7705
- */
-static uint8_t MX7705_ReadByte(void)
-{
-  uint8_t readByte = 0u;
-  
-  OpenSpiConnection(&mx7705SpiSettings);
-  
-  readByte = SpiTransferByte(0u);
-  
-  #if DEBUG
-    Serial.print("MX7705: Data received... ");
-    Serial.println(readByte, BIN);
-  #endif
-  
-  CloseSpiConnection(&mx7705SpiSettings);
-  
-  return readByte;
-}

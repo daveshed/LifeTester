@@ -77,7 +77,7 @@ void InitialiseMockSpiBus(SpiSettings_t *settings)
     mockSpiState.settings = settings;
     /* set chipSelectPin only. Other members contain settings that are only
     written once by the module under test. */
-    mockSpiState.settings->chipSelectPin = 0xFF;
+    mockSpiState.settings->chipSelectPin = CS_PIN_INIT;
 }
 
 void SetSpiReadReg(uint16_t data)

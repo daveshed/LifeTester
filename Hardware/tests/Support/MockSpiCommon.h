@@ -1,12 +1,13 @@
 #include <stdint.h>
 #include <stdbool.h>
-#if 1
+
+#define CS_PIN_INIT         (0xFF)
+
 // 16 bit register reprisenting data stored in spi bus.
 typedef struct dataRegister_s {
     uint8_t msb;
     uint8_t lsb;
 } dataRegister_t;
-#endif
 
 // struct to hold information on the state of the mock spi bus
 typedef struct MockSpiState_s {

@@ -53,6 +53,11 @@ static uint8_t TransferDataFromReadReg(const uint8_t transmit)
     return retVal;
 }
 
+static void DummyCallback(const SpiSettings_t*)
+{
+    // dummy function
+}
+
 // set the status of mock hardware to ready
 static void SetReadRegReady(uint16_t *readReg)
 {
@@ -108,6 +113,9 @@ TEST_GROUP(TC77TestGroup)
     {
         // Set function pointer from MockSpiCommon.h
         SpiTransferByte_Callback = &TransferDataFromReadReg;
+        OpenSpiConnection_Callback = &DummyCallback;
+        CloseSpiConnection_Callback = &DummyCallback;
+
         // Clear mock spi data
         InitialiseMockSpiBus(&tc77SpiSettings);
         mockMillis = 0U;
