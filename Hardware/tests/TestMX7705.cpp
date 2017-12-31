@@ -52,6 +52,13 @@ static uint8_t counter;
 
 // Used to mock read error for verification failure in init for example.
 bool mockReadError = false;
+// Timing variables used to allow mock polling operations / busy bit control
+static const uint32_t conversionTimeDefault = 200U; //ms
+static const uint32_t roundtripTimeDefault = 30U; //ms
+static uint32_t conversionTime;
+static uint32_t roundtripTime;
+
+static uint16_t adcInput; // analog voltage converted to digital
 /*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
@@ -66,11 +73,24 @@ static void MockForMX7705Write(uint8_t sendByte)
         .withParameter("settings", &mx7705SpiSettings);
 }
 
-// Mocks needed for reading data from mock spi reg
+// Mocks needed for reading single byte data from mock spi reg
 static uint8_t MockForMX7705Read(void)
 {
     mock().expectOneCall("OpenSpiConnection")
         .withParameter("settings", &mx7705SpiSettings);
+    mock().expectOneCall("SpiTransferByte")
+        .withParameter("byteToSpiBus", 0U);
+    mock().expectOneCall("CloseSpiConnection")
+        .withParameter("settings", &mx7705SpiSettings);
+}
+
+// Mocks needed for reading data from mock spi reg
+static uint16_t MockForMX7705Read16Bit(void)
+{
+    mock().expectOneCall("OpenSpiConnection")
+        .withParameter("settings", &mx7705SpiSettings);
+    mock().expectOneCall("SpiTransferByte")
+        .withParameter("byteToSpiBus", 0U);
     mock().expectOneCall("SpiTransferByte")
         .withParameter("byteToSpiBus", 0U);
     mock().expectOneCall("CloseSpiConnection")
@@ -164,6 +184,32 @@ static uint8_t TransferMockSpiData(uint8_t byteReceived)
     return retVal;
 }
 
+// sets DRDY bit high when busy
+static void SetCommsRegBusy(CommsRegister_t *reg)
+{
+    bitSet(*reg, DRDY_BIT);
+}
+
+// sets DRDY bit low when not busy
+static void ClearCommsRegBusy(CommsRegister_t *reg)
+{
+    bitClear(*reg, DRDY_BIT);
+}
+
+static bool IsCommsRegBusy(CommsRegister_t *reg)
+{
+    return !bitRead(*reg, DRDY_BIT);
+}
+
+// Converts a uint16_t into uint8_t's and loads into data register of adc
+static void UpdateDataRegAfterConversion(uint16_t dataToLoad, uint8_t channel)
+{
+    const uint8_t msb = (dataToLoad >> 8U) & 0xFF;
+    const uint8_t lsb = dataToLoad & 0xFF;
+    mx7705Adc[DataReg].data[channel][0U] = msb;
+    mx7705Adc[DataReg].data[channel][1U] = lsb;
+}
+
 // write the data from the input buffer into the io registers
 static void TeardownMockSpiConnection(const SpiSettings_t *settings)
 {
@@ -211,20 +257,58 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
     printf("regRequest = %u channel = %u\n",
         (unsigned int)regRequest, GetChannel(adcCommsReg));
 
-    // if it's a readOp, then load data into the output buffer
+    /* 
+     If it's a readOp, then load data into the required spi output buffer. 
+     
+     Mocking of data ready (DRDY) bit 7 of comms reagister is implemented here. 
+     Ready bit set to 1 when conversion has finished. And data is ready to be 
+     read from the data reg. 
+
+     Read error is mocked by preventing data being copied into spi output.
+     */
+
     if (IsReadOp(adcCommsReg) && !mockReadError)
     {
-        if (regRequest == CommsReg)
+        switch (regRequest)
         {
-            /* Data copied into the mock spi output buffer to be transffered */
-            outputBuffer[0U] = adcCommsReg;  // only 1 byte
-        }
-        else
-        {
-            /* Data copied into the mock spi output buffer to be transffered */
-            memcpy(outputBuffer,
-                mx7705Adc[regRequest].data[GetChannel(adcCommsReg)],
-                mx7705Adc[regRequest].nBytes);
+            case CommsReg:
+                // Timer incremented each time spi is called for polling purposes
+                mockMillis += roundtripTime;
+                
+                printf("mockMillis %lu\n", mockMillis);
+
+                // conversion time is time taken to measure and convert voltage to data
+                if (mockMillis > conversionTime)
+                {
+                    // data has been converted so we can clear busy bit
+                    ClearCommsRegBusy(&adcCommsReg);
+                    // and put the ADC data into the data register
+                    UpdateDataRegAfterConversion(adcInput, GetChannel(adcCommsReg));
+                }
+                else
+                {
+                    // data not converted yet
+                    SetCommsRegBusy(&adcCommsReg);
+                }
+                /* Data copied into the mock spi output buffer to be transferred */
+                outputBuffer[0U] = adcCommsReg;  // only 1 byte
+                break;
+            case DataReg:
+                if (IsCommsRegBusy(&adcCommsReg))
+                {
+                    /* Data only copied into data register when conversion has 
+                     happened. */
+                    memcpy(outputBuffer,
+                        mx7705Adc[DataReg].data[GetChannel(adcCommsReg)],
+                        mx7705Adc[DataReg].nBytes);
+                }
+            default:
+                /* Data copied into the mock spi output buffer to be transffered
+                from the requested register. */
+                memcpy(outputBuffer,
+                    mx7705Adc[regRequest].data[GetChannel(adcCommsReg)],
+                    mx7705Adc[regRequest].nBytes);
+                break;
         }
     }
 }
@@ -245,7 +329,11 @@ TEST_GROUP(MX7705TestGroup)
         OpenSpiConnection_Callback = &SetupMockSpiConnection;
         CloseSpiConnection_Callback = &TeardownMockSpiConnection;
         
+        conversionTime = conversionTimeDefault;
+        roundtripTime = roundtripTimeDefault;
         mockReadError = false;
+
+        adcInput = 0U;
     }
 
     void teardown(void)
@@ -253,7 +341,7 @@ TEST_GROUP(MX7705TestGroup)
         mock().clear();
     }
 };
-
+#if 0
 // Test for initialising MX7705 device on channel 0.
 TEST(MX7705TestGroup, InitialiseMX7705ChannelZero)
 {
@@ -360,3 +448,54 @@ TEST(MX7705TestGroup, InitialiseMX7705ChannelOneVerifyFail)
     // check function calls
     mock().checkExpectations();
 }
+#endif
+#if 1
+/*
+ Read data on channel 1
+ */
+TEST(MX7705TestGroup, ReadDataCh1Ok)
+{
+    const uint8_t pinNum = 1U;
+    const uint8_t channel = 1U;
+    
+    // Mock calls to low level spi function
+    mock().expectOneCall("InitChipSelectPin")
+        .withParameter("pin", pinNum);
+    
+    MockForMX7705InitCh1();
+    
+    printf("comms reg %u\n", adcCommsReg);
+    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+    printf("clock reg %u\n", mx7705Adc[SetupReg].data[channel][0U]);
+
+    MX7705_Init(pinNum, channel);
+    // Initialise should be successful and no error raised
+    CHECK_EQUAL(false, MX7705_GetError()); 
+
+    printf("comms reg %u\n", adcCommsReg);
+    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+    printf("clock reg %u\n", mx7705Adc[SetupReg].data[channel][0U]);
+
+    // Mocks for calling read data function
+    mock().expectOneCall("millis");    
+    // Mocks for polling comms reg
+    for (int i = 0; i <= (conversionTime / roundtripTime); i++)
+    {
+        mock().expectOneCall("millis");    
+        MockForMX7705Write(MX7705_REQUEST_COMMS_READ_CH1);
+        MockForMX7705Read();        
+    }
+    // Mocks for reading data
+    MockForMX7705Write(MX7705_REQUEST_DATA_READ_CH1);
+    MockForMX7705Read16Bit();        
+    
+    // Set an input to the adc and call function under test
+    adcInput = 25667U;
+    CHECK_EQUAL(adcInput, MX7705_ReadData(channel));
+    // expect error condition due to measurement timeout
+    CHECK_EQUAL(false, MX7705_GetError()); 
+
+    // check function calls
+    mock().checkExpectations();
+}
+#endif
