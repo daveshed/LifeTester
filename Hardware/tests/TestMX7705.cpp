@@ -19,6 +19,12 @@
 #define MAX_REG_SIZE             (4U)  // max reg width in bytes
 #define BUFFER_SIZE              (16U) // mock spi buffer size in bytes 
 
+// default register contents
+#define COMMS_REG_DEFAULT        (0U)
+#define SETUP_REG_DEFAULT        (1U)
+#define CLOCK_REG_DEFAULT        (5U)
+#define DATA_REG_DEFAULT         (0U)
+
 /*
  Type holds all data contained in MX7705 i/o registers. Up to four channels are
  available however hardware implements two channels: one to read the current for
@@ -51,7 +57,10 @@ static uint8_t outputBuffer[BUFFER_SIZE];
 static uint8_t counter;
 
 // Used to mock read error for verification failure in init for example.
-bool mockReadError = false;
+static bool mockReadError = false;
+// Mocks timeout error - comms reg never sets ready status.
+static bool triggerTimeout;
+
 // Timing variables used to allow mock polling operations / busy bit control
 static const uint32_t conversionTimeDefault = 200U; //ms
 static const uint32_t roundtripTimeDefault = 30U; //ms
@@ -137,8 +146,10 @@ static void MockForMX7705DataReadCh1(void)
 // Mocks for polling comms reg ch0
 static void MockForMX7705PollingCh0(void)
 {
-    const int nPolls = conversionTime / roundtripTime;
-    const int nPollsTimeout = TIMEOUT_MS / roundtripTime;
+    const int nPolls = triggerTimeout ?
+        TIMEOUT_MS / roundtripTime:
+        conversionTime / roundtripTime;
+
     printf("\n\nnPolls = %u\n\n", nPolls);
 
     mock().expectOneCall("millis");    
@@ -147,7 +158,7 @@ static void MockForMX7705PollingCh0(void)
      Note that another poll is expected since we have a do while loop - poll
      happens before time is checked.
     */
-    for (int i = 0; (i <= nPolls + 1) && (i <= nPollsTimeout + 1); i++)
+    for (int i = 0; (i <= nPolls + 1); i++)
     {
         mock().expectOneCall("millis");    
         MockForMX7705Write(MX7705_REQUEST_COMMS_READ_CH0);
@@ -158,8 +169,10 @@ static void MockForMX7705PollingCh0(void)
 // Mocks for polling comms reg ch1
 static void MockForMX7705PollingCh1(void)
 {
-    const int nPolls = conversionTime / roundtripTime;
-    const int nPollsTimeout = TIMEOUT_MS / roundtripTime;
+    const int nPolls = triggerTimeout ?
+        TIMEOUT_MS / roundtripTime:
+        conversionTime / roundtripTime;
+
     printf("\n\nnPolls = %u\n\n", nPolls);
 
     mock().expectOneCall("millis");    
@@ -168,7 +181,7 @@ static void MockForMX7705PollingCh1(void)
      Note that another poll is expected since we have a do while loop - poll
      happens before time is checked.
     */
-    for (int i = 0; (i <= nPolls + 1) && (i <= nPollsTimeout + 1); i++)
+    for (int i = 0; (i <= nPolls + 1); i++)
     {
         mock().expectOneCall("millis");    
         MockForMX7705Write(MX7705_REQUEST_COMMS_READ_CH1);
@@ -204,13 +217,6 @@ static void ResetMockSpiBuffers(void)
 static RegisterSelection_t GetRequestedRegister(CommsRegister_t reg)
 {
     return (RegisterSelection_t)((reg >> REG_SELECT_OFFSET) & REG_SELECT_MASK);
-}
-
-// Triggers a timeout error by increasing the conversion time beyond timeout.
-static void TriggerTimeoutError(void)
-{
-    // Increase conversion time to be longer than timeout
-    conversionTime = conversionTimeDefault + TIMEOUT_MS;
 }
 
 // Gets read or write op request from the comms reg data
@@ -342,7 +348,7 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
                 printf("mockMillis %lu elapsedTime %u\n", mockMillis, elapsedTime);
 
                 // conversion time is time taken to measure and convert voltage to data
-                if (elapsedTime > conversionTime)
+                if ((elapsedTime > conversionTime) && !triggerTimeout)
                 {
                     // data has been converted so we can clear busy bit
                     ClearCommsRegBusy(&adcCommsReg);
@@ -402,6 +408,7 @@ TEST_GROUP(MX7705TestGroup)
         conversionTime = conversionTimeDefault;
         roundtripTime = roundtripTimeDefault;
         mockReadError = false;
+        triggerTimeout = false;
 
         adcInput = 0U;
     }
@@ -594,8 +601,53 @@ TEST(MX7705TestGroup, ReadDataChOneOkPollingDrdyBit)
 }
 
 /*
- Read data on channel 1. Trigger timeout error by increasing the conversion time.
- Expect raise error condition.
+ Read data on channel 0. Trigger timeout error by using flag. Stops DRDY bit 
+ changing to data ready. Expect raise error condition.
+ */
+TEST(MX7705TestGroup, ReadDataChZeroPollingTimeoutErrorCondition)
+{
+    const uint8_t pinNum = 1U;
+    const uint8_t channel = 0U;
+    
+    // Mock calls to low level spi function
+    mock().expectOneCall("InitChipSelectPin")
+        .withParameter("pin", pinNum);
+    
+    MockForMX7705InitCh0();
+    
+    MX7705_Init(pinNum, channel);
+    // Initialise should be successful and no error raised
+    CHECK_EQUAL(false, MX7705_GetError()); 
+
+    // mock input
+    adcInput = 2456U;
+    
+    // Set timout error flag
+    triggerTimeout = true;
+    
+    // Mock/expects function calls
+    MockForMX7705PollingCh0();
+    
+    // Check data register is not changed by reading data due to timeout error
+    const uint16_t dataToExpect = 
+        (mx7705Adc[DataReg].data[channel][0U] << 8U)
+        | mx7705Adc[DataReg].data[channel][0U];
+
+    // Call funtion under test and record as actual data
+    const uint16_t dataActual = MX7705_ReadData(channel);
+    
+    // compare expected and actual data
+    CHECK_EQUAL(dataToExpect, dataActual);
+    // expect error condition due to measurement timeout
+    CHECK_EQUAL(true, MX7705_GetError());     
+
+    // check function calls
+    mock().checkExpectations();
+}
+
+/*
+ Read data on channel 0. Trigger timeout error by using flag. Stops DRDY bit 
+ changing to data ready. Expect raise error condition.
  */
 TEST(MX7705TestGroup, ReadDataChOnePollingTimeoutErrorCondition)
 {
@@ -612,19 +664,84 @@ TEST(MX7705TestGroup, ReadDataChOnePollingTimeoutErrorCondition)
     // Initialise should be successful and no error raised
     CHECK_EQUAL(false, MX7705_GetError()); 
 
+    // mock input
     adcInput = 2456U;
-    TriggerTimeoutError();
+    
+    // Set timout error flag
+    triggerTimeout = true;
+    
     // Mock/expects function calls
     MockForMX7705PollingCh1();
-    // Check data register is not changed
+    
+    // Check data register is not changed by reading data due to timeout error
     const uint16_t dataToExpect = 
         (mx7705Adc[DataReg].data[channel][0U] << 8U)
         | mx7705Adc[DataReg].data[channel][0U];
 
+    // Call funtion under test and record as actual data
     const uint16_t dataActual = MX7705_ReadData(channel);
+    
+    // compare expected and actual data
     CHECK_EQUAL(dataToExpect, dataActual);
     // expect error condition due to measurement timeout
     CHECK_EQUAL(true, MX7705_GetError());     
+
+    // check function calls
+    mock().checkExpectations();
+}
+
+// Test for getting and setting gain on channel 1.
+TEST(MX7705TestGroup, SetGetGainMX7705ChannelOne)
+{
+    const uint8_t pinNum = 1U;
+    const uint8_t channel = 1U;
+    
+    // Mock calls to low level spi function
+    mock().expectOneCall("InitChipSelectPin")
+        .withParameter("pin", pinNum);
+    
+    MockForMX7705InitCh1();
+    
+    MX7705_Init(pinNum, channel);
+
+    // Mocks for calling get gain
+    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
+    MockForMX7705Read();
+
+    // Read the initial gain. Should be same as defualt value 
+    uint8_t setupReg = mx7705Adc[SetupReg].data[channel][0U];
+    uint8_t gainActual = MX7705_GetGain(channel);
+    uint8_t gainExpected = (setupReg >> PGA_OFFSET) & PGA_MASK;
+    printf("gain %u\n", gainActual);
+    CHECK_EQUAL(gainExpected, gainActual);
+
+    // mocks for calling set gain
+    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
+    MockForMX7705Read();
+    MockForMX7705Write(MX7705_REQUEST_SETUP_WRITE_CH1);
+    uint8_t newSetupReg = mx7705Adc[SetupReg].data[channel][0U];
+    printf("newSetupReg %u\n", newSetupReg);
+    // clear PGA bits
+    newSetupReg &= ~(PGA_MASK << PGA_OFFSET);
+    printf("newSetupReg %u\n", newSetupReg);
+    // write in the new gain
+    gainExpected++;
+    newSetupReg |= (gainExpected & PGA_MASK) << PGA_OFFSET;
+    printf("newSetupReg %u\n", newSetupReg);
+    MockForMX7705Write(newSetupReg);
+
+    // Call to set gain
+    MX7705_SetGain(gainExpected, channel);
+    
+    // Now call get gain again to check that the gain has actually been written.
+
+    // Mocks for calling get gain
+    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
+    MockForMX7705Read();
+
+    gainActual = MX7705_GetGain(channel);
+    printf("gain %u\n", gainActual);
+    CHECK_EQUAL(gainExpected, gainActual);
 
     // check function calls
     mock().checkExpectations();
