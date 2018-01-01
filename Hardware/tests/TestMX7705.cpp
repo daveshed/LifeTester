@@ -422,7 +422,7 @@ TEST_GROUP(MX7705TestGroup)
 /*
  Test for initialising MX7705 device on channel 0. 
  */
-TEST(MX7705TestGroup, InitialiseMX7705ChannelZero)
+TEST(MX7705TestGroup, InitialiseAdcChannelZero)
 {
     const uint8_t pinNum = 1U;
     const uint8_t channel = 0U;
@@ -458,7 +458,7 @@ TEST(MX7705TestGroup, InitialiseMX7705ChannelZero)
 }
 
 // Test for initialising MX7705 device on channel 1.
-TEST(MX7705TestGroup, InitialiseMX7705ChannelOne)
+TEST(MX7705TestGroup, InitialiseAdcChannelOne)
 {
     const uint8_t pinNum = 1U;
     const uint8_t channel = 1U;
@@ -497,7 +497,7 @@ TEST(MX7705TestGroup, InitialiseMX7705ChannelOne)
  Test for initialising MX7705 device on channel 1. Error condition is raised
  because there is a failure to verify data stored in setup reg.
  */
-TEST(MX7705TestGroup, InitialiseMX7705ChannelOneVerifyFail)
+TEST(MX7705TestGroup, InitialiseAdcChannelOneVerifyFail)
 {
     const uint8_t pinNum = 1U;
     const uint8_t channel = 1U;
@@ -691,7 +691,7 @@ TEST(MX7705TestGroup, ReadDataChOnePollingTimeoutErrorCondition)
 }
 
 // Test for getting and setting gain on channel 1.
-TEST(MX7705TestGroup, SetGetGainMX7705ChannelOne)
+TEST(MX7705TestGroup, SetGetGainChannelOne)
 {
     const uint8_t pinNum = 1U;
     const uint8_t channel = 1U;
@@ -708,27 +708,24 @@ TEST(MX7705TestGroup, SetGetGainMX7705ChannelOne)
     MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
     MockForMX7705Read();
 
-    // Read the initial gain. Should be same as defualt value 
-    uint8_t setupReg = mx7705Adc[SetupReg].data[channel][0U];
+    // Read the initial gain. Should match the settings stored in the setup reg
+    const uint8_t setupRegInitial = mx7705Adc[SetupReg].data[channel][0U];
     uint8_t gainActual = MX7705_GetGain(channel);
-    uint8_t gainExpected = (setupReg >> PGA_OFFSET) & PGA_MASK;
-    printf("gain %u\n", gainActual);
+    uint8_t gainExpected = (setupRegInitial >> PGA_OFFSET) & PGA_MASK;
     CHECK_EQUAL(gainExpected, gainActual);
 
+    // Work out the expected setup register after changing gain.
+    uint8_t setupRegExpected = setupRegInitial;
+    // clear PGA bits
+    setupRegExpected &= ~(PGA_MASK << PGA_OFFSET);
+    // write in the new gain
+    gainExpected++;
+    setupRegExpected |= (gainExpected & PGA_MASK) << PGA_OFFSET;
     // mocks for calling set gain
     MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
     MockForMX7705Read();
     MockForMX7705Write(MX7705_REQUEST_SETUP_WRITE_CH1);
-    uint8_t newSetupReg = mx7705Adc[SetupReg].data[channel][0U];
-    printf("newSetupReg %u\n", newSetupReg);
-    // clear PGA bits
-    newSetupReg &= ~(PGA_MASK << PGA_OFFSET);
-    printf("newSetupReg %u\n", newSetupReg);
-    // write in the new gain
-    gainExpected++;
-    newSetupReg |= (gainExpected & PGA_MASK) << PGA_OFFSET;
-    printf("newSetupReg %u\n", newSetupReg);
-    MockForMX7705Write(newSetupReg);
+    MockForMX7705Write(setupRegExpected);
 
     // Call to set gain
     MX7705_SetGain(gainExpected, channel);
@@ -739,9 +736,58 @@ TEST(MX7705TestGroup, SetGetGainMX7705ChannelOne)
     MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
     MockForMX7705Read();
 
+    // check the gain returned matches gain requested
     gainActual = MX7705_GetGain(channel);
-    printf("gain %u\n", gainActual);
     CHECK_EQUAL(gainExpected, gainActual);
+
+    // check that the setup register matches expectations
+    const uint8_t setupRegActual = mx7705Adc[SetupReg].data[channel][0U];
+    CHECK_EQUAL(setupRegExpected, setupRegActual);
+
+    // check function calls
+    mock().checkExpectations();
+}
+
+
+/*
+ Test for getting and setting gain on channel 1 outside allowed range. Maximum
+ allowed gain setting is 7. Here we set to 8. Gain should not change. Command
+ is ignored.
+*/
+TEST(MX7705TestGroup, SetGetGainOutsideRangeCommandIgnoredChannelOne)
+{
+    const uint8_t pinNum = 1U;
+    const uint8_t channel = 1U;
+    
+    // Mock calls to low level spi function
+    mock().expectOneCall("InitChipSelectPin")
+        .withParameter("pin", pinNum);
+    
+    MockForMX7705InitCh1();
+    
+    MX7705_Init(pinNum, channel);
+
+    // Get the gain and setup reg data to begin with...
+    // Mocks for calling get gain
+    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
+    MockForMX7705Read();
+    const uint8_t setupRegInitial = mx7705Adc[SetupReg].data[channel][0U];
+    const uint8_t gainInitial = MX7705_GetGain(channel);
+
+    // now request gain outside range
+    const uint8_t gainRequested = PGA_MASK + 1U;
+    MX7705_SetGain(gainRequested, channel);
+    
+    // Get the gain and setup reg data again to compare against...
+    // Mocks for calling get gain
+    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
+    MockForMX7705Read();
+    // check the gain returned matches gain requested
+    const uint8_t setupRegFinal = mx7705Adc[SetupReg].data[channel][0U];
+    const uint8_t gainFinal = MX7705_GetGain(channel);
+
+    CHECK_EQUAL(gainFinal, gainInitial);
+    CHECK_EQUAL(setupRegFinal, setupRegInitial);
 
     // check function calls
     mock().checkExpectations();

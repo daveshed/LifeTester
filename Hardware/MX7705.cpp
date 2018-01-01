@@ -143,8 +143,8 @@ uint16_t MX7705_ReadData(const uint8_t channel)
   
   do
   {
-    //polling DRDYpin bit of comms register waiting for measurement to finish    
-    //DRDY = 0/1 measurement not/is ready
+    // polling DRDYpin bit of comms register waiting for measurement to finish    
+    // DRDY = 0 is ready / 1 not ready
     toc = millis();
     timeout = ((toc - tic) > TIMEOUT_MS);
     //select read of comms register
@@ -152,6 +152,8 @@ uint16_t MX7705_ReadData(const uint8_t channel)
     commsRegister = MX7705_ReadByte();
     pollCount++;
     //bit 7 of comms register
+    printf("Polling...drdy %u timeout %u (toc - tic) %u\n",
+        bitRead(commsRegister, 7), timeout, (toc - tic));
   } while (bitRead(commsRegister, 7) && !timeout);
 
 #if DEBUG

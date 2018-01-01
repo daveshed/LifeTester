@@ -15,6 +15,7 @@
 #define CH1_BIT                 (1U)
 #define CH_SELECT_MASK          (3U)
 #define RW_SELECT_OFFSET        (3U)
+#define DRDY_BIT                (7U)
 
 // Setup Reg
 #define FSYNC_BIT               (0U)
