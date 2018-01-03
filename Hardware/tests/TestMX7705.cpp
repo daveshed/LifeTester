@@ -24,6 +24,17 @@
 #define SETUP_REG_DEFAULT        (1U)
 #define CLOCK_REG_DEFAULT        (5U)
 #define DATA_REG_DEFAULT         (0U)
+#define COMMS_REG_BYTES          (1U)
+#define SETUP_REG_BYTES          (1U)
+#define CLOCK_REG_BYTES          (1U)
+#define DATA_REG_BYTES           (2U)
+
+// Useful initialiser - note that this is only valid when there are 4 channels
+#if (MAX_CHANNELS == 4)
+    #define IO_REG_INIT(data, n)     {{{data}, {data}, {data}, {data}}, n}
+#else
+    #error "Register initialised with incompatible number of channels."
+#endif
 
 /*
  Type holds all data contained in MX7705 i/o registers. Up to four channels are
@@ -35,8 +46,8 @@
  all possible channels.
 */
 typedef struct IoRegister_s {
-    uint8_t data[MAX_CHANNELS][MAX_REG_SIZE];
-    uint8_t nBytes; //TODO make this const
+    uint8_t       data[MAX_CHANNELS][MAX_REG_SIZE];
+    const uint8_t nBytes;
 } IoRegister_t;
 
 // There is only one comms register which is one byte wide.
@@ -45,10 +56,16 @@ typedef uint8_t CommsRegister_t;
 /*
  Create Adc variables to hold all registers relating to the MX7705. Note that 
  the comms register is a separate type. Do not access mx7705Adc[CommsReg]. The
- data here is the wrong type. adcCommsReg is for this purpose.
+ data here is the wrong type. adcCommsReg is for this purpose. Because nBytes
+ is a const, we need to initialise with data here.
  */
 static CommsRegister_t adcCommsReg;
-static IoRegister_t    mx7705Adc[NumberOfEntries];
+static IoRegister_t    mx7705Adc[NumberOfEntries] = 
+        { {0U},       // CommsReg - placeholder don't use this
+          {{0U}, 1U}, // SetupReg
+          {{0U}, 1U}, // ClockReg
+          {{0U}, 2U}, // DataReg
+        };  // other elements will be initialised to 0U.
 
 /* Mock spi buffers used in transferring data
 TODO: move to mockSpiState defined in MockSpiCommon.cpp */
@@ -189,16 +206,31 @@ static void MockForMX7705PollingCh1(void)
     }
 }    
 
+static void SetAdcRegData(IoRegister_t *adc, RegisterSelection_t reg, uint8_t channel, uint32_t val)
+{
+    // MSB first
+    const uint8_t regData[MAX_REG_SIZE] =
+        {
+            (val >> 24U) & 0xFF,
+            (val >> 16U) & 0xFF,
+            (val >> 8U) & 0xFF,
+            val & 0xFF,
+        };
+    memcpy(adc[reg].data[channel], regData, MAX_REG_SIZE * sizeof(uint8_t));
+}
+
+
 // Initialises the adc registers with default data from the datasheet.
 static void InitAdcRegsData(void)
 {
-    adcCommsReg = 0U;
+    adcCommsReg = COMMS_REG_DEFAULT;
+
     // Taken from MX7705 data sheet - see table 7 register selection
     const IoRegister_t initData[NumberOfEntries] = 
-        { {0U},                           // CommsReg - placeholder don't use this
-          {{{1U}, {1U}, {1U}, {1U}}, 1U}, // SetupReg
-          {{{5U}, {5U}, {5U}, {5U}}, 1U}, // ClockReg
-          {{{0U}, {0U}, {0U}, {0U}}, 2U}, // DataReg
+        { {0U},                // CommsReg - placeholder don't use this
+          IO_REG_INIT(1U, 1U), // SetupReg
+          IO_REG_INIT(5U, 1U),  // ClockReg
+          IO_REG_INIT(0U, 1U), // DataReg
         };  // other elements will be initialised to 0U.
 
     // TODO: four channels initialised but what if the number changes
@@ -216,7 +248,7 @@ static void ResetMockSpiBuffers(void)
 // Gets the requested register from comms reg data
 static RegisterSelection_t GetRequestedRegister(CommsRegister_t reg)
 {
-    return (RegisterSelection_t)((reg >> REG_SELECT_OFFSET) & REG_SELECT_MASK);
+    return (RegisterSelection_t) bitExtract(reg, REG_SELECT_MASK, REG_SELECT_OFFSET);
 }
 
 // Gets read or write op request from the comms reg data
@@ -320,8 +352,6 @@ static void TeardownMockSpiConnection(const SpiSettings_t *settings)
 // Loads data into the spi output buffer if a read is requested in the comms reg
 static void SetupMockSpiConnection(const SpiSettings_t *settings)
 {
-    // static uint32_t elapsedTime = 0U;  // timer to keep track over data conversion
-    
     CheckSpiSettings(settings);
     ResetMockSpiBuffers();
 
@@ -711,16 +741,15 @@ TEST(MX7705TestGroup, SetGetGainChannelOne)
     // Read the initial gain. Should match the settings stored in the setup reg
     const uint8_t setupRegInitial = mx7705Adc[SetupReg].data[channel][0U];
     uint8_t gainActual = MX7705_GetGain(channel);
-    uint8_t gainExpected = (setupRegInitial >> PGA_OFFSET) & PGA_MASK;
+    uint8_t gainExpected = bitExtract(setupRegInitial, PGA_MASK, PGA_OFFSET);
     CHECK_EQUAL(gainExpected, gainActual);
 
     // Work out the expected setup register after changing gain.
     uint8_t setupRegExpected = setupRegInitial;
-    // clear PGA bits
-    setupRegExpected &= ~(PGA_MASK << PGA_OFFSET);
-    // write in the new gain
+    // increment gain to be written back into the setup reg.
     gainExpected++;
-    setupRegExpected |= (gainExpected & PGA_MASK) << PGA_OFFSET;
+    // write in the new gain
+    bitInsert(setupRegExpected, gainExpected, PGA_MASK, PGA_OFFSET);
     // mocks for calling set gain
     MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
     MockForMX7705Read();

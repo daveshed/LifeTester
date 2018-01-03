@@ -13,9 +13,7 @@ SpiSettings_t mx7705SpiSettings = {
 
 static bool MX7705_errorCondition = false;
 
-/*
- * function to send a byte over SPI to the MX7705
- */
+// Sends a single byte over SPI to the MX7705
 static void MX7705_Write(uint8_t sendByte)
 { 
   OpenSpiConnection(&mx7705SpiSettings);
@@ -30,16 +28,12 @@ static void MX7705_Write(uint8_t sendByte)
   CloseSpiConnection(&mx7705SpiSettings);
 }
 
-/*
- * Function to read a single byte from the MX7705
- */
+// Reads a single byte from the MX7705 over SPI
 static uint8_t MX7705_ReadByte(void)
 {
-  uint8_t readByte = 0u;
-  
   OpenSpiConnection(&mx7705SpiSettings);
   
-  readByte = SpiTransferByte(0u);
+  const uint8_t readByte = SpiTransferByte(0u);
   
   #if DEBUG
     Serial.print("MX7705: Data received... ");
@@ -51,7 +45,7 @@ static uint8_t MX7705_ReadByte(void)
   return readByte;
 }
 
-// Reads a uint16_t over spi. Used in reading data
+// Reads a uint16_t over spi. Used in reading data following voltage conversion.
 static uint16_t MX7705_Read16Bit(void)
 {
   OpenSpiConnection(&mx7705SpiSettings);
@@ -71,11 +65,13 @@ static uint16_t MX7705_Read16Bit(void)
 }
 
 #ifndef UNIT_TEST
+/*
+ Sending clock pulses from pin3 at 1MHz to ADC
+ see http://forum.arduino.cc/index.php?topic=22384.0
+*/
 static void InitClockOuput(uint8_t pin)
 {
     pinMode(PWMout, OUTPUT);
-    //sending clock pulses from pin3 at 1MHz to ADC
-    //see http://forum.arduino.cc/index.php?topic=22384.0
     TCCR2A = 0xB3; // fast PWM with programmed TOP val
     TCCR2B = 0x09; // divide by 1 prescale
     TCNT2  = 0x00;

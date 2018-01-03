@@ -117,6 +117,10 @@ void yield(void);
 #define bitSet(value, bit) ((value) |= (1UL << (bit)))
 #define bitClear(value, bit) ((value) &= ~(1UL << (bit)))
 #define bitWrite(value, bit, bitvalue) (bitvalue ? bitSet(value, bit) : bitClear(value, bit))
+#define bitDelete(value, mask, offset) (value &= ~(mask << offset))
+#define bitInsert(value, insert, mask, offset) \
+  (bitDelete(value, mask, offset) |= (insert & mask) << offset)
+#define bitExtract(value, mask, offset) ((value >> offset) & mask) // reads out several bits
 
 // avr-libc defines _NOP() since 1.6.2
 #ifndef _NOP
