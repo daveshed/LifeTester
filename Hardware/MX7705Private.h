@@ -14,6 +14,7 @@
 #define CH0_BIT                 (0U)
 #define CH1_BIT                 (1U)
 #define CH_SELECT_MASK          (3U)
+#define CH_SELECT_OFFSET        (0U)
 #define RW_SELECT_OFFSET        (3U)
 #define DRDY_BIT                (7U)
 

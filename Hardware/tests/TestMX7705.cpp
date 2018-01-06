@@ -45,27 +45,14 @@
  Note that a single register can be 8, 16 or 24 bits wide and must have space for
  all possible channels.
 */
-typedef struct IoRegister_s {
-    uint8_t       data[MAX_CHANNELS][MAX_REG_SIZE];
-    const uint8_t nBytes;
-} IoRegister_t;
+typedef struct AdcIoRegisters_s {
+    uint8_t commsReg;
+    uint8_t setupReg;
+    uint8_t clockReg;
+    uint16_t dataReg[MAX_CHANNELS];
+} AdcIoRegisters_t;
 
-// There is only one comms register which is one byte wide.
-typedef uint8_t CommsRegister_t;
-
-/*
- Create Adc variables to hold all registers relating to the MX7705. Note that 
- the comms register is a separate type. Do not access mx7705Adc[CommsReg]. The
- data here is the wrong type. adcCommsReg is for this purpose. Because nBytes
- is a const, we need to initialise with data here.
- */
-static CommsRegister_t adcCommsReg;
-static IoRegister_t    mx7705Adc[NumberOfEntries] = 
-        { {0U},       // CommsReg - placeholder don't use this
-          {{0U}, 1U}, // SetupReg
-          {{0U}, 1U}, // ClockReg
-          {{0U}, 2U}, // DataReg
-        };  // other elements will be initialised to 0U.
+static AdcIoRegisters_t mx7705Adc; 
 
 /* Mock spi buffers used in transferring data
 TODO: move to mockSpiState defined in MockSpiCommon.cpp */
@@ -85,7 +72,7 @@ static uint32_t conversionTime;
 static uint32_t roundtripTime;
 static uint32_t elapsedTime; // timer to keep track of data conversion
 
-static uint16_t adcInput; // analog voltage converted to digital
+static uint16_t adcInput; // analog voltage converted to digital data
 /*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
@@ -206,35 +193,17 @@ static void MockForMX7705PollingCh1(void)
     }
 }    
 
-static void SetAdcRegData(IoRegister_t *adc, RegisterSelection_t reg, uint8_t channel, uint32_t val)
-{
-    // MSB first
-    const uint8_t regData[MAX_REG_SIZE] =
-        {
-            (val >> 24U) & 0xFF,
-            (val >> 16U) & 0xFF,
-            (val >> 8U) & 0xFF,
-            val & 0xFF,
-        };
-    memcpy(adc[reg].data[channel], regData, MAX_REG_SIZE * sizeof(uint8_t));
-}
-
-
 // Initialises the adc registers with default data from the datasheet.
 static void InitAdcRegsData(void)
 {
-    adcCommsReg = COMMS_REG_DEFAULT;
+    const AdcIoRegisters_t adcInit = {
+        COMMS_REG_DEFAULT,
+        SETUP_REG_DEFAULT,
+        CLOCK_REG_DEFAULT,
+        {DATA_REG_DEFAULT, DATA_REG_DEFAULT, DATA_REG_DEFAULT, DATA_REG_DEFAULT}
+    };
 
-    // Taken from MX7705 data sheet - see table 7 register selection
-    const IoRegister_t initData[NumberOfEntries] = 
-        { {0U},                // CommsReg - placeholder don't use this
-          IO_REG_INIT(1U, 1U), // SetupReg
-          IO_REG_INIT(5U, 1U),  // ClockReg
-          IO_REG_INIT(0U, 1U), // DataReg
-        };  // other elements will be initialised to 0U.
-
-    // TODO: four channels initialised but what if the number changes
-    memcpy(mx7705Adc, initData, (sizeof(IoRegister_t) * NumberOfEntries));
+    mx7705Adc = adcInit;
 }
 
 // reset the buffers and counter
@@ -246,21 +215,21 @@ static void ResetMockSpiBuffers(void)
 }
 
 // Gets the requested register from comms reg data
-static RegisterSelection_t GetRequestedRegister(CommsRegister_t reg)
+static RegisterSelection_t GetRequestedRegister(uint8_t commsReg)
 {
-    return (RegisterSelection_t) bitExtract(reg, REG_SELECT_MASK, REG_SELECT_OFFSET);
+    return (RegisterSelection_t) bitExtract(commsReg, REG_SELECT_MASK, REG_SELECT_OFFSET);
 }
 
 // Gets read or write op request from the comms reg data
-static bool IsReadOp(CommsRegister_t reg)
+static bool IsReadOp(uint8_t commsReg)
 {
-    return bitRead(adcCommsReg, RW_SELECT_OFFSET);   
+    return bitRead(commsReg, RW_SELECT_OFFSET);   
 }
 
 // Get the channel index from the comms reg data 
-static uint8_t GetChannel(CommsRegister_t reg)
+static uint8_t GetChannel(uint8_t commsReg)
 {
-    return adcCommsReg & CH_SELECT_MASK;
+    return bitExtract(commsReg, CH_SELECT_MASK, CH_SELECT_OFFSET);
 }
 
 // Checks the contets of the spi settings data agrees with private data
@@ -285,32 +254,65 @@ static uint8_t TransferMockSpiData(uint8_t byteReceived)
     return retVal;
 }
 
+/*
+ Loads data (digital converted voltage) in the adc object from the selected 
+ channel (comms register) into the output buffer. 
+*/
+static void LoadAdcDataIntoByteBuf(uint8_t *buf, AdcIoRegisters_t *adc)
+{
+    const uint16_t adcData = adc->dataReg[GetChannel(adc->commsReg)]; 
+    const uint8_t  msb = (adcData >> 8U) & 0xFF;
+    const uint8_t  lsb = adcData & 0xFF;
+
+    buf[0U] = msb;
+    buf[1U] = lsb;
+}
+
 // sets DRDY -> 1 meaning busy
-static void SetCommsRegBusy(CommsRegister_t *reg)
+static void SetCommsRegBusy(uint8_t *commsReg)
 {
     printf("Comms busy\n");
-    bitSet(*reg, DRDY_BIT);
+    bitSet(*commsReg, DRDY_BIT);
 }
 
 // sets DRDY -> 0 meaning ready
-static void ClearCommsRegBusy(CommsRegister_t *reg)
+static void ClearCommsRegBusy(uint8_t *commsReg)
 {
     printf("Comms ready\n");
-    bitClear(*reg, DRDY_BIT);
+    bitClear(*commsReg, DRDY_BIT);
 }
 
-static bool IsCommsRegBusy(CommsRegister_t *reg)
+// Returns the busy status of the comms register
+static bool IsCommsRegBusy(uint8_t *commsReg)
 {
-    return !bitRead(*reg, DRDY_BIT);
+    return bitRead(*commsReg, DRDY_BIT);
 }
 
-// Converts a uint16_t into uint8_t's and loads into data register of adc
-static void UpdateDataRegAfterConversion(uint16_t dataToLoad, uint8_t channel)
+/*
+ Manages the data register of the adc depending on the time that has elapsed
+ since the last measurement. Only when the elapsed time exceeds the conversion
+ time do we need to update the register with new data and reset the timer.
+*/
+static void UpdateMeasurementStatus(void)
 {
-    const uint8_t msb = (dataToLoad >> 8U) & 0xFF;
-    const uint8_t lsb = dataToLoad & 0xFF;
-    mx7705Adc[DataReg].data[channel][0U] = msb;
-    mx7705Adc[DataReg].data[channel][1U] = lsb;
+    // conversion time is time taken to measure and convert voltage to data
+    if ((elapsedTime > conversionTime) && !triggerTimeout)
+    {
+        // data has been converted so we can clear busy bit
+        ClearCommsRegBusy(&mx7705Adc.commsReg);
+        // and put the ADC data into the data register
+        mx7705Adc.dataReg[GetChannel(mx7705Adc.commsReg)] = adcInput;
+        // reset timer to prepare for the next measurement
+        elapsedTime = 0U;
+    }
+    else
+    {
+        // Timers incremented each time spi is called for polling purposes
+        mockMillis += roundtripTime;  // time returned to source code from calls to millis()
+        elapsedTime += roundtripTime; // timer for updating data register.
+        // data not converted yet
+        SetCommsRegBusy(&mx7705Adc.commsReg);
+    }
 }
 
 // write the data from the input buffer into the io registers
@@ -318,33 +320,50 @@ static void TeardownMockSpiConnection(const SpiSettings_t *settings)
 {
     CheckSpiSettings(settings);
 
-    const RegisterSelection_t regRequest = GetRequestedRegister(adcCommsReg);
+    const RegisterSelection_t regRequest = 
+        GetRequestedRegister(mx7705Adc.commsReg);
 
-    if (IsReadOp(adcCommsReg))
+    if (IsReadOp(mx7705Adc.commsReg))
     {
         // Command done so reset the register.
-        adcCommsReg = 0U;
+        mx7705Adc.commsReg = 0U;
     }
     else //writeop, then data is copied into the relevant reg from inputBuffer
     {
-        if (regRequest == CommsReg)
+        switch (regRequest)
         {
-            /*write requested into comms reg - copy from bytes captured in the
-            mock spi input buffer*/
-            adcCommsReg = inputBuffer[0U];
+            case CommsReg:
+                /*
+                 Write requested into comms reg - copy from bytes captured in the
+                 mock spi input buffer
+                 Is this accurate. If several bytes are written what will end up in the comms reg?
+                */
+                mx7705Adc.commsReg = inputBuffer[0U]; 
 
-            // No need to reset the register as we've just written in a command.
-        }
-        else 
-        {
-            /*write requested into other reg - copy from bytes captured in the
-            mock spi input buffer*/
-            memcpy(mx7705Adc[regRequest].data[GetChannel(adcCommsReg)],
-                inputBuffer,
-                mx7705Adc[regRequest].nBytes);
-            
-            // Command done so reset the register.
-            adcCommsReg = 0U;
+                // No need to reset the register as we've just written in a command.
+                break;
+            case SetupReg:
+                /*write requested into other reg - copy from byte(s) captured in the
+                mock spi input buffer*/
+                mx7705Adc.setupReg = inputBuffer[0U];
+                // Command done so reset the register.
+                mx7705Adc.commsReg = 0U;
+                break;
+            case ClockReg:
+                mx7705Adc.clockReg = inputBuffer[0U];
+                // Command done so reset the register.
+                mx7705Adc.commsReg = 0U;
+                break;
+            case DataReg:
+                // You can write to the data register but this is ignored.
+                mx7705Adc.dataReg[GetChannel(mx7705Adc.commsReg)] = 
+                    (uint16_t)((inputBuffer[0U] << 8U) | inputBuffer[1U]);
+                // Command done so reset the register.
+                mx7705Adc.commsReg = 0U;
+                break;
+            default:
+                FAIL("Register request not implemented.");
+                break;
         }
     }
 }
@@ -355,9 +374,9 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
     CheckSpiSettings(settings);
     ResetMockSpiBuffers();
 
-    const RegisterSelection_t regRequest = GetRequestedRegister(adcCommsReg);
+    const RegisterSelection_t regRequest = GetRequestedRegister(mx7705Adc.commsReg);
     printf("regRequest = %u channel = %u\n",
-        (unsigned int)regRequest, GetChannel(adcCommsReg));
+        (unsigned int)regRequest, GetChannel(mx7705Adc.commsReg));
 
     /* 
      If it's a readOp, then load data into the required spi output buffer. 
@@ -369,7 +388,7 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
      Read error is mocked by preventing data being copied into spi output.
      */
 
-    if (IsReadOp(adcCommsReg) && !mockReadError)
+    if (IsReadOp(mx7705Adc.commsReg) && !mockReadError)
     {
         switch (regRequest)
         {
@@ -377,42 +396,32 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
                 
                 printf("mockMillis %lu elapsedTime %u\n", mockMillis, elapsedTime);
 
-                // conversion time is time taken to measure and convert voltage to data
-                if ((elapsedTime > conversionTime) && !triggerTimeout)
-                {
-                    // data has been converted so we can clear busy bit
-                    ClearCommsRegBusy(&adcCommsReg);
-                    // and put the ADC data into the data register
-                    UpdateDataRegAfterConversion(adcInput, GetChannel(adcCommsReg));
-                    // reset timer to prepare for the next measurement
-                    elapsedTime = 0U;
-                }
-                else
-                {
-                    // Timer incremented each time spi is called for polling purposes
-                    mockMillis += roundtripTime;
-                    elapsedTime += roundtripTime;
-                    // data not converted yet
-                    SetCommsRegBusy(&adcCommsReg);
-                }
+                // Increment timers and update data register if needed.
+                UpdateMeasurementStatus();
+
                 /* Data copied into the mock spi output buffer to be transferred */
-                outputBuffer[0U] = adcCommsReg;  // only 1 byte
+                outputBuffer[0U] = mx7705Adc.commsReg;  // only 1 byte
                 break;
             case DataReg:
-                if (IsCommsRegBusy(&adcCommsReg))
+                /*
+                 Data only copied from data register when conversion has
+                 happened. This is signalled by the the DRDY bit in the comms reg.
+                 */
+                if (!IsCommsRegBusy(&mx7705Adc.commsReg))
                 {
-                    /* Data only copied into data register when conversion has 
-                     happened. */
-                    memcpy(outputBuffer,
-                        mx7705Adc[DataReg].data[GetChannel(adcCommsReg)],
-                        mx7705Adc[DataReg].nBytes);
+                    LoadAdcDataIntoByteBuf(outputBuffer, &mx7705Adc);
                 }
+                // otherwise adc is busy and there's no data to read.
+                break;
+            case SetupReg:
+                outputBuffer[0U] = mx7705Adc.setupReg;
+                break;
+            case ClockReg:
+                outputBuffer[0U] = mx7705Adc.clockReg;
+                break;
             default:
-                /* Data copied into the mock spi output buffer to be transffered
-                from the requested register. */
-                memcpy(outputBuffer,
-                    mx7705Adc[regRequest].data[GetChannel(adcCommsReg)],
-                    mx7705Adc[regRequest].nBytes);
+                // default case for other reg requests that haven't been implemented
+                FAIL("Register request not implemented.");
                 break;
         }
     }
@@ -464,20 +473,20 @@ TEST(MX7705TestGroup, InitialiseAdcChannelZero)
     
     MockForMX7705InitCh0();
     
-    printf("comms reg %u\n", adcCommsReg);
-    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+    printf("comms reg %u\n", mx7705Adc.commsReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg);
 
     MX7705_Init(pinNum, channel);
 
-    printf("comms reg %u\n", adcCommsReg);
-    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+    printf("comms reg %u\n", mx7705Adc.commsReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg);
 
     const uint8_t clockRegExp = MX7705_WRITE_CLOCK_SETTINGS;
-    const uint8_t clockRegAct = mx7705Adc[ClockReg].data[channel][0U];
+    const uint8_t clockRegAct = mx7705Adc.clockReg;
     CHECK_EQUAL(clockRegExp, clockRegAct);
 
     const uint8_t setupRegExp = MX7705_WRITE_SETUP_INIT;
-    const uint8_t setupRegAct = mx7705Adc[SetupReg].data[channel][0U];
+    const uint8_t setupRegAct = mx7705Adc.setupReg;
     CHECK_EQUAL(setupRegExp, setupRegAct);
 
     CHECK_EQUAL(false, MX7705_GetError()); 
@@ -500,20 +509,20 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOne)
     
     MockForMX7705InitCh1();
     
-    printf("comms reg %u\n", adcCommsReg);
-    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+    printf("comms reg %u\n", mx7705Adc.commsReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg);
 
     MX7705_Init(pinNum, channel);
 
-    printf("comms reg %u\n", adcCommsReg);
-    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+    printf("comms reg %u\n", mx7705Adc.commsReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg);
 
     const uint8_t clockRegExp = MX7705_WRITE_CLOCK_SETTINGS;
-    const uint8_t clockRegAct = mx7705Adc[ClockReg].data[channel][0U];
+    const uint8_t clockRegAct = mx7705Adc.clockReg;
     CHECK_EQUAL(clockRegExp, clockRegAct);
 
     const uint8_t setupRegExp = MX7705_WRITE_SETUP_INIT;
-    const uint8_t setupRegAct = mx7705Adc[SetupReg].data[channel][0U];
+    const uint8_t setupRegAct = mx7705Adc.setupReg;
     CHECK_EQUAL(setupRegExp, setupRegAct);
 
     CHECK_EQUAL(false, MX7705_GetError()); 
@@ -539,8 +548,8 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOneVerifyFail)
     
     MockForMX7705InitCh1();
     
-    printf("comms reg %u\n", adcCommsReg);
-    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+    printf("comms reg %u\n", mx7705Adc.commsReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg);
 
     // allows us to mock a read fail which triggers verification fail
     mockReadError = true;
@@ -549,8 +558,8 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOneVerifyFail)
 
     CHECK_EQUAL(pinNum, mx7705SpiSettings.chipSelectPin);
     
-    printf("comms reg %u\n", adcCommsReg);
-    printf("clock reg %u\n", mx7705Adc[ClockReg].data[channel][0U]);
+    printf("comms reg %u\n", mx7705Adc.commsReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg);
 
     CHECK_EQUAL(true, MX7705_GetError()); 
 
@@ -659,9 +668,7 @@ TEST(MX7705TestGroup, ReadDataChZeroPollingTimeoutErrorCondition)
     MockForMX7705PollingCh0();
     
     // Check data register is not changed by reading data due to timeout error
-    const uint16_t dataToExpect = 
-        (mx7705Adc[DataReg].data[channel][0U] << 8U)
-        | mx7705Adc[DataReg].data[channel][0U];
+    const uint16_t dataToExpect = mx7705Adc.dataReg[channel];
 
     // Call funtion under test and record as actual data
     const uint16_t dataActual = MX7705_ReadData(channel);
@@ -704,9 +711,7 @@ TEST(MX7705TestGroup, ReadDataChOnePollingTimeoutErrorCondition)
     MockForMX7705PollingCh1();
     
     // Check data register is not changed by reading data due to timeout error
-    const uint16_t dataToExpect = 
-        (mx7705Adc[DataReg].data[channel][0U] << 8U)
-        | mx7705Adc[DataReg].data[channel][0U];
+    const uint16_t dataToExpect = mx7705Adc.dataReg[channel];
 
     // Call funtion under test and record as actual data
     const uint16_t dataActual = MX7705_ReadData(channel);
@@ -739,7 +744,7 @@ TEST(MX7705TestGroup, SetGetGainChannelOne)
     MockForMX7705Read();
 
     // Read the initial gain. Should match the settings stored in the setup reg
-    const uint8_t setupRegInitial = mx7705Adc[SetupReg].data[channel][0U];
+    const uint8_t setupRegInitial = mx7705Adc.setupReg;
     uint8_t gainActual = MX7705_GetGain(channel);
     uint8_t gainExpected = bitExtract(setupRegInitial, PGA_MASK, PGA_OFFSET);
     CHECK_EQUAL(gainExpected, gainActual);
@@ -770,7 +775,7 @@ TEST(MX7705TestGroup, SetGetGainChannelOne)
     CHECK_EQUAL(gainExpected, gainActual);
 
     // check that the setup register matches expectations
-    const uint8_t setupRegActual = mx7705Adc[SetupReg].data[channel][0U];
+    const uint8_t setupRegActual = mx7705Adc.setupReg;
     CHECK_EQUAL(setupRegExpected, setupRegActual);
 
     // check function calls
@@ -800,7 +805,7 @@ TEST(MX7705TestGroup, SetGetGainOutsideRangeCommandIgnoredChannelOne)
     // Mocks for calling get gain
     MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
     MockForMX7705Read();
-    const uint8_t setupRegInitial = mx7705Adc[SetupReg].data[channel][0U];
+    const uint8_t setupRegInitial = mx7705Adc.setupReg;
     const uint8_t gainInitial = MX7705_GetGain(channel);
 
     // now request gain outside range
@@ -812,7 +817,7 @@ TEST(MX7705TestGroup, SetGetGainOutsideRangeCommandIgnoredChannelOne)
     MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
     MockForMX7705Read();
     // check the gain returned matches gain requested
-    const uint8_t setupRegFinal = mx7705Adc[SetupReg].data[channel][0U];
+    const uint8_t setupRegFinal = mx7705Adc.setupReg;
     const uint8_t gainFinal = MX7705_GetGain(channel);
 
     CHECK_EQUAL(gainFinal, gainInitial);
