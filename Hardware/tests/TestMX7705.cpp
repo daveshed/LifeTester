@@ -31,7 +31,7 @@
 
 // Useful initialiser - note that this is only valid when there are 4 channels
 #if (MAX_CHANNELS == 4)
-    #define IO_REG_INIT(data, n)     {{{data}, {data}, {data}, {data}}, n}
+    #define IO_REG_INIT(data)     {data, data, data, data}
 #else
     #error "Register initialised with incompatible number of channels."
 #endif
@@ -47,8 +47,8 @@
 */
 typedef struct AdcIoRegisters_s {
     uint8_t commsReg;
-    uint8_t setupReg;
-    uint8_t clockReg;
+    uint8_t setupReg[MAX_CHANNELS];
+    uint8_t clockReg[MAX_CHANNELS];
     uint16_t dataReg[MAX_CHANNELS];
 } AdcIoRegisters_t;
 
@@ -198,9 +198,9 @@ static void InitAdcRegsData(void)
 {
     const AdcIoRegisters_t adcInit = {
         COMMS_REG_DEFAULT,
-        SETUP_REG_DEFAULT,
-        CLOCK_REG_DEFAULT,
-        {DATA_REG_DEFAULT, DATA_REG_DEFAULT, DATA_REG_DEFAULT, DATA_REG_DEFAULT}
+        IO_REG_INIT(SETUP_REG_DEFAULT),
+        IO_REG_INIT(CLOCK_REG_DEFAULT),
+        IO_REG_INIT(DATA_REG_DEFAULT)
     };
 
     mx7705Adc = adcInit;
@@ -330,6 +330,7 @@ static void TeardownMockSpiConnection(const SpiSettings_t *settings)
     }
     else //writeop, then data is copied into the relevant reg from inputBuffer
     {
+        const uint8_t ch = GetChannel(mx7705Adc.commsReg);
         switch (regRequest)
         {
             case CommsReg:
@@ -345,18 +346,18 @@ static void TeardownMockSpiConnection(const SpiSettings_t *settings)
             case SetupReg:
                 /*write requested into other reg - copy from byte(s) captured in the
                 mock spi input buffer*/
-                mx7705Adc.setupReg = inputBuffer[0U];
+                mx7705Adc.setupReg[ch] = inputBuffer[0U];
                 // Command done so reset the register.
                 mx7705Adc.commsReg = 0U;
                 break;
             case ClockReg:
-                mx7705Adc.clockReg = inputBuffer[0U];
+                mx7705Adc.clockReg[ch] = inputBuffer[0U];
                 // Command done so reset the register.
                 mx7705Adc.commsReg = 0U;
                 break;
             case DataReg:
                 // You can write to the data register but this is ignored.
-                mx7705Adc.dataReg[GetChannel(mx7705Adc.commsReg)] = 
+                mx7705Adc.dataReg[ch] = 
                     (uint16_t)((inputBuffer[0U] << 8U) | inputBuffer[1U]);
                 // Command done so reset the register.
                 mx7705Adc.commsReg = 0U;
@@ -390,6 +391,7 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
 
     if (IsReadOp(mx7705Adc.commsReg) && !mockReadError)
     {
+        const uint8_t ch = GetChannel(mx7705Adc.commsReg);
         switch (regRequest)
         {
             case CommsReg:
@@ -414,10 +416,10 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
                 // otherwise adc is busy and there's no data to read.
                 break;
             case SetupReg:
-                outputBuffer[0U] = mx7705Adc.setupReg;
+                outputBuffer[0U] = mx7705Adc.setupReg[ch];
                 break;
             case ClockReg:
-                outputBuffer[0U] = mx7705Adc.clockReg;
+                outputBuffer[0U] = mx7705Adc.clockReg[ch];
                 break;
             default:
                 // default case for other reg requests that haven't been implemented
@@ -449,6 +451,7 @@ TEST_GROUP(MX7705TestGroup)
         mockReadError = false;
         triggerTimeout = false;
 
+        // TODO: adc input needs channel information
         adcInput = 0U;
     }
 
@@ -474,19 +477,19 @@ TEST(MX7705TestGroup, InitialiseAdcChannelZero)
     MockForMX7705InitCh0();
     
     printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     MX7705_Init(pinNum, channel);
 
     printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     const uint8_t clockRegExp = MX7705_WRITE_CLOCK_SETTINGS;
-    const uint8_t clockRegAct = mx7705Adc.clockReg;
+    const uint8_t clockRegAct = mx7705Adc.clockReg[channel];
     CHECK_EQUAL(clockRegExp, clockRegAct);
 
     const uint8_t setupRegExp = MX7705_WRITE_SETUP_INIT;
-    const uint8_t setupRegAct = mx7705Adc.setupReg;
+    const uint8_t setupRegAct = mx7705Adc.setupReg[channel];
     CHECK_EQUAL(setupRegExp, setupRegAct);
 
     CHECK_EQUAL(false, MX7705_GetError()); 
@@ -510,19 +513,19 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOne)
     MockForMX7705InitCh1();
     
     printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     MX7705_Init(pinNum, channel);
 
     printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     const uint8_t clockRegExp = MX7705_WRITE_CLOCK_SETTINGS;
-    const uint8_t clockRegAct = mx7705Adc.clockReg;
+    const uint8_t clockRegAct = mx7705Adc.clockReg[channel];
     CHECK_EQUAL(clockRegExp, clockRegAct);
 
     const uint8_t setupRegExp = MX7705_WRITE_SETUP_INIT;
-    const uint8_t setupRegAct = mx7705Adc.setupReg;
+    const uint8_t setupRegAct = mx7705Adc.setupReg[channel];
     CHECK_EQUAL(setupRegExp, setupRegAct);
 
     CHECK_EQUAL(false, MX7705_GetError()); 
@@ -549,7 +552,7 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOneVerifyFail)
     MockForMX7705InitCh1();
     
     printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     // allows us to mock a read fail which triggers verification fail
     mockReadError = true;
@@ -559,7 +562,7 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOneVerifyFail)
     CHECK_EQUAL(pinNum, mx7705SpiSettings.chipSelectPin);
     
     printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg);
+    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     CHECK_EQUAL(true, MX7705_GetError()); 
 
@@ -744,7 +747,7 @@ TEST(MX7705TestGroup, SetGetGainChannelOne)
     MockForMX7705Read();
 
     // Read the initial gain. Should match the settings stored in the setup reg
-    const uint8_t setupRegInitial = mx7705Adc.setupReg;
+    const uint8_t setupRegInitial = mx7705Adc.setupReg[channel];
     uint8_t gainActual = MX7705_GetGain(channel);
     uint8_t gainExpected = bitExtract(setupRegInitial, PGA_MASK, PGA_OFFSET);
     CHECK_EQUAL(gainExpected, gainActual);
@@ -775,7 +778,7 @@ TEST(MX7705TestGroup, SetGetGainChannelOne)
     CHECK_EQUAL(gainExpected, gainActual);
 
     // check that the setup register matches expectations
-    const uint8_t setupRegActual = mx7705Adc.setupReg;
+    const uint8_t setupRegActual = mx7705Adc.setupReg[channel];
     CHECK_EQUAL(setupRegExpected, setupRegActual);
 
     // check function calls
@@ -805,7 +808,7 @@ TEST(MX7705TestGroup, SetGetGainOutsideRangeCommandIgnoredChannelOne)
     // Mocks for calling get gain
     MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
     MockForMX7705Read();
-    const uint8_t setupRegInitial = mx7705Adc.setupReg;
+    const uint8_t setupRegInitial = mx7705Adc.setupReg[channel];
     const uint8_t gainInitial = MX7705_GetGain(channel);
 
     // now request gain outside range
@@ -817,7 +820,7 @@ TEST(MX7705TestGroup, SetGetGainOutsideRangeCommandIgnoredChannelOne)
     MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
     MockForMX7705Read();
     // check the gain returned matches gain requested
-    const uint8_t setupRegFinal = mx7705Adc.setupReg;
+    const uint8_t setupRegFinal = mx7705Adc.setupReg[channel];
     const uint8_t gainFinal = MX7705_GetGain(channel);
 
     CHECK_EQUAL(gainFinal, gainInitial);
