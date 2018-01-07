@@ -1,30 +1,12 @@
 # LifeTester
-Solar cell maximum power point tracking system based on Arduino
+A solar cell maximum power point (MPP) tracking system based on Arduino. See www.theonlineshed.com for circuit schematics and more discussion. Briefly, a micro-controller (ATMEGA328) is interfaced with an analog-to-digital converter (ADC) and digital-to-analog converted (DAC) via serial peripheral interface (SPI): a voltage is applied to the device under test (DUT) from the DAC and current is measured from a basic current sense circuit consisting of sense resistor and inverting op-amp whose output is fed into the ADC input. Two channels (A and B) are available in hardware at present corresponding to sub-cells of a single device.
 
-ALGORITHM
-Routine to track MPP by hill climbing method:
-1) Connect devices (two channels: A and B) and power up/press rst button
-2) Initial voltage sweeps are carried out first to determine an initial guess for MPP
-3) Devices then set to initial MPP guess and tracking continues indefinitely
-4) If an error is raised, that channel will remain in error state until the Lifetester is reset
+## Algorithm
+The MPP is tracked by a simple hill climbing method:
+1) Initialisation of peripherals following power cycle/reset signal
+2) Initial voltage sweeps are carried out first to determine an initial guess for MPP (drive voltage)
+3) DAC outputs are then set to initial MPP guess and tracking continues indefinitely
+4) If an error is raised, that channel will remain in error state until the LifeTester is reset
 
-CS PIN ASSIGNMENTS
-7 ADS1286   ADC A
-8 ADS1286   ADC B //not available
-9 MAX6675   Thermocouple reading  //not available
-10 MCP4822  DAC
-
-DATA TRANSMITTED VIA I2C
-Connect pins 4/5 to pins 4/5 of master (SDA/SCL pins)
-Up to 128 devices can be connected to the same bus and called by address no.
-TO DO: set address using digitals and jumpers
-see: https://www.arduino.cc/en/Tutorial/MasterReader
-https://electronics.stackexchange.com/questions/25278/how-to-connect-multiple-i2c-interface-devices-into-a-single-pin-a4-sda-and-a5
-
-SUMMARY OF ERROR CODES (1 byte)
-0 - no error
-1 - low current/open circuit
-2 - reached current limit
-3 - below test threshold current
-4 - DAC writing error/out of range
-*/
+## Intefarcing
+Data from the LifeTester is transmitted over as a byte string over I2C. Up to 112 LifeTesters could be connected in this fashion as slaves to a master device. Presently, a Raspberry Pi serves as a master (_see_ project daveshed/LifeTesterInterface).
