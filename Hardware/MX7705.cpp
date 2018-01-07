@@ -65,25 +65,90 @@ static uint16_t MX7705_Read16Bit(void)
 }
 
 #ifndef UNIT_TEST
-/*
- Sending clock pulses from pin3 at 1MHz to ADC
- see http://forum.arduino.cc/index.php?topic=22384.0
-*/
-static void InitClockOuput(uint8_t pin)
-{
-    pinMode(PWMout, OUTPUT);
-    TCCR2A = 0xB3; // fast PWM with programmed TOP val
-    TCCR2B = 0x09; // divide by 1 prescale
-    TCNT2  = 0x00;
-    OCR2A  = 0x0F; // TOP = 15, cycles every 16 clocks
-    OCR2B  = 0x07; // COMP for pin3
-}
+    /*
+     Sending clock pulses from pin3 at 1MHz to ADC
+     see http://forum.arduino.cc/index.php?topic=22384.0
+    */
+    static void InitClockOuput(uint8_t pin)
+    {
+        pinMode(PWMout, OUTPUT);
+        TCCR2A = 0xB3; // fast PWM with programmed TOP val
+        TCCR2B = 0x09; // divide by 1 prescale
+        TCNT2  = 0x00;
+        OCR2A  = 0x0F; // TOP = 15, cycles every 16 clocks
+        OCR2B  = 0x07; // COMP for pin3
+    }
 #endif // UNIT_TEST
 
 /*
- * Setup the MX7705 in unipolar, unbuffered mode. Allow the user to 
- * select which channel they want. 0/1 = AIN1+ to AIN1-/AIN2+ to AIN2-.
- */
+ Generates a comms register command to request a register to read or write for 
+ a given channel. 
+*/
+STATIC uint8_t RequestRegCommand(RegisterSelection_t demandedReg,
+                                 uint8_t             channel,
+                                 bool                readOp)
+{
+    uint8_t commsRegister = 0U;
+    // write in requested register
+    bitInsert(commsRegister, demandedReg, REG_SELECT_MASK, REG_SELECT_OFFSET);
+    // set channel
+    bitInsert(commsRegister, channel, CH_SELECT_MASK, CH_SELECT_OFFSET);
+    // 0 = write, 1 = read operation
+    bitWrite(commsRegister, RW_BIT, readOp);
+    // now return the comms register command
+    return commsRegister;
+}
+
+STATIC uint8_t RequestRegRead(RegisterSelection_t demandedReg, uint8_t channel)
+{
+    return RequestRegCommand(demandedReg, channel, true);
+}
+
+STATIC uint8_t RequestRegWrite(RegisterSelection_t demandedReg, uint8_t channel)
+{
+    return RequestRegCommand(demandedReg, channel, false);
+}
+
+/*
+ Sets up the adc clock for the channel specified in by the reg request command.
+ Use this to set the clock settings after requesting a write to the clock reg.
+*/
+STATIC uint8_t SetClockSettings(bool    clockOutDisable,    // disables clock out signals
+                                bool    internalClockDivOn, // divide by two otherwise divide by 1
+                                bool    lowFreqClkIn,       // 0 = 4.9MHz 1 = 2.5MHz clock in 
+                                uint8_t filterSelection)    // determines output data rate and cutoff freq 
+{
+    uint8_t clockRegister = 0U;
+    bitWrite(clockRegister, CLKDIS_BIT, clockOutDisable);
+    bitWrite(clockRegister, CLKDIV_BIT, internalClockDivOn);
+    bitWrite(clockRegister, CLK_BIT, lowFreqClkIn);
+    bitInsert(clockRegister, filterSelection, FILTER_SELECT_MASK, FILTER_SELECT_OFFSET);
+
+    /* TODO - this bit does not need to be set. It's read only. Preserving
+    original behaviour of code. */
+    bitSet(clockRegister, MXID_BIT);
+    return clockRegister;
+}
+
+/*
+ Sets up the adc setup register for measurements following a setup register
+ write request made into the comms register.
+*/
+STATIC uint8_t SetSetupSettings(AdcMode_t mode,
+                                uint8_t pgaGainIdx, // gain setting
+                                bool unipolarMode,  // unipolar/bipolar mode
+                                bool enableBuffer,  // useful with high source impedance inputs
+                                bool filterSync)    // set this to syncronize measurements with filter
+{
+    uint8_t setupRegister = 0U;
+    bitInsert(setupRegister, mode, MODE_MASK, MODE_OFFSET);
+    bitInsert(setupRegister, pgaGainIdx, PGA_MASK, PGA_OFFSET);
+    bitWrite(setupRegister, BIPOLAR_UNIPOLAR_BIT, unipolarMode);
+    bitWrite(setupRegister, BUFFER_BIT, enableBuffer);
+    bitWrite(setupRegister, FSYNC_BIT, filterSync);
+    return setupRegister;
+}
+
 void MX7705_Init(const uint8_t pin, const uint8_t channel)
 {
     MX7705_errorCondition = false;
@@ -94,19 +159,30 @@ void MX7705_Init(const uint8_t pin, const uint8_t channel)
 #ifndef UNIT_TEST  // TODO fix tests. Need definitions to remove compile guards
     InitClockOuput(PWMout);
 #endif
-    //request a write to the clock register
-    MX7705_Write(channel == 0U ? MX7705_REQUEST_CLOCK_WRITE_CH0 : MX7705_REQUEST_CLOCK_WRITE_CH1);
-    //turn on clockdis bit - using clock from ATMEGA. Turn off clk bit for optimum performance at 1MHz with clkdiv 0.
-    MX7705_Write(MX7705_WRITE_CLOCK_SETTINGS);
-    //write to comms register: request a write operation to the setup register of selected channel
-    MX7705_Write(channel == 0U ? MX7705_REQUEST_SETUP_WRITE_CH0 : MX7705_REQUEST_SETUP_WRITE_CH1);
-    //write to setup register: self calibration mode, unipolar, unbuffered, clear Fsync
-    MX7705_Write(MX7705_WRITE_SETUP_INIT);
-    //request read of setup register to verify state
-    MX7705_Write(channel == 0U ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1);
+    // Request a write to the clock register
+    MX7705_Write(RequestRegWrite(ClockReg, channel));
+    /*
+     turn on clockdis bit - using clock from ATMEGA. Turn off clk bit for optimum
+     performance at 1MHz with clkdiv 0.
+     */
+    const uint8_t clockRegToSet = SetClockSettings(true, false, false, 1U);
+    MX7705_Write(clockRegToSet);
+    // Writing to comms reg. Request a write operation to the setup register
+    MX7705_Write(RequestRegWrite(SetupReg, channel));
+    // Write to setup register - self calibration mode, unipolar, unbuffered, clear Fsync
+    const uint8_t setupRegToSet = SetSetupSettings(SelfCalibMode, 0U, true, false, false);
+    MX7705_Write(setupRegToSet);
 
-    //now read setup register and verify that we have written the correct setup state
-    if (MX7705_ReadByte() != MX7705_WRITE_SETUP_INIT)
+    /* Now read setup and clock registers to verify that we have written the
+     correct settings and communication is working ok. */
+    MX7705_Write(RequestRegRead(ClockReg, channel));
+    const uint8_t clockRegRead = MX7705_ReadByte();
+    
+    MX7705_Write(RequestRegRead(SetupReg, channel));
+    const uint8_t setupRegRead = MX7705_ReadByte();
+    
+    // Check that data read back matches expectations
+    if ((setupRegRead != setupRegToSet) || (clockRegRead != clockRegToSet))
     {
         MX7705_errorCondition = true;
         #ifdef DEBUG
@@ -115,64 +191,55 @@ void MX7705_Init(const uint8_t pin, const uint8_t channel)
     }
 }
 
-/*
- * Function to get the state of the error condition
- */
 bool MX7705_GetError(void)
 {
-  return MX7705_errorCondition;
+    return MX7705_errorCondition;
 }
 
-/*
- * Function to read two bytes from the ADC and convert to a 16Bit unsigned int  
- */
 uint16_t MX7705_ReadData(const uint8_t channel)
 {
-  uint8_t         commsRegister = 0U;
-  const uint32_t  tic =  millis();
-  uint32_t        toc;
-  uint16_t        pollCount = 0U;
-  bool            timeout = false;
+    uint8_t         commsRegister = 0U;
+    const uint32_t  tic =  millis();
+    uint32_t        toc;
+    uint16_t        pollCount = 0U;
+    bool            timeout = false;
       
-  do
-  {
-    // polling DRDYpin bit of comms register waiting for measurement to finish    
-    // DRDY = 0 is ready / 1 not ready
-    toc = millis();
-    timeout = ((toc - tic) > TIMEOUT_MS);
-    //select read of comms register
-    MX7705_Write(channel == 0 ? MX7705_REQUEST_COMMS_READ_CH0 : MX7705_REQUEST_COMMS_READ_CH1);
-    commsRegister = MX7705_ReadByte();
-    pollCount++;
-    //bit 7 of comms register
-  } while (bitRead(commsRegister, 7) && !timeout);
+    do
+    {
+        // polling DRDYpin bit of comms register waiting for measurement to finish    
+        // DRDY = 0 is ready / 1 not ready
+        toc = millis();
+        timeout = ((toc - tic) > TIMEOUT_MS);
+        //select read of comms register
+        MX7705_Write(channel == 0 ? MX7705_REQUEST_COMMS_READ_CH0 : MX7705_REQUEST_COMMS_READ_CH1);
+        commsRegister = MX7705_ReadByte();
+        pollCount++;
+        //bit 7 of comms register
+    } while (bitRead(commsRegister, 7) && !timeout);
 
-#if DEBUG
-  if (pollCount > 0)
-  {
-    Serial.print("MX7705: DRDY bit polled... ");
-    Serial.print(pollCount);
-    Serial.println(" times");
-  }
-#endif
+    #if DEBUG
+        if (pollCount > 0)
+        {
+            Serial.print("MX7705: DRDY bit polled... ");
+            Serial.print(pollCount);
+            Serial.println(" times");
+        }
+    #endif
 
-  if (timeout)
-  {
-    MX7705_errorCondition = true;
-    return 0u;
-  }
-  else
-  {
-    //request data register reading
-    MX7705_Write((channel == 0 ? MX7705_REQUEST_DATA_READ_CH0 : MX7705_REQUEST_DATA_READ_CH1));
+    if (timeout)
+    {
+        MX7705_errorCondition = true;
+        return 0u;
+    }
+    else
+    {
+        //request data register reading
+        MX7705_Write((channel == 0 ? MX7705_REQUEST_DATA_READ_CH0 : MX7705_REQUEST_DATA_READ_CH1));
 
-    return MX7705_Read16Bit();
-  }
+        return MX7705_Read16Bit();
+    }
 }
 
-/*
- * Function to read gain of a given channel
- */
 uint8_t MX7705_GetGain(const uint8_t channel)
 {
   uint8_t setupRegister, gainRegister;
@@ -187,9 +254,6 @@ uint8_t MX7705_GetGain(const uint8_t channel)
   return gainRegister; 
 }
 
-/*
- * Function to set gain of the MX7705. Note that gain is set as an unsigned int from 0 - 7 inclusive
- */
 void MX7705_SetGain(const uint8_t requiredGain, const uint8_t channel)
 {
   uint8_t setupRegister;
@@ -222,10 +286,8 @@ void MX7705_SetGain(const uint8_t requiredGain, const uint8_t channel)
   }
 }
 
-/*
- * Function to increase the gain of selected channel by one step
- */
- //TODO: function not properly implemented
+ /*TODO: function not properly implemented. Need to read the gain, change it then
+ set it back again. Then check that it has changed successfully?*/
 void MX7705_GainUp(const uint8_t channel)
 {
   MX7705_Write(channel == 0u ? B00001000 : B00001001);

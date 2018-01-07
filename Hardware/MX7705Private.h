@@ -1,3 +1,4 @@
+#include "Macros.h"
 #include "SpiCommon.h" // SpiSettings_t
 #include "SpiConfig.h" // spi #defines
 
@@ -15,7 +16,7 @@
 #define CH1_BIT                 (1U)
 #define CH_SELECT_MASK          (3U)
 #define CH_SELECT_OFFSET        (0U)
-#define RW_SELECT_OFFSET        (3U)
+#define RW_BIT                  (3U)
 #define DRDY_BIT                (7U)
 
 // Setup Reg
@@ -28,15 +29,18 @@
 #define MODE_MASK               (3U)
 
 // Clock reg - note bits 5-7 are reserved/read-only
-#define FS0_BIT                 (0U)
-#define FS1_BIT                 (1U)
+#define FILTER_SELECT_MASK      (3U)
+#define FILTER_SELECT_OFFSET    (0U)
 #define CLK_BIT                 (2U)
-#define CLK_DIV                 (3U)
-#define CLK_DIS                 (4U)
+#define CLKDIV_BIT              (3U)
+#define CLKDIS_BIT              (4U)
+#define MXID_BIT                (7U) // maxim id bit. Read only
 
 
 //MX7705 commands - note these are not very portable.
 //TODO: rewrite binary commands in hex for portability
+#define MX7705_REQUEST_CLOCK_READ_CH0   (B00101000)
+#define MX7705_REQUEST_CLOCK_READ_CH1   (B00101001)
 #define MX7705_REQUEST_CLOCK_WRITE_CH0  (B00100000)
 #define MX7705_REQUEST_CLOCK_WRITE_CH1  (B00100001)
 #define MX7705_WRITE_CLOCK_SETTINGS     (B10010001)
@@ -52,5 +56,40 @@
 
 #define MX7705_REQUEST_DATA_READ_CH0    (B00111000)
 #define MX7705_REQUEST_DATA_READ_CH1    (B00111001)
+
+/******************************************************************************
+ * Private typedefs                                                           *
+ ******************************************************************************/
+// Adc mode setting applied to the setup register.
+typedef enum AdcMode_e {
+    NormalMode,
+    SelfCalibMode,
+    ZeroScaleCalibMode,
+    FullScaleCalibMode,
+    NumModes
+} AdcMode_t;
+
+static void MX7705_Write(uint8_t sendByte);
+static uint8_t MX7705_ReadByte(void);
+static uint16_t MX7705_Read16Bit(void);
+#ifndef UNIT_TEST
+    static void InitClockOuput(uint8_t pin); 
+#endif
+STATIC uint8_t RequestRegCommand(RegisterSelection_t demandedReg,
+                                 uint8_t             channel,
+                                 bool                readOp);
+STATIC uint8_t RequestRegRead(RegisterSelection_t demandedReg, uint8_t channel);
+STATIC uint8_t RequestRegWrite(RegisterSelection_t demandedReg, uint8_t channel);
+STATIC uint8_t SetClockSettings(bool    clockOutDisable,
+                                bool    internalClockDivOn,
+                                bool    lowFreqClkIn,
+                                uint8_t filterSelection);
+STATIC uint8_t SetSetupSettings(AdcMode_t mode,
+                                uint8_t pgaGainIdx,
+                                bool unipolarMode,
+                                bool enableBuffer,
+                                bool filterSync);
+
+
 
 extern SpiSettings_t mx7705SpiSettings;

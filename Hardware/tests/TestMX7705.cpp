@@ -76,122 +76,6 @@ static uint16_t adcInput; // analog voltage converted to digital data
 /*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
-// Mocks needed for writing data into mock spi reg
-static void MockForMX7705Write(uint8_t sendByte)
-{
-    mock().expectOneCall("OpenSpiConnection")
-        .withParameter("settings", &mx7705SpiSettings);
-    mock().expectOneCall("SpiTransferByte")
-        .withParameter("byteToSpiBus", sendByte);
-    mock().expectOneCall("CloseSpiConnection")
-        .withParameter("settings", &mx7705SpiSettings);
-}
-
-// Mocks needed for reading single byte data from mock spi reg
-static uint8_t MockForMX7705Read(void)
-{
-    mock().expectOneCall("OpenSpiConnection")
-        .withParameter("settings", &mx7705SpiSettings);
-    mock().expectOneCall("SpiTransferByte")
-        .withParameter("byteToSpiBus", 0U);
-    mock().expectOneCall("CloseSpiConnection")
-        .withParameter("settings", &mx7705SpiSettings);
-}
-
-// Mocks needed for reading data from mock spi reg
-static uint16_t MockForMX7705Read16Bit(void)
-{
-    mock().expectOneCall("OpenSpiConnection")
-        .withParameter("settings", &mx7705SpiSettings);
-    mock().expectOneCall("SpiTransferByte")
-        .withParameter("byteToSpiBus", 0U);
-    mock().expectOneCall("SpiTransferByte")
-        .withParameter("byteToSpiBus", 0U);
-    mock().expectOneCall("CloseSpiConnection")
-        .withParameter("settings", &mx7705SpiSettings);
-}
-
-// Mocks for calling MX7705_Init
-static void MockForMX7705InitCh0(void)
-{
-    MockForMX7705Write(MX7705_REQUEST_CLOCK_WRITE_CH0);
-    MockForMX7705Write(MX7705_WRITE_CLOCK_SETTINGS);
-    MockForMX7705Write(MX7705_REQUEST_SETUP_WRITE_CH0);
-    MockForMX7705Write(MX7705_WRITE_SETUP_INIT);
-    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH0);
-    MockForMX7705Read();    
-}
-
-// Mocks for calling MX7705_Init
-static void MockForMX7705InitCh1(void)
-{
-    MockForMX7705Write(MX7705_REQUEST_CLOCK_WRITE_CH1);
-    MockForMX7705Write(MX7705_WRITE_CLOCK_SETTINGS);
-    MockForMX7705Write(MX7705_REQUEST_SETUP_WRITE_CH1);
-    MockForMX7705Write(MX7705_WRITE_SETUP_INIT);
-    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
-    MockForMX7705Read();    
-}
-
-// Mocks for calling read data function
-static void MockForMX7705DataReadCh0(void)
-{   
-    MockForMX7705Write(MX7705_REQUEST_DATA_READ_CH0);
-    MockForMX7705Read16Bit();        
-}
-
-// Mocks for calling read data function
-static void MockForMX7705DataReadCh1(void)
-{   
-    MockForMX7705Write(MX7705_REQUEST_DATA_READ_CH1);
-    MockForMX7705Read16Bit();        
-}
-
-// Mocks for polling comms reg ch0
-static void MockForMX7705PollingCh0(void)
-{
-    const int nPolls = triggerTimeout ?
-        TIMEOUT_MS / roundtripTime:
-        conversionTime / roundtripTime;
-
-    printf("\n\nnPolls = %u\n\n", nPolls);
-
-    mock().expectOneCall("millis");    
-    /* 
-     Mocks for polling comms reg - only poll within timeout or conversion time.
-     Note that another poll is expected since we have a do while loop - poll
-     happens before time is checked.
-    */
-    for (int i = 0; (i <= nPolls + 1); i++)
-    {
-        mock().expectOneCall("millis");    
-        MockForMX7705Write(MX7705_REQUEST_COMMS_READ_CH0);
-        MockForMX7705Read();        
-    }
-}    
-
-// Mocks for polling comms reg ch1
-static void MockForMX7705PollingCh1(void)
-{
-    const int nPolls = triggerTimeout ?
-        TIMEOUT_MS / roundtripTime:
-        conversionTime / roundtripTime;
-
-    printf("\n\nnPolls = %u\n\n", nPolls);
-
-    mock().expectOneCall("millis");    
-    /* 
-     Mocks for polling comms reg - only poll within timeout or conversion time.
-     Note that another poll is expected since we have a do while loop - poll
-     happens before time is checked.
-    */
-    for (int i = 0; (i <= nPolls + 1); i++)
-    {
-        mock().expectOneCall("millis");    
-        MockForMX7705Write(MX7705_REQUEST_COMMS_READ_CH1);
-        MockForMX7705Read();        
-    }
-}    
 
 // Initialises the adc registers with default data from the datasheet.
 static void InitAdcRegsData(void)
@@ -223,7 +107,7 @@ static RegisterSelection_t GetRequestedRegister(uint8_t commsReg)
 // Gets read or write op request from the comms reg data
 static bool IsReadOp(uint8_t commsReg)
 {
-    return bitRead(commsReg, RW_SELECT_OFFSET);   
+    return bitRead(commsReg, RW_BIT);   
 }
 
 // Get the channel index from the comms reg data 
@@ -430,6 +314,108 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
 }
 
 /*******************************************************************************
+ * Mock function implementations for tests
+ ******************************************************************************/
+
+// Mocks needed for writing data into mock spi reg
+static void MockForMX7705Write(uint8_t sendByte)
+{
+    mock().expectOneCall("OpenSpiConnection")
+        .withParameter("settings", &mx7705SpiSettings);
+    mock().expectOneCall("SpiTransferByte")
+        .withParameter("byteToSpiBus", sendByte);
+    mock().expectOneCall("CloseSpiConnection")
+        .withParameter("settings", &mx7705SpiSettings);
+}
+
+// Mocks needed for reading single byte data from mock spi reg
+static uint8_t MockForMX7705Read(void)
+{
+    mock().expectOneCall("OpenSpiConnection")
+        .withParameter("settings", &mx7705SpiSettings);
+    mock().expectOneCall("SpiTransferByte")
+        .withParameter("byteToSpiBus", 0U);
+    mock().expectOneCall("CloseSpiConnection")
+        .withParameter("settings", &mx7705SpiSettings);
+}
+
+// Mocks needed for reading data from mock spi reg
+static uint16_t MockForMX7705Read16Bit(void)
+{
+    mock().expectOneCall("OpenSpiConnection")
+        .withParameter("settings", &mx7705SpiSettings);
+    mock().expectOneCall("SpiTransferByte")
+        .withParameter("byteToSpiBus", 0U);
+    mock().expectOneCall("SpiTransferByte")
+        .withParameter("byteToSpiBus", 0U);
+    mock().expectOneCall("CloseSpiConnection")
+        .withParameter("settings", &mx7705SpiSettings);
+}
+
+// Mocks for calling MX7705_Init
+static void MockForMX7705Init(uint8_t channel)
+{
+    MockForMX7705Write(RequestRegWrite(ClockReg, channel));
+    MockForMX7705Write(SetClockSettings(true, false, false, 1U));
+    MockForMX7705Write(RequestRegWrite(SetupReg, channel));
+    MockForMX7705Write(SetSetupSettings(SelfCalibMode, 0U, true, false, false));
+    MockForMX7705Write(RequestRegRead(ClockReg, channel));
+    MockForMX7705Read();
+    MockForMX7705Write(RequestRegRead(SetupReg, channel));
+    MockForMX7705Read();
+}
+
+// Mocks for calling read data function
+static void MockForMX7705DataRead(uint8_t channel)
+{   
+    MockForMX7705Write(RequestRegRead(DataReg, channel));
+    MockForMX7705Read16Bit();        
+}
+
+// Mocks for polling comms reg on the specified channel
+static void MockForMX7705Polling(uint8_t channel)
+{
+    const int nPolls = triggerTimeout ?
+        TIMEOUT_MS / roundtripTime:
+        conversionTime / roundtripTime;
+
+    printf("\n\nnPolls = %u\n\n", nPolls);
+
+    mock().expectOneCall("millis");    
+    /* 
+     Mocks for polling comms reg - only poll within timeout or conversion time.
+     Note that another poll is expected since we have a do while loop - poll
+     happens before time is checked.
+    */
+    for (int i = 0; (i <= nPolls + 1); i++)
+    {
+        mock().expectOneCall("millis");    
+        MockForMX7705Write(RequestRegRead(CommsReg, channel));
+        MockForMX7705Read();        
+    }
+}    
+
+// Mocks for calling get gain  
+static void MockForMX7705GetGain(uint8_t channel)
+{
+    MockForMX7705Write(RequestRegRead(SetupReg, channel));
+    // MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH0);
+    MockForMX7705Read();
+}
+
+/*
+ Mocks for calling get gain - note that the setup register is read, altered
+ and then rewritten when we get gain so we need access to the adc object.
+*/
+static void MockForMX7705SetGain(uint8_t channel, uint8_t newSetupReg)
+{
+    MockForMX7705Write(RequestRegRead(SetupReg, channel));
+    MockForMX7705Read();
+    MockForMX7705Write(RequestRegWrite(SetupReg, channel));
+    MockForMX7705Write(newSetupReg);
+}
+
+/*******************************************************************************
  * Unit tests
  ******************************************************************************/
 // Define a test group - all tests share common setup/teardown
@@ -474,7 +460,7 @@ TEST(MX7705TestGroup, InitialiseAdcChannelZero)
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705InitCh0();
+    MockForMX7705Init(channel);
     
     printf("comms reg %u\n", mx7705Adc.commsReg);
     printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
@@ -510,7 +496,7 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOne)
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705InitCh1();
+    MockForMX7705Init(channel);
     
     printf("comms reg %u\n", mx7705Adc.commsReg);
     printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
@@ -549,7 +535,7 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOneVerifyFail)
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705InitCh1();
+    MockForMX7705Init(channel);
     
     printf("comms reg %u\n", mx7705Adc.commsReg);
     printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
@@ -583,15 +569,15 @@ TEST(MX7705TestGroup, ReadDataChZeroOkPollingDrdyBit)
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705InitCh0();
+    MockForMX7705Init(channel);
     
     MX7705_Init(pinNum, channel);
     // Initialise should be successful and no error raised
     CHECK_EQUAL(false, MX7705_GetError()); 
 
     // Mocks needed to call function under test
-    MockForMX7705PollingCh0();
-    MockForMX7705DataReadCh0();
+    MockForMX7705Polling(channel);
+    MockForMX7705DataRead(channel);
 
     // Set an input to the adc and call function under test
     adcInput = 25667U;
@@ -616,23 +602,23 @@ TEST(MX7705TestGroup, ReadDataChOneOkPollingDrdyBit)
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705InitCh1();
+    MockForMX7705Init(channel);
     
     MX7705_Init(pinNum, channel);
     // Initialise should be successful and no error raised
     CHECK_EQUAL(false, MX7705_GetError()); 
 
     // Check that there is no data in the Adc data reg to begin with
-    MockForMX7705PollingCh1();
-    MockForMX7705DataReadCh1();
+    MockForMX7705Polling(channel);
+    MockForMX7705DataRead(channel);
     CHECK_EQUAL(0U, adcInput);
     CHECK_EQUAL(adcInput, MX7705_ReadData(channel));
     // expect error condition due to measurement timeout
     CHECK_EQUAL(false, MX7705_GetError());     
 
     // Set an input to the adc and call function under test
-    MockForMX7705PollingCh1();
-    MockForMX7705DataReadCh1();
+    MockForMX7705Polling(channel);
+    MockForMX7705DataRead(channel);
     adcInput = 25667U;
     CHECK_EQUAL(adcInput, MX7705_ReadData(channel));
     // expect error condition due to measurement timeout
@@ -655,7 +641,7 @@ TEST(MX7705TestGroup, ReadDataChZeroPollingTimeoutErrorCondition)
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705InitCh0();
+    MockForMX7705Init(channel);
     
     MX7705_Init(pinNum, channel);
     // Initialise should be successful and no error raised
@@ -668,7 +654,7 @@ TEST(MX7705TestGroup, ReadDataChZeroPollingTimeoutErrorCondition)
     triggerTimeout = true;
     
     // Mock/expects function calls
-    MockForMX7705PollingCh0();
+    MockForMX7705Polling(channel);
     
     // Check data register is not changed by reading data due to timeout error
     const uint16_t dataToExpect = mx7705Adc.dataReg[channel];
@@ -698,7 +684,7 @@ TEST(MX7705TestGroup, ReadDataChOnePollingTimeoutErrorCondition)
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705InitCh1();
+    MockForMX7705Init(channel);
     
     MX7705_Init(pinNum, channel);
     // Initialise should be successful and no error raised
@@ -711,7 +697,7 @@ TEST(MX7705TestGroup, ReadDataChOnePollingTimeoutErrorCondition)
     triggerTimeout = true;
     
     // Mock/expects function calls
-    MockForMX7705PollingCh1();
+    MockForMX7705Polling(channel);
     
     // Check data register is not changed by reading data due to timeout error
     const uint16_t dataToExpect = mx7705Adc.dataReg[channel];
@@ -738,7 +724,7 @@ TEST(MX7705TestGroup, SetGetGainChannelOne)
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705InitCh1();
+    MockForMX7705Init(channel);
     
     MX7705_Init(pinNum, channel);
 
@@ -759,10 +745,7 @@ TEST(MX7705TestGroup, SetGetGainChannelOne)
     // write in the new gain
     bitInsert(setupRegExpected, gainExpected, PGA_MASK, PGA_OFFSET);
     // mocks for calling set gain
-    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
-    MockForMX7705Read();
-    MockForMX7705Write(MX7705_REQUEST_SETUP_WRITE_CH1);
-    MockForMX7705Write(setupRegExpected);
+    MockForMX7705SetGain(channel, setupRegExpected);
 
     // Call to set gain
     MX7705_SetGain(gainExpected, channel);
@@ -770,8 +753,7 @@ TEST(MX7705TestGroup, SetGetGainChannelOne)
     // Now call get gain again to check that the gain has actually been written.
 
     // Mocks for calling get gain
-    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
-    MockForMX7705Read();
+    MockForMX7705GetGain(channel);
 
     // check the gain returned matches gain requested
     gainActual = MX7705_GetGain(channel);
@@ -784,7 +766,6 @@ TEST(MX7705TestGroup, SetGetGainChannelOne)
     // check function calls
     mock().checkExpectations();
 }
-
 
 /*
  Test for getting and setting gain on channel 1 outside allowed range. Maximum
@@ -800,14 +781,13 @@ TEST(MX7705TestGroup, SetGetGainOutsideRangeCommandIgnoredChannelOne)
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
     
-    MockForMX7705InitCh1();
+    MockForMX7705Init(channel);
     
     MX7705_Init(pinNum, channel);
 
     // Get the gain and setup reg data to begin with...
     // Mocks for calling get gain
-    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
-    MockForMX7705Read();
+    MockForMX7705GetGain(channel);
     const uint8_t setupRegInitial = mx7705Adc.setupReg[channel];
     const uint8_t gainInitial = MX7705_GetGain(channel);
 
@@ -817,8 +797,100 @@ TEST(MX7705TestGroup, SetGetGainOutsideRangeCommandIgnoredChannelOne)
     
     // Get the gain and setup reg data again to compare against...
     // Mocks for calling get gain
-    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
+    MockForMX7705GetGain(channel);
+    // check the gain returned matches gain requested
+    const uint8_t setupRegFinal = mx7705Adc.setupReg[channel];
+    const uint8_t gainFinal = MX7705_GetGain(channel);
+
+    CHECK_EQUAL(gainFinal, gainInitial);
+    CHECK_EQUAL(setupRegFinal, setupRegInitial);
+
+    // check function calls
+    mock().checkExpectations();
+}
+
+// Test for getting and setting gain on channel 0.
+TEST(MX7705TestGroup, SetGetGainChannelZero)
+{
+    const uint8_t pinNum = 1U;
+    const uint8_t channel = 0U;
+    
+    // Mock calls to low level spi function
+    mock().expectOneCall("InitChipSelectPin")
+        .withParameter("pin", pinNum);
+    
+    MockForMX7705Init(channel);
+    
+    MX7705_Init(pinNum, channel);
+
+    // Mocks for calling get gain
+    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH0);
     MockForMX7705Read();
+
+    // Read the initial gain. Should match the settings stored in the setup reg
+    const uint8_t setupRegInitial = mx7705Adc.setupReg[channel];
+    uint8_t gainActual = MX7705_GetGain(channel);
+    uint8_t gainExpected = bitExtract(setupRegInitial, PGA_MASK, PGA_OFFSET);
+    CHECK_EQUAL(gainExpected, gainActual);
+
+    // Work out the expected setup register after changing gain.
+    uint8_t setupRegExpected = setupRegInitial;
+    // increment gain to be written back into the setup reg.
+    gainExpected++;
+    // write in the new gain
+    bitInsert(setupRegExpected, gainExpected, PGA_MASK, PGA_OFFSET);
+    // mocks for calling set gain
+    MockForMX7705SetGain(channel, setupRegExpected);
+    // Call to set gain
+    MX7705_SetGain(gainExpected, channel);
+    
+    // Now call get gain again to check that the gain has actually been written.
+
+    // Mocks for calling get gain
+    MockForMX7705GetGain(channel);
+    // check the gain returned matches gain requested
+    gainActual = MX7705_GetGain(channel);
+    CHECK_EQUAL(gainExpected, gainActual);
+
+    // check that the setup register matches expectations
+    const uint8_t setupRegActual = mx7705Adc.setupReg[channel];
+    CHECK_EQUAL(setupRegExpected, setupRegActual);
+
+    // check function calls
+    mock().checkExpectations();
+}
+
+/*
+ Test for getting and setting gain on channel 0 outside allowed range. Maximum
+ allowed gain setting is 7. Here we set to 8. Gain should not change. Command
+ is ignored.
+*/
+TEST(MX7705TestGroup, SetGetGainOutsideRangeCommandIgnoredChannelZero)
+{
+    const uint8_t pinNum = 1U;
+    const uint8_t channel = 0U;
+    
+    // Mock calls to low level spi function
+    mock().expectOneCall("InitChipSelectPin")
+        .withParameter("pin", pinNum);
+    
+    MockForMX7705Init(channel);
+    
+    MX7705_Init(pinNum, channel);
+
+    // Get the gain and setup reg data to begin with...
+    // Mocks for calling get gain
+    MockForMX7705GetGain(channel);
+    const uint8_t setupRegInitial = mx7705Adc.setupReg[channel];
+    const uint8_t gainInitial = MX7705_GetGain(channel);
+
+    // now request gain outside range
+    const uint8_t gainRequested = PGA_MASK + 1U;
+    MX7705_SetGain(gainRequested, channel);
+    
+    // Get the gain and setup reg data again to compare against...
+    // Mocks for calling get gain
+    MockForMX7705GetGain(channel);
     // check the gain returned matches gain requested
     const uint8_t setupRegFinal = mx7705Adc.setupReg[channel];
     const uint8_t gainFinal = MX7705_GetGain(channel);
