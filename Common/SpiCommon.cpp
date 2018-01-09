@@ -30,7 +30,7 @@ void OpenSpiConnection(const SpiSettings_t *settings)
 // Transmits and receives a byte
 uint8_t SpiTransferByte(const uint8_t transmit)
 {
-    return SPI.transfer(0u);
+    return SPI.transfer(transmit);
 }
 
 // function to close SPI connection on required CS pin

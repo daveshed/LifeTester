@@ -49,7 +49,10 @@ uint8_t MX7705_GetGain(const uint8_t channel);
 void MX7705_SetGain(const uint8_t requiredGain, const uint8_t channel);
 
 // Increases the gain of selected channel by one step
-void MX7705_GainUp(const uint8_t channel);
+void MX7705_IncrementGain(const uint8_t channel);
+
+// Decreases the gain of selected channel by one step
+void MX7705_DecrementGain(const uint8_t channel);
 
 #ifdef _cplusplus
 }

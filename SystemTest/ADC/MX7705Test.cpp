@@ -1,7 +1,7 @@
 /*
  * Testing functions to read data from the MX7705 ADC. Added feature to read from 
- * whichever channel that you like.
- * this version uses an external clock from the Arduino pin3 (pin 5 really). Is this more reliable
+ * whichever channel that you like. This version uses an external clock from
+ * the Arduino pin3 (IC pin 5). Is this more reliable than the internal clock.
 */
 #include "Arduino.h"
 #include "Config.h"
@@ -11,43 +11,48 @@
 
 const uint8_t AdcCsPin = ADC_CS_PIN;
 const uint8_t LedPin = LED_A_PIN;
-const uint8_t ADCChannel = 0;
-//const uint8_t gain = 0; //note this isn't gain but the index of the gain table
 
 void setup()
 { 
-  Serial.begin(9600);
-  SPI.begin();
-  MX7705_Init(AdcCsPin, ADCChannel);
-  Serial.print("getting gain...");
-  Serial.println(MX7705_GetGain(ADCChannel));
-  Serial.println("setting gain...");
-  MX7705_SetGain(0u, ADCChannel);
-  Serial.print("getting gain...");
-  Serial.println(MX7705_GetGain(ADCChannel));
+    Serial.begin(9600);
+    // SpiBegin();
+    SPI.begin();
+    Serial.print("Initialising ADC on pin ");
+    Serial.println(AdcCsPin);
+    MX7705_Init(AdcCsPin, 0U);
+    MX7705_Init(AdcCsPin, 1U);
+    Serial.println("Done");
 
-  pinMode(LedPin, OUTPUT); //LED select
-  digitalWrite(LedPin, LOW);
- 
+    
+    Serial.print("getting gain...");
+    Serial.println(MX7705_GetGain(0U));
+    
+    // Serial.println("setting gain...");
+    // MX7705_SetGain(0U, 0U);
+    
+    // Initialising LED for error condition
+    pinMode(LedPin, OUTPUT);
+    digitalWrite(LedPin, LOW);
+
 }
 
 void loop()
 {
-  static uint32_t counter = 0;
-  uint16_t ADCData = 0;
-  bool error_flag;
-  ADCData = MX7705_ReadData(ADCChannel);
+    const uint16_t adcDataCh0 = MX7705_ReadData(0U);
+    const uint16_t adcDataCh1 = MX7705_ReadData(1U);
 
-  if (MX7705_GetError())
-  {
-    digitalWrite(LedPin, HIGH);
-    
-  }
-  else
-  {
-    Serial.println(ADCData);
-  }
-  
-  Serial.flush();
-  delay(50);
+    if (MX7705_GetError())
+    {
+        digitalWrite(LedPin, HIGH);
+    }
+    else
+    {
+        Serial.print("Ch0 = ");
+        Serial.print(adcDataCh0);
+        Serial.print(", Ch1 = ");
+        Serial.println(adcDataCh1);
+    }
+
+    Serial.flush();
+    delay(50);
 }

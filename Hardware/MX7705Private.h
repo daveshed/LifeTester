@@ -2,12 +2,12 @@
 #include "SpiCommon.h" // SpiSettings_t
 #include "SpiConfig.h" // spi #defines
 
-#define SPI_CLOCK_SPEED                 (5000000)     
-#define SPI_BIT_ORDER                   (MSBFIRST)
-#define SPI_DATA_MODE                   (SPI_MODE3)
+#define SPI_CLOCK_SPEED         (5000000)     
+#define SPI_BIT_ORDER           (MSBFIRST)
+#define SPI_DATA_MODE           (SPI_MODE3)
 
-#define TIMEOUT_MS                      (1000U)   
-#define PWMout                          (3u)      //pin to output clock timer to ADC (pin 3 is actually pin 5 on ATMEGA328)
+#define TIMEOUT_MS              (1000U)   
+#define PWMout                  (3u)      //pin to output clock timer to ADC (pin 3 is actually pin 5 on ATMEGA328)
 
 // Comms reg
 #define REG_SELECT_OFFSET       (4U)
@@ -89,7 +89,7 @@ STATIC uint8_t SetSetupSettings(AdcMode_t mode,
                                 bool unipolarMode,
                                 bool enableBuffer,
                                 bool filterSync);
-
+static bool IsCommsRegBusy(uint8_t channel);
 
 
 extern SpiSettings_t mx7705SpiSettings;

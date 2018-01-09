@@ -4,7 +4,7 @@
 #ifdef UNIT_TEST
     #define STATIC
 #else
-    STATIC static
+    #define STATIC static
 #endif // UNIT_TEST
 
 #endif // MACROS_H include guard

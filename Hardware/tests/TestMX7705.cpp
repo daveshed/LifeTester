@@ -297,7 +297,9 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
                 {
                     LoadAdcDataIntoByteBuf(outputBuffer, &mx7705Adc);
                 }
-                // otherwise adc is busy and there's no data to read.
+                /*otherwise adc is busy and there's no new data to read. If a
+                read on the data register is requested then the old data (from a
+                previous conversion) will be returned*/
                 break;
             case SetupReg:
                 outputBuffer[0U] = mx7705Adc.setupReg[ch];
@@ -729,8 +731,7 @@ TEST(MX7705TestGroup, SetGetGainChannelOne)
     MX7705_Init(pinNum, channel);
 
     // Mocks for calling get gain
-    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH1);
-    MockForMX7705Read();
+    MockForMX7705GetGain(channel);
 
     // Read the initial gain. Should match the settings stored in the setup reg
     const uint8_t setupRegInitial = mx7705Adc.setupReg[channel];
@@ -824,8 +825,7 @@ TEST(MX7705TestGroup, SetGetGainChannelZero)
     MX7705_Init(pinNum, channel);
 
     // Mocks for calling get gain
-    MockForMX7705Write(MX7705_REQUEST_SETUP_READ_CH0);
-    MockForMX7705Read();
+    MockForMX7705GetGain(channel);
 
     // Read the initial gain. Should match the settings stored in the setup reg
     const uint8_t setupRegInitial = mx7705Adc.setupReg[channel];
@@ -897,6 +897,119 @@ TEST(MX7705TestGroup, SetGetGainOutsideRangeCommandIgnoredChannelZero)
 
     CHECK_EQUAL(gainFinal, gainInitial);
     CHECK_EQUAL(setupRegFinal, setupRegInitial);
+
+    // check function calls
+    mock().checkExpectations();
+}
+
+/*
+ Test for incrementing gain index on channel zero. Calling function under test
+ should mean that the adc gain index is increased by one step.
+*/
+TEST(MX7705TestGroup, IncrementGainChannelZero)
+{
+    const uint8_t pinNum = 1U;
+    const uint8_t channel = 0U;
+    
+    // Mock calls to low level spi function
+    mock().expectOneCall("InitChipSelectPin")
+        .withParameter("pin", pinNum);
+    
+    MockForMX7705Init(channel);
+    
+    MX7705_Init(pinNum, channel);
+
+    // Mocks for calling get gain
+    MockForMX7705GetGain(channel);
+
+    // Read the initial gain. Should match the settings stored in the setup reg
+    const uint8_t setupRegInitial = mx7705Adc.setupReg[channel];
+    uint8_t gainActual = MX7705_GetGain(channel);
+    uint8_t gainExpected = bitExtract(setupRegInitial, PGA_MASK, PGA_OFFSET);
+    CHECK_EQUAL(gainExpected, gainActual);
+
+    // Work out the expected setup register after changing gain.
+    uint8_t setupRegExpected = setupRegInitial;
+    // increment gain to be written back into the setup reg.
+    gainExpected++;
+    // write in the new gain
+    bitInsert(setupRegExpected, gainExpected, PGA_MASK, PGA_OFFSET);
+    // mocks for calling increment gain (get then set gain)
+    MockForMX7705GetGain(channel);
+    MockForMX7705SetGain(channel, setupRegExpected);
+    // Call to increment gain
+    MX7705_IncrementGain(channel);
+    
+    // Now call get gain again to check that the gain has actually been written.
+
+    // Mocks for calling get gain
+    MockForMX7705GetGain(channel);
+    // check the gain returned matches gain requested
+    gainActual = MX7705_GetGain(channel);
+    CHECK_EQUAL(gainExpected, gainActual);
+
+    // check that the setup register matches expectations
+    const uint8_t setupRegActual = mx7705Adc.setupReg[channel];
+    CHECK_EQUAL(setupRegExpected, setupRegActual);
+
+    // check function calls
+    mock().checkExpectations();
+}
+
+/*
+ Test for decrementing gain index on channel zero. Calling function under test
+ should mean that the adc gain index is decreased by one step.
+*/
+TEST(MX7705TestGroup, DecrementGainChannelZero)
+{
+    const uint8_t pinNum = 1U;
+    const uint8_t channel = 0U;
+    const uint8_t initGain = 3U;
+    
+    // Mock calls to low level spi function
+    mock().expectOneCall("InitChipSelectPin")
+        .withParameter("pin", pinNum);
+    
+    MockForMX7705Init(channel);
+    
+    MX7705_Init(pinNum, channel);
+    /* Note that gain is initialised to idx 0. So lets change to 3 so it can be
+    decremented. Change setup reg direcly. */
+    bitInsert(mx7705Adc.setupReg[channel], initGain, PGA_MASK, PGA_OFFSET);
+
+    // Mocks for calling get gain
+    MockForMX7705GetGain(channel);
+
+    // Read the initial gain. Should match the settings stored in the setup reg
+    const uint8_t setupRegInitial = mx7705Adc.setupReg[channel];
+    uint8_t gainActual = MX7705_GetGain(channel);
+    uint8_t gainExpected = initGain;
+    // check that the gain we get back was what we set
+    CHECK_EQUAL(gainExpected, gainActual);
+
+    // Work out the expected setup register after changing gain.
+    uint8_t setupRegExpected = setupRegInitial;
+    // decrement gain to be written back into the setup reg.
+    gainExpected--;
+    // write in the new gain
+    bitInsert(setupRegExpected, gainExpected, PGA_MASK, PGA_OFFSET);
+    // mocks for calling increment gain (get then set gain)
+    MockForMX7705GetGain(channel);
+    MockForMX7705SetGain(channel, setupRegExpected);
+    // Call to increment gain
+    MX7705_DecrementGain(channel);
+    
+    // Now call get gain again to check that the gain has actually been written.
+
+    // Mocks for calling get gain
+    MockForMX7705GetGain(channel);
+    // check the gain returned matches gain requested
+    gainActual = MX7705_GetGain(channel);
+    CHECK_EQUAL(gainExpected, gainActual);
+
+    // check that the setup register matches expectations
+    const uint8_t setupRegActual = mx7705Adc.setupReg[channel];
+    CHECK_EQUAL(setupRegExpected, setupRegActual);
 
     // check function calls
     mock().checkExpectations();

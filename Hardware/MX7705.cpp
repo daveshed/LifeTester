@@ -2,6 +2,9 @@
 #include "Config.h"
 #include "MX7705.h"
 #include "MX7705Private.h"
+#ifdef DEBUG
+    #include "Print.h"
+#endif
 
 SpiSettings_t mx7705SpiSettings = {
     0U,
@@ -16,52 +19,52 @@ static bool MX7705_errorCondition = false;
 // Sends a single byte over SPI to the MX7705
 static void MX7705_Write(uint8_t sendByte)
 { 
-  OpenSpiConnection(&mx7705SpiSettings);
-  
-  #if DEBUG
-    Serial.print("MX7705: Sending... ");
-    Serial.println(sendByte, BIN);
-  #endif
-  
-  SpiTransferByte(sendByte);
-  
-  CloseSpiConnection(&mx7705SpiSettings);
+    OpenSpiConnection(&mx7705SpiSettings);
+
+    #ifdef DEBUG
+        Serial.print("MX7705: Sending... ");
+        Serial.println(sendByte, BIN);
+    #endif
+
+    SpiTransferByte(sendByte);
+
+    CloseSpiConnection(&mx7705SpiSettings);
 }
 
 // Reads a single byte from the MX7705 over SPI
 static uint8_t MX7705_ReadByte(void)
 {
-  OpenSpiConnection(&mx7705SpiSettings);
-  
-  const uint8_t readByte = SpiTransferByte(0u);
-  
-  #if DEBUG
-    Serial.print("MX7705: Data received... ");
-    Serial.println(readByte, BIN);
-  #endif
-  
-  CloseSpiConnection(&mx7705SpiSettings);
-  
-  return readByte;
+    OpenSpiConnection(&mx7705SpiSettings);
+
+    const uint8_t readByte = SpiTransferByte(0u);
+
+    #ifdef DEBUG
+        Serial.print("MX7705: Data received... ");
+        Serial.println(readByte, BIN);
+    #endif
+
+    CloseSpiConnection(&mx7705SpiSettings);
+
+    return readByte;
 }
 
 // Reads a uint16_t over spi. Used in reading data following voltage conversion.
 static uint16_t MX7705_Read16Bit(void)
 {
-  OpenSpiConnection(&mx7705SpiSettings);
-  
-  const uint8_t msb = SpiTransferByte(0u);
-  const uint8_t lsb = SpiTransferByte(0u);
-  const uint16_t retVal = (msb << 8U) | lsb;
+    OpenSpiConnection(&mx7705SpiSettings);
 
-  #if DEBUG
-    Serial.print("MX7705: Data received... ");
-    Serial.print(msb, BIN);
-    Serial.println(lsb, BIN);
-  #endif
-  
-  CloseSpiConnection(&mx7705SpiSettings);
-  return retVal;
+    const uint8_t msb = SpiTransferByte(0u);
+    const uint8_t lsb = SpiTransferByte(0u);
+    const uint16_t retVal = (msb << 8U) | lsb;
+
+    #ifdef DEBUG
+        Serial.print("MX7705: Data received... ");
+        Serial.print(msb, BIN);
+        Serial.println(lsb, BIN);
+    #endif
+
+    CloseSpiConnection(&mx7705SpiSettings);
+    return retVal;
 }
 
 #ifndef UNIT_TEST
@@ -149,6 +152,16 @@ STATIC uint8_t SetSetupSettings(AdcMode_t mode,
     return setupRegister;
 }
 
+// Reads the DRDY bit of comms reg. Returns data ready status.
+static bool IsCommsRegBusy(uint8_t channel)
+{
+    // Read comms register
+    MX7705_Write(RequestRegRead(CommsReg, channel));
+    const uint8_t commsRegister = MX7705_ReadByte();
+    // read DRDY bit - 1 = busy, 0 = ready
+    return bitRead(commsRegister, DRDY_BIT);
+}
+
 void MX7705_Init(const uint8_t pin, const uint8_t channel)
 {
     MX7705_errorCondition = false;
@@ -199,25 +212,21 @@ bool MX7705_GetError(void)
 uint16_t MX7705_ReadData(const uint8_t channel)
 {
     uint8_t         commsRegister = 0U;
-    const uint32_t  tic =  millis();
+    const uint32_t  tic = millis();
     uint32_t        toc;
     uint16_t        pollCount = 0U;
     bool            timeout = false;
       
+    // polling DRDY bit of comms register waiting for measurement to finish    
     do
     {
-        // polling DRDYpin bit of comms register waiting for measurement to finish    
-        // DRDY = 0 is ready / 1 not ready
         toc = millis();
         timeout = ((toc - tic) > TIMEOUT_MS);
-        //select read of comms register
-        MX7705_Write(channel == 0 ? MX7705_REQUEST_COMMS_READ_CH0 : MX7705_REQUEST_COMMS_READ_CH1);
-        commsRegister = MX7705_ReadByte();
         pollCount++;
-        //bit 7 of comms register
-    } while (bitRead(commsRegister, 7) && !timeout);
 
-    #if DEBUG
+    } while (IsCommsRegBusy(channel) && !timeout);
+
+    #ifdef DEBUG
         if (pollCount > 0)
         {
             Serial.print("MX7705: DRDY bit polled... ");
@@ -234,7 +243,7 @@ uint16_t MX7705_ReadData(const uint8_t channel)
     else
     {
         //request data register reading
-        MX7705_Write((channel == 0 ? MX7705_REQUEST_DATA_READ_CH0 : MX7705_REQUEST_DATA_READ_CH1));
+        MX7705_Write(RequestRegRead(DataReg, channel));
 
         return MX7705_Read16Bit();
     }
@@ -242,54 +251,58 @@ uint16_t MX7705_ReadData(const uint8_t channel)
 
 uint8_t MX7705_GetGain(const uint8_t channel)
 {
-  uint8_t setupRegister, gainRegister;
+  // request read of the setup register of the given channel
+  MX7705_Write(RequestRegRead(SetupReg, channel));
   
-  //request read of the setup register of the given channel
-  MX7705_Write(channel == 0u ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1);
+  // now read setup register.
+  const uint8_t setupRegister = MX7705_ReadByte();
   
-  //now read setup register. Note that gain is indicated by bits 3-5
-  setupRegister = MX7705_ReadByte();
-  gainRegister = (setupRegister &= B00111000) >> 3u;  //mask bits 3-5 and shift to rightmost bit.
-  
-  return gainRegister; 
+  // Extract gain settings and return
+  return bitExtract(setupRegister, PGA_MASK, PGA_OFFSET); 
 }
 
 void MX7705_SetGain(const uint8_t requiredGain, const uint8_t channel)
 {
-  uint8_t setupRegister;
-  // required gain is unsigned so don't need to check values lower than 0
-  if (requiredGain > 7u)
-  {
-    #if DEBUG
-        Serial.print("MX7705: Cannot set gain to ");
-        Serial.print(requiredGain);
-        Serial.println(". Maximum gain is 7.");
-    #endif
-  }
-  else
-  {
-    //request a read of the setup register for the given channel - store and amend gain bits. We don't want to change data that's already here.
-    MX7705_Write(channel == 0 ? MX7705_REQUEST_SETUP_READ_CH0 : MX7705_REQUEST_SETUP_READ_CH1);
-    
-    //now read setup register. Note that gain is indicated by bits 3-5
-    setupRegister = MX7705_ReadByte();
-    
-    //write the required gain onto setupRegister and write it back in
-    setupRegister &= B11000111;               //delete current gain bits
-    setupRegister |= (requiredGain << 3u);     //replace with required gain  - note similarity with GetGain.
-    
-    //request write to setup register
-    MX7705_Write(channel == 0u ? MX7705_REQUEST_SETUP_WRITE_CH0 : MX7705_REQUEST_SETUP_WRITE_CH1);
-    
-    //write new setupRegister
-    MX7705_Write(setupRegister);
-  }
+    // required gain is unsigned so don't need to check values lower than 0
+    if (requiredGain > PGA_MASK)
+    {
+        #ifdef DEBUG
+            Serial.print("MX7705: Cannot set gain to ");
+            Serial.print(requiredGain);
+            Serial.println(". Maximum gain is 7.");
+        #endif
+    }
+    else
+    {
+        /* Request a read of the setup register for the given channel - store
+        and amend gain bits only. We don't want to change data that's already here.*/
+        MX7705_Write(RequestRegRead(SetupReg, channel));
+
+        // Now read setup register.
+        const uint8_t setupRegPrev = MX7705_ReadByte();
+
+        // Write the required gain onto setupRegister then send back to adc
+        uint8_t setupRegNew = setupRegPrev;
+        bitInsert(setupRegNew, requiredGain, PGA_MASK, PGA_OFFSET);
+
+        // Request write to setup register
+        MX7705_Write(RequestRegWrite(SetupReg, channel));
+
+        // Write new setupRegister
+        MX7705_Write(setupRegNew);
+    }
 }
 
- /*TODO: function not properly implemented. Need to read the gain, change it then
- set it back again. Then check that it has changed successfully?*/
-void MX7705_GainUp(const uint8_t channel)
+void MX7705_IncrementGain(const uint8_t channel)
 {
-  MX7705_Write(channel == 0u ? B00001000 : B00001001);
+    uint8_t gain = MX7705_GetGain(channel);
+    gain++;
+    MX7705_SetGain(gain, channel);
 }
 
+void MX7705_DecrementGain(const uint8_t channel)
+{
+    uint8_t gain = MX7705_GetGain(channel);
+    gain--;
+    MX7705_SetGain(gain, channel);
+}

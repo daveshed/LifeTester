@@ -5,8 +5,6 @@
 extern "C" {
 #endif 
 
-// #define DEBUG
-
 #define ADC_CS_PIN        10u
 #define DAC_CS_PIN        9u
 #define LED_A_PIN         5u
@@ -16,7 +14,7 @@ extern "C" {
 #define MAX_CURRENT       65535u
 
 #define I2C_ADDRESS     10    //address for this I2C slave device
-#define CS_DELAY        10u  //delay between CS edge and spi transfer in ms
+#define CS_DELAY        (1u)  //delay between CS edge and spi transfer in ms
 
 ////////////////////////
 //Measurement settings//

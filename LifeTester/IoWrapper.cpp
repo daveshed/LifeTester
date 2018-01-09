@@ -6,9 +6,9 @@
 #include "IoWrapper.h"
 #include "MCP48X2.h"
 #include "MX7705.h"
-#ifdef DEBUG
-  #include "Print.h"
-#endif
+// #ifdef DEBUG
+  #include "Arduino.h"
+// #endif
 #include "TC77.h"
 
 /////////////////
@@ -54,8 +54,8 @@ uint8_t DacGetErrmsg(void)
 /////////////////
 void AdcInit(void)
 {
-  MX7705_Init(ADC_CS_PIN, 0);
-  MX7705_Init(ADC_CS_PIN, 1);
+  MX7705_Init(ADC_CS_PIN, 0U);
+  MX7705_Init(ADC_CS_PIN, 1U);
 }
 
 // TODO: remove references to ADS1286 and MAX6675
@@ -63,11 +63,21 @@ uint16_t AdcReadData(const char channel)
 {
   if (channel == 'a')
   {
-    return MX7705_ReadData(0u);
+    const uint16_t dataA = MX7705_ReadData(0u);
+    #if DEBUG
+      Serial.print("Adc data ch A = ");
+      Serial.println(dataA);
+    #endif
+    return dataA;
   }
   else if (channel == 'b')
   {
-    return MX7705_ReadData(1u);  
+    const uint16_t dataB = MX7705_ReadData(1u);
+    #if DEBUG
+      Serial.print("Adc data ch B = ");
+      Serial.println(dataB);
+    #endif
+    return dataB;
   }
   else
   {
