@@ -2,32 +2,41 @@
 #include "SPI.h"
 #include "SpiCommon.h"
 
-/*
- * initialisation only
- */
-void SpiInit(uint8_t chipSelectPin)
+void SpiBegin(void)
 {
-  pinMode(chipSelectPin, OUTPUT);
-  digitalWrite(chipSelectPin, HIGH);
-  SPI.begin();
+    // open the spi bus
+    SPI.begin();
 }
 
-/*
- * function to open SPI connection on required CS pin
- */
-void OpenSpiConnection(uint8_t chipSelectPin, uint16_t CsDelay, uint32_t clockSpeed, uint8_t bitOrder, uint8_t dataMode)
+void InitChipSelectPin(uint8_t pin)
 {
-  SPI.beginTransaction(SPISettings(clockSpeed, bitOrder, dataMode));
-  digitalWrite(chipSelectPin,LOW);
-  delay(CsDelay);
+    // set pin to output mode
+    pinMode(pin, OUTPUT);
+    // set pin high which deactivates spi line for that device
+    digitalWrite(pin, HIGH);
 }
 
-/*
- * function to close SPI connection on required CS pin
- */
-void CloseSpiConnection(uint8_t chipSelectPin, uint16_t CsDelay)
+// function to open SPI connection on required CS pin
+void OpenSpiConnection(const SpiSettings_t *settings)
 {
-  delay(CsDelay);
-  digitalWrite(chipSelectPin,HIGH);
+    SPI.beginTransaction(
+        SPISettings(settings->clockSpeed,
+                    settings->bitOrder,
+                    settings->dataMode));
+    digitalWrite(settings->chipSelectPin, LOW);
+    delay(settings->chipSelectDelay);
+}
+
+// Transmits and receives a byte
+uint8_t SpiTransferByte(const uint8_t transmit)
+{
+    return SPI.transfer(transmit);
+}
+
+// function to close SPI connection on required CS pin
+void CloseSpiConnection(const SpiSettings_t *settings)
+{
+  delay(settings->chipSelectDelay);
+  digitalWrite(settings->chipSelectPin, HIGH);
   SPI.endTransaction();
 } 

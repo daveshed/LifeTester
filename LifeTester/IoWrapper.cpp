@@ -6,7 +6,9 @@
 #include "IoWrapper.h"
 #include "MCP48X2.h"
 #include "MX7705.h"
-#include "Print.h"
+// #ifdef DEBUG
+  #include "Arduino.h"
+// #endif
 #include "TC77.h"
 
 /////////////////
@@ -25,7 +27,7 @@ void DacInit(void)
 
 void DacSetOutput(uint8_t output, char channel)
 {
-  MCP48X2_Output(DAC_CS_PIN, output, channel);
+  MCP48X2_Output(output, channel);
   #if DEBUG
     Serial.print("Setting Dac output to ");
     Serial.println(output);
@@ -52,8 +54,8 @@ uint8_t DacGetErrmsg(void)
 /////////////////
 void AdcInit(void)
 {
-  MX7705_Init(ADC_CS_PIN, 0);
-  MX7705_Init(ADC_CS_PIN, 1);
+  MX7705_Init(ADC_CS_PIN, 0U);
+  MX7705_Init(ADC_CS_PIN, 1U);
 }
 
 // TODO: remove references to ADS1286 and MAX6675
@@ -61,11 +63,21 @@ uint16_t AdcReadData(const char channel)
 {
   if (channel == 'a')
   {
-    return MX7705_ReadData(ADC_CS_PIN, 0);
+    const uint16_t dataA = MX7705_ReadData(0u);
+    #if DEBUG
+      Serial.print("Adc data ch A = ");
+      Serial.println(dataA);
+    #endif
+    return dataA;
   }
   else if (channel == 'b')
   {
-    return MX7705_ReadData(ADC_CS_PIN, 1);  
+    const uint16_t dataB = MX7705_ReadData(1u);
+    #if DEBUG
+      Serial.print("Adc data ch B = ");
+      Serial.println(dataB);
+    #endif
+    return dataB;
   }
   else
   {
@@ -91,11 +103,11 @@ uint8_t AdcGetGain(const char channel)
   #endif
   if (channel == 'a')
   {
-    return MX7705_GetGain(ADC_CS_PIN, 0);
+    return MX7705_GetGain(0u);
   }
   else if (channel == 'b')
   {
-    return MX7705_GetGain(ADC_CS_PIN, 1);
+    return MX7705_GetGain(1u);
   }
   else
   {
@@ -113,11 +125,11 @@ void AdcSetGain(const uint8_t gain, const char channel)
   #endif
   if (channel == 'a')
   {
-    MX7705_SetGain(ADC_CS_PIN, gain, 0);
+    MX7705_SetGain(gain, 0u);
   }
   else if (channel == 'b')
   {
-    MX7705_SetGain(ADC_CS_PIN, gain, 0);
+    MX7705_SetGain(gain, 0u);
   }
   else
   {

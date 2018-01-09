@@ -1,143 +1,141 @@
+#include "Arduino.h"  //bitRead and binary
 #include "Config.h"
-#include "Print.h"
-#include "SPI.h"  //for spi #defines
-#include "SpiCommon.h"
+#ifdef DEBUG
+  #include "Print.h"
+#endif
+#include "SpiCommon.h"  // spi functions
+#include "SpiConfig.h"  // spi #defines
 #include "TC77.h"
+#include "TC77Private.h"
 
-#define TC77_DEBUG          1         //gives you additional print statements
-#define CONVERSION_TIME     400u      //measurement conversion time (ms) - places upper limit on measurement rate
-#define CONVERSION_FACTOR   0.0625    //deg C per code
-#define MSB_OVERTEMP        B00111110 //reading this on MSB implies overtemperature
-#define SPI_CLOCK_SPEED     7000000     
-#define SPI_BIT_ORDER       MSBFIRST
-#define SPI_DATA_MODE       SPI_MODE0
+SpiSettings_t tc77SpiSettings = {
+    0U,
+    CS_DELAY,  // defined in Config.h
+    SPI_CLOCK_SPEED,
+    SPI_BIT_ORDER,
+    SPI_DATA_MODE
+};
 
-static bool     TC77_errorCondition = false;
-static uint16_t rawData             = 0u;
-static uint8_t  csPin               = 0u;
+static bool     errorCondition;
+static uint16_t previousReading;
+static uint32_t previousTime;    //previousTime set to last measurement
 
-static uint16_t TC77_ReadRawData(void);
+// reads TC77 data ready bit
+static bool TC77_IsReady(uint16_t readReg)
+{
+    return bitRead(readReg, 2U);
+}
 
-/*
- * Function to read a single two bytes from the TC77 and convert them to uint16_t
- */
+// reads MSB returned from TC77 for overtemp warning
+static bool TC77_IsOverTemp(uint8_t msb)
+{
+    return (msb >= MSB_OVERTEMP); 
+}
+
+// reads raw data from TC77 for conversion elsewhere
 static uint16_t TC77_ReadRawData(void)
 {
-  uint8_t  MSB, LSB;
-  uint16_t currentReading;
+    uint8_t msb; // most sig byte read first
+    uint8_t lsb; // then least sig
+    uint16_t readReg;
 
-  OpenSpiConnection(csPin, CS_DELAY, SPI_CLOCK_SPEED, SPI_BIT_ORDER, SPI_DATA_MODE);
+    OpenSpiConnection(&tc77SpiSettings);
 
-  //read data
-  MSB = SPI.transfer(0u);
-  LSB = SPI.transfer(0u);
+    //read data
+    msb = SpiTransferByte(0u);
+    lsb = SpiTransferByte(0u);
 
-  CloseSpiConnection(csPin, CS_DELAY);
+    CloseSpiConnection(&tc77SpiSettings);
 
-  //pack data into a single uint16_t
-  currentReading = (uint16_t)((MSB << 8) | LSB);
-  
-  #if TC77_DEBUG
-    Serial.print("bytes read: ");
-    Serial.print(MSB, BIN);
-    Serial.print(" ");
-    Serial.println(LSB, BIN);
-    Serial.print("Raw data output: ");
-    Serial.println(currentReading);
-  #endif
+    //pack data into a single uint16_t
+    readReg = (uint16_t)((msb << 8U) | lsb);
 
-  return currentReading;
+    #ifdef DEBUG
+        Serial.print("bytes read: ");
+        Serial.print(msb, BIN);
+        Serial.print(" ");
+        Serial.println(lsb, BIN);
+        Serial.print("Raw data output: ");
+        Serial.println(readReg);
+    #endif
+
+    return readReg;
 }
 
-void TC77_Init(uint8_t chipSelectPin)
+void TC77_Init(uint8_t pin)
 {
-  SpiInit(chipSelectPin);
-  csPin = chipSelectPin;
+    tc77SpiSettings.chipSelectPin = pin;
+    InitChipSelectPin(pin);
+
+    errorCondition = false;
+    previousReading = 0U;
+    previousTime = 0U;
 }
 
-/*
- * Function to convert the rawData uint16_t to the actual temperature as a float
- */
-float TC77_ConvertToTemp(uint16_t rawData)
+float TC77_ConvertToTemp(uint16_t readReg)
 {
-  int16_t signedData;
-  float   temperature;
-  //remove 3 least sig bits convert to signed
-  signedData = (int16_t)(rawData >> 3);
-  //convert to temperature
-  temperature = (float)signedData * CONVERSION_FACTOR;
-  
-  #if TC77_DEBUG
-    Serial.print("Raw data (signed int): ");
-    Serial.println(signedData);
-    Serial.print("Temperature (C): ");
-    Serial.println(temperature);
-  #endif
-  
-  return temperature;
+    // Remove 3 least sig bits convert to signed
+    int16_t signedData;
+    signedData = (int16_t)(readReg >> 3U);
+    
+    // Convert to temperature using conversion factor
+    float   temperature;
+    temperature = (float)signedData * CONVERSION_FACTOR;
+
+    #ifdef DEBUG
+        Serial.print("Raw data (signed int): ");
+        Serial.println(signedData);
+        Serial.print("Temperature (C): ");
+        Serial.println(temperature);
+    #endif
+
+    return temperature;
 }
 
-static bool TC77_IsReady(void)
-{
-  return bitRead(rawData, 2);
-}
-
-static bool TC77_IsOverTemp(uint8_t MSB)
-{
-  if (MSB >= MSB_OVERTEMP)
-  {
-    return true;
-  }
-  else
-  {
-    return false;
-  }
-}
-/*
- * Function to update static rawData variable with current temperature. It can 
- * only happen once CONVERSION_TIME has elapsed.
- */
 void TC77_Update(void)
 {
-  uint16_t currentReading;
-  static uint32_t  timer   = 0;    //timer set to last measurement
-  //update data only if the last measurement was longer than conversion time ago. 
-  if ((millis() - timer) > CONVERSION_TIME)
-  {
-    currentReading = TC77_ReadRawData();
-    //reset the timer
-    timer = millis();
-  }
+    const uint32_t currentTime = millis();
+    const uint32_t elapsedTime = currentTime - previousTime;
 
-  //shift out data to leave only the MSB
-  if (TC77_IsOverTemp(rawData >> 8))
-  {
-    TC77_errorCondition = true;
-    Serial.println("TC77 overtemperature error.");
-  }
-  else if (!TC77_IsReady()) 
-  {
-    #if TC77_DEBUG
-      Serial.println("TC77 not ready.");
-    #endif
-    // rawData is not updated.
-  }
-  else
-  {
-    rawData = currentReading;
-  }
+    //update data only if the last measurement was longer than conversion time ago. 
+    if (elapsedTime > CONVERSION_TIME)
+    {
+        uint16_t currentReading;
+        currentReading = TC77_ReadRawData();
+        //reset the previousTime
+        previousTime = currentTime;
+
+        // Now check the reading - should we update our data or not?
+        if (TC77_IsOverTemp(currentReading >> 8U))
+        {
+            // previousReading is not updated.
+            errorCondition = true;
+            #ifdef DEBUG
+                Serial.println("TC77 overtemperature error.");
+            #endif
+            previousReading = currentReading;
+        }
+        else if (!TC77_IsReady(currentReading)) 
+        {
+            // previousReading is not updated.
+            #ifdef DEBUG
+                Serial.println("TC77 not ready.");
+            #endif
+        }
+        else
+        {
+            // only update if there are no error conditions
+            previousReading = currentReading;
+        }
+    }
 }
 
 uint16_t TC77_GetRawData(void)
 {
-  return rawData;
+    return previousReading;
 }
 
 bool TC77_GetError(void)
 {
-  return TC77_errorCondition;
+    return errorCondition;
 }
-// undefine here so we don't end up with settings from another device
-#undef SPI_CLOCK_SPEED
-#undef SPI_BIT_ORDER
-#undef SPI_DATA_MODE

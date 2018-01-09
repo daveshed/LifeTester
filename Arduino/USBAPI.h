@@ -21,10 +21,12 @@
 #define __USBAPI__
 
 #include <inttypes.h>
-#include <avr/pgmspace.h>
-#include <avr/eeprom.h>
-#include <avr/interrupt.h>
-#include <util/delay.h>
+#ifndef UNIT_TEST
+	#include <avr/pgmspace.h>
+	#include <avr/eeprom.h>
+	#include <avr/interrupt.h>
+	#include <util/delay.h>
+#endif
 
 typedef unsigned char u8;
 typedef unsigned short u16;

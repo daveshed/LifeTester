@@ -9,8 +9,8 @@ void setup() {
   Serial.begin(9600);
   SPI.begin();
   MCP48X2_Init(DacCsPin);
-  MCP48X2_Output(DacCsPin, 0, 'a');
-  MCP48X2_Output(DacCsPin, 0, 'b');
+  MCP48X2_Output(0u, 'a');
+  MCP48X2_Output(0u, 'b');
 }
 
 void loop()
@@ -20,8 +20,8 @@ void loop()
   {
     dacCodeRequest = 0;
   }
-  MCP48X2_Output(DacCsPin, dacCodeRequest, 'a');
-  MCP48X2_Output(DacCsPin, dacCodeRequest, 'b');
+  MCP48X2_Output(dacCodeRequest, 'a');
+  MCP48X2_Output(dacCodeRequest, 'b');
   Serial.print(dacCodeRequest);
   Serial.print(" ");
   Serial.println((float)dacCodeRequest * 2.048 / 255.0);
