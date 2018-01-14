@@ -8,5 +8,5 @@ The MPP is tracked by a simple hill climbing method:
 3) DAC outputs are then set to initial MPP guess and tracking continues indefinitely
 4) If an error is raised, that channel will remain in error state until the LifeTester is reset
 
-## Intefarcing
+## Interfacing
 Data from the LifeTester is transmitted over as a byte string over I2C. Up to 112 LifeTesters could be connected in this fashion as slaves to a master device. Presently, a Raspberry Pi serves as a master (_see_ project daveshed/LifeTesterInterface).
