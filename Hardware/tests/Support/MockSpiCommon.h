@@ -1,3 +1,5 @@
+#include "Macros.h"
+#include "SpiCommon.h"
 #include <stdint.h>
 #include <stdbool.h>
 

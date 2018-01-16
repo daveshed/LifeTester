@@ -133,7 +133,6 @@ static uint8_t TransferMockSpiData(uint8_t byteReceived)
 {
     inputBuffer[counter] = byteReceived;
     const uint8_t retVal = outputBuffer[counter];
-    printf("byteReceived %u byteToTransmit %u\n", byteReceived, retVal);
     counter++;
     return retVal;
 }
@@ -155,14 +154,12 @@ static void LoadAdcDataIntoByteBuf(uint8_t *buf, AdcIoRegisters_t *adc)
 // sets DRDY -> 1 meaning busy
 static void SetCommsRegBusy(uint8_t *commsReg)
 {
-    printf("Comms busy\n");
     bitSet(*commsReg, DRDY_BIT);
 }
 
 // sets DRDY -> 0 meaning ready
 static void ClearCommsRegBusy(uint8_t *commsReg)
 {
-    printf("Comms ready\n");
     bitClear(*commsReg, DRDY_BIT);
 }
 
@@ -260,8 +257,6 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
     ResetMockSpiBuffers();
 
     const RegisterSelection_t regRequest = GetRequestedRegister(mx7705Adc.commsReg);
-    printf("regRequest = %u channel = %u\n",
-        (unsigned int)regRequest, GetChannel(mx7705Adc.commsReg));
 
     /* 
      If it's a readOp, then load data into the required spi output buffer. 
@@ -279,8 +274,6 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
         switch (regRequest)
         {
             case CommsReg:
-                
-                printf("mockMillis %lu elapsedTime %u\n", mockMillis, elapsedTime);
 
                 // Increment timers and update data register if needed.
                 UpdateMeasurementStatus();
@@ -381,8 +374,6 @@ static void MockForMX7705Polling(uint8_t channel)
         TIMEOUT_MS / roundtripTime:
         conversionTime / roundtripTime;
 
-    printf("\n\nnPolls = %u\n\n", nPolls);
-
     mock().expectOneCall("millis");    
     /* 
      Mocks for polling comms reg - only poll within timeout or conversion time.
@@ -463,14 +454,8 @@ TEST(MX7705TestGroup, InitialiseAdcChannelZero)
         .withParameter("pin", pinNum);
     
     MockForMX7705Init(channel);
-    
-    printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     MX7705_Init(pinNum, channel);
-
-    printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     const uint8_t clockRegExp = MX7705_WRITE_CLOCK_SETTINGS;
     const uint8_t clockRegAct = mx7705Adc.clockReg[channel];
@@ -499,14 +484,8 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOne)
         .withParameter("pin", pinNum);
     
     MockForMX7705Init(channel);
-    
-    printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     MX7705_Init(pinNum, channel);
-
-    printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     const uint8_t clockRegExp = MX7705_WRITE_CLOCK_SETTINGS;
     const uint8_t clockRegAct = mx7705Adc.clockReg[channel];
@@ -538,9 +517,6 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOneVerifyFail)
         .withParameter("pin", pinNum);
     
     MockForMX7705Init(channel);
-    
-    printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     // allows us to mock a read fail which triggers verification fail
     mockReadError = true;
@@ -548,9 +524,6 @@ TEST(MX7705TestGroup, InitialiseAdcChannelOneVerifyFail)
     MX7705_Init(pinNum, channel);
 
     CHECK_EQUAL(pinNum, mx7705SpiSettings.chipSelectPin);
-    
-    printf("comms reg %u\n", mx7705Adc.commsReg);
-    printf("clock reg %u\n", mx7705Adc.clockReg[channel]);
 
     CHECK_EQUAL(true, MX7705_GetError()); 
 

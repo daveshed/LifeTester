@@ -1,10 +1,9 @@
 #include "Arduino.h"
 #include "Config.h"
 #include "MCP48X2.h"
+#include "MCP48X2Private.h"
 #include "Print.h"
-// #include "SPI.h" //for SPI #defines
 #include "SpiCommon.h"
-#include "SpiConfig.h"
 
 /*
  * library to control MCP48X2 DACs by microchip. Note that 12, 10, and 8 bit 
@@ -12,14 +11,10 @@
  * used. The lifetester only requires this resolution which is < 0.01V.
  */
 
-#define SPI_CLOCK_SPEED  20000000     
-#define SPI_BIT_ORDER    MSBFIRST
-#define SPI_DATA_MODE    SPI_MODE0
-
-static char gain = 'l';
+static char gain;
 static uint8_t errMsg;
 
-static SpiSettings_t mcp48x2SpiSettings = {
+SpiSettings_t mcp48x2SpiSettings = {
     0U,
     CS_DELAY,       // defined in Config.h
     SPI_CLOCK_SPEED,// default values
@@ -27,12 +22,27 @@ static SpiSettings_t mcp48x2SpiSettings = {
     SPI_DATA_MODE
 };
 
+// Gets the dac command that controls the device
+STATIC uint16_t MCP48X2_GetDacCommand(chSelect_t  ch,
+                                      gainSelect_t gain,
+                                      shdnSelect_t shdn,
+                                      uint16_t     output)
+{
+    uint16_t reg = 0U;
+    bitWrite(reg, CH_SELECT_BIT, ch);
+    bitWrite(reg, GAIN_SELECT_BIT, gain);
+    bitWrite(reg, SHDN_BIT, shdn);
+    bitInsert(reg, output, DATA_MASK, DATA_OFFSET);
+    return reg;
+}
+
 /*
  * Function to initialise the interface with DAC
  */
 void MCP48X2_Init(uint8_t pin)
 {
   mcp48x2SpiSettings.chipSelectPin = pin;
+  gain = 'l';
   errMsg = 0u;
   InitChipSelectPin(pin);
   
