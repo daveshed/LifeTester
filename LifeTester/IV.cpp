@@ -44,14 +44,14 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
     if (tElapsed < SETTLE_TIME)
     {
       //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
-      DacSetOutput(v, lifeTester->channel);
+      DacSetOutput(v, lifeTester->channel.dac);
       iScan = 0;
     }
       
     else if ((tElapsed >= SAMPLING_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
     {  
       //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
-      iScan += AdcReadData(lifeTester->channel);
+      iScan += AdcReadData(lifeTester->channel.adc);
       nSamples++;
       lifeTester->IVData.iTransmit = iScan / nSamples; //data requested by I2C
     }
@@ -75,10 +75,6 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
       {
         lifeTester->error = current_limit;  //reached current limit
       }
-      if (DacGetErrmsg() != 0) //DAC writing error
-      {
-        lifeTester->error = DAC_error;
-      }
       
       Serial.print(v);
       Serial.print(", ");
@@ -88,7 +84,7 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
       Serial.print(", ");
       Serial.print(lifeTester->error);
       Serial.print(", ");
-      Serial.println(lifeTester->channel);
+      Serial.println(lifeTester->channel.dac);
       
       timer = millis(); //reset timer
       
@@ -111,7 +107,7 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
   
   lifeTester->IVData.v = vMPP;
   //reset DAC
-  DacSetOutput(0, lifeTester->channel);
+  DacSetOutput(0, lifeTester->channel.dac);
 }
 
 /*
@@ -133,26 +129,26 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
     if ((tElapsed >= TRACK_DELAY_TIME) && tElapsed < (TRACK_DELAY_TIME + SETTLE_TIME))
     {
       //STAGE 1: SET INITIAL STATE OF DAC V0
-      DacSetOutput(lifeTester->IVData.v, lifeTester->channel);
+      DacSetOutput(lifeTester->IVData.v, lifeTester->channel.dac);
     }
     
     else if ((tElapsed >= (TRACK_DELAY_TIME + SETTLE_TIME)) && (tElapsed < (TRACK_DELAY_TIME + SETTLE_TIME + SAMPLING_TIME)))  
     {
       //STAGE 2: KEEP READING THE CURRENT AND SUMMING IT AFTER THE SETTLE TIME
-      lifeTester->IVData.iCurrent += AdcReadData(lifeTester->channel);
+      lifeTester->IVData.iCurrent += AdcReadData(lifeTester->channel.adc);
       lifeTester->nReadsCurrent++;
     }
     
     else if (tElapsed >= (TRACK_DELAY_TIME + SETTLE_TIME + SAMPLING_TIME) && (tElapsed < (TRACK_DELAY_TIME + 2 * SETTLE_TIME + SAMPLING_TIME)))
     {
       //STAGE 3: STOP SAMPLING. SET DAC TO V1.
-      DacSetOutput((lifeTester->IVData.v + DV_MPPT), lifeTester->channel);
+      DacSetOutput((lifeTester->IVData.v + DV_MPPT), lifeTester->channel.dac);
     }
     
     else if (tElapsed >= (TRACK_DELAY_TIME + 2*SETTLE_TIME + SAMPLING_TIME) && (tElapsed < (TRACK_DELAY_TIME + 2 * SETTLE_TIME + 2 * SAMPLING_TIME)))
     {
       //STAGE 4: KEEP READING THE CURRENT AND SUMMING IT AFTER ANOTHER SETTLE TIME
-      lifeTester->IVData.iNext += AdcReadData(lifeTester->channel);
+      lifeTester->IVData.iNext += AdcReadData(lifeTester->channel.adc);
       lifeTester->nReadsNext++;
     }
     
@@ -190,11 +186,6 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
         lifeTester->error = current_limit;  //reached current limit
         lifeTester->nErrorReads++;
       }
-      else if (DacGetErrmsg()!= 0)
-      {
-        lifeTester->error = DAC_error;  //DAC writing error
-        lifeTester->nErrorReads++;
-      }
       else//no error here so reset error counter and err_code to 0
       {
         lifeTester->error = ok;
@@ -213,7 +204,7 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
       Serial.print(", ");
       Serial.print(TempReadDegC());
       Serial.print(", ");
-      Serial.print(lifeTester->channel);
+      Serial.print(lifeTester->channel.dac);
       Serial.println();
 
       lifeTester->IVData.iTransmit =

@@ -4,8 +4,8 @@
 #include "CppUTestExt/MockSupportPlugin.h"
 
 // Code under test
-#include "MCP48X2.h"
-#include "MCP48X2Private.h"
+#include "MCP4802.h"
+#include "MCP4802Private.h"
 
 // support
 #include "Arduino.h"       // arduino function prototypes - implemented MockAduino.c
@@ -125,33 +125,33 @@ static void SetupMockSpiConnection(const SpiSettings_t *settings)
  * Mock function implementations for tests
  ******************************************************************************/
 // Mocks needed for writing data into mock spi reg
-static void MockForMcp48x2Write(uint16_t data)
+static void MockForMCP4802Write(uint16_t data)
 {
     const uint8_t msb = (data >> 8U) & 0xFF;
     const uint8_t lsb = data & 0xFF;
 
     mock().expectOneCall("OpenSpiConnection")
-        .withParameter("settings", &mcp48x2SpiSettings);
+        .withParameter("settings", &MCP4802SpiSettings);
     mock().expectOneCall("SpiTransferByte")
         .withParameter("byteToSpiBus", msb);
     mock().expectOneCall("SpiTransferByte")
         .withParameter("byteToSpiBus", lsb);
     mock().expectOneCall("CloseSpiConnection")
-        .withParameter("settings", &mcp48x2SpiSettings);
+        .withParameter("settings", &MCP4802SpiSettings);
 }
 
 // Contains commands for mocks for calls to init function
-static void MockForMcp48x2Init(uint8_t pinNum)
+static void MockForMCP4802Init(uint8_t pinNum)
 {
     mock().expectOneCall("InitChipSelectPin")
         .withParameter("pin", pinNum);
 
-    MockForMcp48x2Write(MCP48X2_GetDacCommand(chASelect,
+    MockForMCP4802Write(MCP4802_GetDacCommand(chASelect,
                                               lowGain,
                                               shdnOff,
                                               0U));
 
-    MockForMcp48x2Write(MCP48X2_GetDacCommand(chBSelect,
+    MockForMCP4802Write(MCP4802_GetDacCommand(chBSelect,
                                               lowGain,
                                               shdnOff,
                                               0U));
@@ -161,11 +161,11 @@ static void MockForMcp48x2Init(uint8_t pinNum)
  * Unit tests
  ******************************************************************************/
 // Define a test group - all tests share common setup/teardown
-TEST_GROUP(Mcp48x2TestGroup)
+TEST_GROUP(MCP4802TestGroup)
 {
     void setup(void)
     {
-        InitialiseMockSpiBus(&mcp48x2SpiSettings);
+        InitialiseMockSpiBus(&MCP4802SpiSettings);
         
         SpiTransferByte_Callback = &TransferMockSpiData;
         OpenSpiConnection_Callback = &SetupMockSpiConnection;
@@ -180,16 +180,16 @@ TEST_GROUP(Mcp48x2TestGroup)
 };
 
 /*
- Test for initialising MCP48X2 device on pin 2. After calling the init function
+ Test for initialising MCP4802 device on pin 2. After calling the init function
  both channels should be active and set to 0.
  */
-TEST(Mcp48x2TestGroup, InitOk)
+TEST(MCP4802TestGroup, InitOk)
 {
     const uint8_t pinNum = 2U;
-    CHECK_EQUAL(0xFF, mcp48x2SpiSettings.chipSelectPin);
+    CHECK_EQUAL(0xFF, MCP4802SpiSettings.chipSelectPin);
 
-    MockForMcp48x2Init(pinNum);
-    MCP48X2_Init(pinNum);
+    MockForMCP4802Init(pinNum);
+    MCP4802_Init(pinNum);
 
     CHECK_EQUAL(lowGain, mockDac.gainMode);
     CHECK_EQUAL(0U, mockDac.chA.output);
@@ -205,26 +205,26 @@ TEST(Mcp48x2TestGroup, InitOk)
  Test for setting the output of both channels of the dac and turn the output on
  (turn shutdown off).
  */
-TEST(Mcp48x2TestGroup, SetChAandChBWithOutputOnLowGain)
+TEST(MCP4802TestGroup, SetChAandChBWithOutputOnLowGain)
 {
     const uint8_t pinNum = 2U;
-    CHECK_EQUAL(0xFF, mcp48x2SpiSettings.chipSelectPin);
+    CHECK_EQUAL(0xFF, MCP4802SpiSettings.chipSelectPin);
 
     // initialise the Dac
-    MockForMcp48x2Init(pinNum);
-    MCP48X2_Init(pinNum);
+    MockForMCP4802Init(pinNum);
+    MCP4802_Init(pinNum);
 
     // Set arbitrary output code to both channels
-    const uint16_t outputExpected = 116U;
-    MockForMcp48x2Write(
-        MCP48X2_GetDacCommand(chASelect, lowGain, shdnOff, outputExpected));
+    const uint8_t outputExpected = 116U;
+    MockForMCP4802Write(
+        MCP4802_GetDacCommand(chASelect, lowGain, shdnOff, outputExpected));
 
-    MCP48X2_Output(outputExpected, chASelect);
+    MCP4802_Output(outputExpected, chASelect);
 
-    MockForMcp48x2Write(
-        MCP48X2_GetDacCommand(chBSelect, lowGain, shdnOff, outputExpected));
+    MockForMCP4802Write(
+        MCP4802_GetDacCommand(chBSelect, lowGain, shdnOff, outputExpected));
 
-    MCP48X2_Output(outputExpected, chBSelect);
+    MCP4802_Output(outputExpected, chBSelect);
 
     CHECK_EQUAL(lowGain, mockDac.gainMode);
     CHECK_EQUAL(outputExpected, mockDac.chA.output);
@@ -241,32 +241,32 @@ TEST(Mcp48x2TestGroup, SetChAandChBWithOutputOnLowGain)
  Test for setting the output of both channels of the dac and with the output on
  and at high gain.
  */
-TEST(Mcp48x2TestGroup, SetChAandChBWithOutputOnHighGain)
+TEST(MCP4802TestGroup, SetChAandChBWithOutputOnHighGain)
 {
     const uint8_t pinNum = 4U;
-    CHECK_EQUAL(0xFF, mcp48x2SpiSettings.chipSelectPin);
+    CHECK_EQUAL(0xFF, MCP4802SpiSettings.chipSelectPin);
 
     // initialise the mock dac object
-    MockForMcp48x2Init(pinNum);
-    MCP48X2_Init(pinNum);
+    MockForMCP4802Init(pinNum);
+    MCP4802_Init(pinNum);
 
     // Set arbitrary output code to both channels and gain
-    const uint16_t outputExpected = 78U;
+    const uint8_t outputExpected = 78U;
     const gainSelect_t gainExpected = highGain;
-    MCP48X2_SetGain(gainExpected);
+    MCP4802_SetGain(gainExpected);
     
-    MockForMcp48x2Write(
-        MCP48X2_GetDacCommand(chASelect, highGain, shdnOff, outputExpected));
+    MockForMCP4802Write(
+        MCP4802_GetDacCommand(chASelect, highGain, shdnOff, outputExpected));
 
-    MCP48X2_Output(outputExpected, chASelect);
+    MCP4802_Output(outputExpected, chASelect);
 
-    MockForMcp48x2Write(
-        MCP48X2_GetDacCommand(chBSelect, highGain, shdnOff, outputExpected));
+    MockForMCP4802Write(
+        MCP4802_GetDacCommand(chBSelect, highGain, shdnOff, outputExpected));
 
-    MCP48X2_Output(outputExpected, chBSelect);
+    MCP4802_Output(outputExpected, chBSelect);
 
     CHECK_EQUAL(gainExpected, mockDac.gainMode);
-    CHECK_EQUAL(gainExpected, MCP48X2_GetGain());
+    CHECK_EQUAL(gainExpected, MCP4802_GetGain());
 
     CHECK_EQUAL(outputExpected, mockDac.chA.output);
     CHECK_EQUAL(shdnOff, mockDac.chA.shdnMode);
@@ -280,25 +280,25 @@ TEST(Mcp48x2TestGroup, SetChAandChBWithOutputOnHighGain)
  Test for setting output off (shutdown). Doesn't matter what the gain and output
  actually is so long as the output is shutdown. Check that the other output is on.
  */
-TEST(Mcp48x2TestGroup, SetChAOutputOffChBShouldBeOn)
+TEST(MCP4802TestGroup, SetChAOutputOffChBShouldBeOn)
 {
     const uint8_t pinNum = 3U;
-    CHECK_EQUAL(0xFF, mcp48x2SpiSettings.chipSelectPin);
+    CHECK_EQUAL(0xFF, MCP4802SpiSettings.chipSelectPin);
 
     // initialise the mock dac object
-    MockForMcp48x2Init(pinNum);
-    MCP48X2_Init(pinNum);
+    MockForMCP4802Init(pinNum);
+    MCP4802_Init(pinNum);
 
-    const uint16_t outputExpected = 0U;
+    const uint8_t outputExpected = 0U;
     CHECK_EQUAL(outputExpected, mockDac.chA.output);
     CHECK_EQUAL(shdnOff, mockDac.chA.shdnMode);
     CHECK_EQUAL(outputExpected, mockDac.chB.output);
     CHECK_EQUAL(shdnOff, mockDac.chB.shdnMode);
     // mock for shutdown on
-    MockForMcp48x2Write(
-        MCP48X2_GetDacCommand(chASelect, lowGain, shdnOn, outputExpected));
+    MockForMCP4802Write(
+        MCP4802_GetDacCommand(chASelect, lowGain, shdnOn, outputExpected));
     // call function under test.
-    MCP48X2_Shutdown(chASelect);
+    MCP4802_Shutdown(chASelect);
     // check that the shutdown is on for channel A and not B.
     CHECK_EQUAL(outputExpected, mockDac.chA.output);
     CHECK_EQUAL(shdnOn, mockDac.chA.shdnMode);

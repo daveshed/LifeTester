@@ -6,16 +6,16 @@ extern "C"
 {
 #endif
 
-#include <stdint.h>
+#include "MCP4802.h"  // dac types
 #include "LedFlash.h"
+#include <stdint.h>
 
-typedef enum {
-  ok,
-  low_current,
-  current_limit,
-  threshold,
-  DAC_error
-} errorCode;
+typedef enum errorCode_e {
+    ok,
+    low_current,
+    current_limit,
+    threshold
+} errorCode_t;
 
 typedef struct IVData_s {
   uint32_t v;
@@ -26,15 +26,21 @@ typedef struct IVData_s {
   uint32_t iTransmit;
 } IVData_t;
 
+// holds the channel info for the DAC and ADC
+typedef struct LtChannel_s {
+    chSelect_t dac;
+    uint8_t    adc;
+} LtChannel_t;
+
 typedef struct LifeTester_s {
-  char          channel;
-  Flasher       Led;
-  uint16_t      nReadsCurrent;
-  uint16_t      nReadsNext;   //counting number of readings taken by ADC during sampling window
-  uint16_t      nErrorReads;  //number of readings outside allowed limits
-  errorCode     error;          
-  IVData_t      IVData;       //holds operating points
-  uint32_t      timer;        //timer for tracking loop
+  LtChannel_t channel;
+  Flasher     Led;
+  uint16_t    nReadsCurrent;
+  uint16_t    nReadsNext;   //counting number of readings taken by ADC during sampling window
+  uint16_t    nErrorReads;  //number of readings outside allowed limits
+  errorCode_t error;          
+  IVData_t    IVData;       //holds operating points
+  uint32_t    timer;        //timer for tracking loop
 } LifeTester_t;
 
 #ifdef _cplusplus

@@ -1,5 +1,5 @@
 #include "Config.h"
-#include "MCP48X2.h"
+#include "MCP4802.h"
 #include "SPI.h"
 
 const uint8_t DacCsPin = DAC_CS_PIN;
@@ -8,9 +8,9 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
   SPI.begin();
-  MCP48X2_Init(DacCsPin);
-  MCP48X2_Output(0u, 'a');
-  MCP48X2_Output(0u, 'b');
+  MCP4802_Init(DacCsPin);
+  MCP4802_Output(0u, 'a');
+  MCP4802_Output(0u, 'b');
 }
 
 void loop()
@@ -20,8 +20,8 @@ void loop()
   {
     dacCodeRequest = 0;
   }
-  MCP48X2_Output(dacCodeRequest, 'a');
-  MCP48X2_Output(dacCodeRequest, 'b');
+  MCP4802_Output(dacCodeRequest, 'a');
+  MCP4802_Output(dacCodeRequest, 'b');
   Serial.print(dacCodeRequest);
   Serial.print(" ");
   Serial.println((float)dacCodeRequest * 2.048 / 255.0);

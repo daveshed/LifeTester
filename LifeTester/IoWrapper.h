@@ -6,13 +6,14 @@ extern "C"
 {
 #endif
 
+#include "MCP4802.h" // dac types
 #include <stdint.h>
 #include <stdbool.h>
 
 void DacInit(void);
-void DacSetOutput(uint8_t output, char channel);
-void DacSetGain(char requestedGain);
-char DacGetGain(void);
+void DacSetOutput(uint8_t output, chSelect_t channel);
+void DacSetGain(gainSelect_t requestedGain);
+gainSelect_t DacGetGain(void);
 uint8_t DacGetErrmsg(void);
 void AdcInit(void);
 uint16_t AdcReadData(const char channel);

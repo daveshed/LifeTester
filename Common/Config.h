@@ -5,8 +5,6 @@
 extern "C" {
 #endif 
 
-#define MCP4802           // dac model defines resolution - see MCP48X2Private.h
-
 #define ADC_CS_PIN        10u
 #define DAC_CS_PIN        9u
 #define LED_A_PIN         5u

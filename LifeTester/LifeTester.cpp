@@ -5,6 +5,7 @@
 #include "I2C.h"
 #include "LedFlash.h"
 #include "LifeTesterTypes.h"
+#include "MCP4802.h" // dac types
 #include "Print.h"
 #include <SPI.h>
 #include <Wire.h>
@@ -13,7 +14,7 @@
 //Initialise lifetester channels//
 ////////////////////////////////// 
 LifeTester_t LTChannelA = {
-  'a',
+  {chASelect, 0U},  // dac, adc - TODO: check that these are correct settings!
   Flasher(LED_A_PIN),
   0,
   0,
@@ -24,7 +25,7 @@ LifeTester_t LTChannelA = {
 };
 
 LifeTester_t LTChannelB = {
-  'b',
+  {chBSelect, 1U},  // dac, adc
   Flasher(LED_B_PIN),
   0,
   0,
@@ -56,11 +57,11 @@ void setup()
   //MPP INITIAL SEARCH/SCAN
   IV_Scan(&LTChannelA, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN);
   //initialise DAC to MPP initial guess - channel a
-  DacSetOutput(LTChannelA.IVData.v, LTChannelA.channel);
+  DacSetOutput(LTChannelA.IVData.v, LTChannelA.channel.dac);
  
   IV_Scan(&LTChannelB, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN); 
   //initialise DAC to MPP initial guess - channel b
-  DacSetOutput(LTChannelB.IVData.v, LTChannelB.channel);
+  DacSetOutput(LTChannelB.IVData.v, LTChannelB.channel.dac);
 
   //DATA HEADINGS
   Serial.println();

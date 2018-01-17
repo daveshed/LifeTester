@@ -7,10 +7,10 @@
 # 4. finally the .hex is uploaded on the specified port
 # You can optionally compile only or upload only. Both happen by default
 
-PROGRAM=MCP48X2Test
+PROGRAM=MCP4802Test
 LIBS=../../Arduino ../../LifeTester ../../Hardware ../../Common
 IDIRS=$(patsubst %,-I%,$(subst :, ,$(LIBS)))
-DEPS=${PROGRAM}.cpp ../../Arduino/*.c* ../../Arduino/*.S ../../Hardware/MCP48X2.cpp ../../Common/*.c*
+DEPS=${PROGRAM}.cpp ../../Arduino/*.c* ../../Arduino/*.S ../../Hardware/MCP4802.cpp ../../Common/*.c*
 BUILD_DIR=Build
 CC=avr-gcc
 OBJCOPY=avr-objcopy

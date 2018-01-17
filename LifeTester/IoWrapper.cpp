@@ -4,7 +4,7 @@
  */
 #include "Config.h"
 #include "IoWrapper.h"
-#include "MCP48X2.h"
+#include "MCP4802.h"
 #include "MX7705.h"
 // #ifdef DEBUG
   #include "Arduino.h"
@@ -16,7 +16,7 @@
 /////////////////
 void DacInit(void)
 {
-  MCP48X2_Init(DAC_CS_PIN);
+  MCP4802_Init(DAC_CS_PIN);
   #if DEBUG
     if (DacGetErrmsg())
     {
@@ -25,28 +25,23 @@ void DacInit(void)
   #endif
 }
 
-void DacSetOutput(uint8_t output, char channel)
+void DacSetOutput(uint8_t output, chSelect_t channel)
 {
-  MCP48X2_Output(output, channel);
+  MCP4802_Output(output, channel);
   #if DEBUG
     Serial.print("Setting Dac output to ");
     Serial.println(output);
   #endif 
 }
 
-void DacSetGain(char requestedGain)
+void DacSetGain(gainSelect_t requestedGain)
 {
-  MCP48X2_SetGain(requestedGain);
+  MCP4802_SetGain(requestedGain);
 }
 
-char DacGetGain(void)
+gainSelect_t DacGetGain(void)
 {
-  return MCP48X2_GetGain();
-}
-
-uint8_t DacGetErrmsg(void)
-{
-  return MCP48X2_GetErrmsg();
+  return MCP4802_GetGain();
 }
 
 /////////////////
