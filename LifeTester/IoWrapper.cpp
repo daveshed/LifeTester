@@ -6,9 +6,7 @@
 #include "IoWrapper.h"
 #include "MCP4802.h"
 #include "MX7705.h"
-// #ifdef DEBUG
-  #include "Arduino.h"
-// #endif
+#include "Arduino.h"
 #include "TC77.h"
 
 /////////////////
@@ -17,12 +15,6 @@
 void DacInit(void)
 {
   MCP4802_Init(DAC_CS_PIN);
-  #if DEBUG
-    if (DacGetErrmsg())
-    {
-      Serial.println("Dac error condition on init.");
-    }
-  #endif
 }
 
 void DacSetOutput(uint8_t output, chSelect_t channel)
@@ -53,21 +45,20 @@ void AdcInit(void)
   MX7705_Init(ADC_CS_PIN, 1U);
 }
 
-// TODO: remove references to ADS1286 and MAX6675
-uint16_t AdcReadData(const char channel)
+uint16_t AdcReadData(const uint8_t channel)
 {
-  if (channel == 'a')
+  if (channel == 0U)
   {
-    const uint16_t dataA = MX7705_ReadData(0u);
+    const uint16_t dataA = MX7705_ReadData(0U);
     #if DEBUG
       Serial.print("Adc data ch A = ");
       Serial.println(dataA);
     #endif
     return dataA;
   }
-  else if (channel == 'b')
+  else if (channel == 1U)
   {
-    const uint16_t dataB = MX7705_ReadData(1u);
+    const uint16_t dataB = MX7705_ReadData(1U);
     #if DEBUG
       Serial.print("Adc data ch B = ");
       Serial.println(dataB);
@@ -79,7 +70,7 @@ uint16_t AdcReadData(const char channel)
     #if DEBUG
       Serial.println("Error: Invalid ADC channel selected.");
     #endif
-    return 0;
+    return 0U;
   }
 }
 
@@ -91,16 +82,16 @@ bool AdcGetError(void)
   return MX7705_GetError();
 }
 
-uint8_t AdcGetGain(const char channel)
+uint8_t AdcGetGain(const uint8_t channel)
 {
   #if DEBUG
     Serial.println("Error: Cannot read gain");
   #endif
-  if (channel == 'a')
+  if (channel == 0U)
   {
     return MX7705_GetGain(0u);
   }
-  else if (channel == 'b')
+  else if (channel == 0U)
   {
     return MX7705_GetGain(1u);
   }
@@ -113,16 +104,16 @@ uint8_t AdcGetGain(const char channel)
   }
 }
 
-void AdcSetGain(const uint8_t gain, const char channel)
+void AdcSetGain(const uint8_t gain, const uint8_t channel)
 {
   #if DEBUG
     Serial.println("Error: Cannot set gain");
   #endif
-  if (channel == 'a')
+  if (channel == 0U)
   {
     MX7705_SetGain(gain, 0u);
   }
-  else if (channel == 'b')
+  else if (channel == 0U)
   {
     MX7705_SetGain(gain, 0u);
   }

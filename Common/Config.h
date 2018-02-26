@@ -13,8 +13,9 @@ extern "C" {
 #define LIGHT_SENSOR_PIN  0u
 #define MAX_CURRENT       65535u
 
-#define I2C_ADDRESS     10    //address for this I2C slave device
-#define CS_DELAY        (1u)  //delay between CS edge and spi transfer in ms
+#define I2C_ADDRESS     10     // address for this I2C slave device
+#define CS_DELAY        (1u)   // delay between CS edge and spi transfer in ms
+#define CS_DELAY_ADC    (20u)  // ADC is particularly slow
 
 ////////////////////////
 //Measurement settings//

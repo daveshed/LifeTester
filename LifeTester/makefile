@@ -27,6 +27,9 @@ PORT?=/dev/ttyACM0
 # dependency should define build order but written explicitly here
 all: ${BUILD_DIR}/*.o ${PROGRAM}.elf ${PROGRAM}.hex upload
 
+debug: CFLAGS += -DDEBUG
+debug: all
+
 # option to compile only without upload/install
 build: ${BUILD_DIR}/*.o ${PROGRAM}.elf ${PROGRAM}.hex
 

@@ -2,14 +2,14 @@
 #include "Config.h"
 #include "MX7705.h"
 #include "MX7705Private.h"
-#ifdef DEBUG
+// #ifdef DEBUG
     #include "Print.h"
-#endif
+// #endif
 
 SpiSettings_t mx7705SpiSettings = {
     0U,
-    CS_DELAY,       // defined in Config.h
-    SPI_CLOCK_SPEED,// default values
+    CS_DELAY_ADC,     // defined in Config.h
+    SPI_CLOCK_SPEED,  // default values
     SPI_BIT_ORDER,
     SPI_DATA_MODE
 };
