@@ -96,7 +96,6 @@ static uint8_t TransferMockSpiData(uint8_t byteReceived)
 {
     inputBuffer[counter] = byteReceived;
     const uint8_t retVal = outputBuffer[counter];
-    printf("byteReceived %u byteToTransmit %u\n", byteReceived, retVal);
     counter++;
     return retVal;
 }
@@ -107,7 +106,6 @@ static void TeardownMockSpiConnection(const SpiSettings_t *settings)
     CheckSpiSettings(settings);
     // dac command is given by the first two bytes written over SPI bus
     const uint16_t dacCommand = (inputBuffer[0] << 8U) | (inputBuffer[1]);
-    printf("dacCommand = %d\n", dacCommand);    
     UpdateMockDac(dacCommand);
 }
 

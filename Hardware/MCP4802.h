@@ -44,7 +44,7 @@ void MCP4802_Init(uint8_t pin);
  */
 void MCP4802_Output(uint8_t output, chSelect_t ch);
 
-// Shut down the given channel
+// Shut down the given channel - overidden by a call to output
 void MCP4802_Shutdown(chSelect_t ch);
 
 // Set the gain. This applies to both channels.
