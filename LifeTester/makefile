@@ -6,6 +6,11 @@
 # 4. finally the .hex is uploaded on the specified port
 # You can optionally compile only or upload only. Both happen by default
 
+# options:
+# make debug - gives you extra debug information over serial
+# make PORT=/dev/ttyACM1 - manually specifies port. Defaults to ...ACM0
+# make I2C_ADDRESS=0x0B - manully specifies I2C address. Defaults to 0x0A
+
 PROGRAM=Lifetester
 LIBS=../Arduino ../LifeTester ../Hardware ../Common
 IDIRS=$(patsubst %,-I%,$(subst :, ,$(LIBS)))
@@ -14,7 +19,8 @@ BUILD_DIR=Build
 CC=avr-gcc
 OBJCOPY=avr-objcopy
 MMCU=-mmcu=atmega328p
-CFLAGS=-Os -DF_CPU=16000000UL ${MMCU}
+I2C_ADDRESS?=0x0A
+CFLAGS=-Os -DI2C_ADDRESS=${I2C_ADDRESS} -DF_CPU=16000000UL ${MMCU}
 UPLOADER=avrdude
 PORT?=/dev/ttyACM0
 

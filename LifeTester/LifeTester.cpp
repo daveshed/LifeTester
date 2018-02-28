@@ -37,28 +37,26 @@ LifeTester_t LTChannelB = {
 
 void setup()
 { 
-  //SERIAL PORT COMMUNICATION WITH PC VIA UART
+  // SERIAL PORT COMMUNICATION WITH PC VIA UART
   Serial.begin(9600);
   SPI.begin();
     
-  //OPTION B: I2C COMMUNICATION WITH MASTER ARDUINO
-  Wire.begin(I2C_ADDRESS);          // join I2C bus with address specified (see header)
+  // I2C COMMUNICATION WITH MASTER ARDUINO
+  Wire.begin(I2C_ADDRESS);          // I2C address defined at compile time - see makefile
   Wire.onRequest(I2C_TransmitData); // register event
 
-  //INITIALISE I/O
+  // INITIALISE I/O
   Serial.println("Initialising IO...");
-  
   DacInit();
   AdcInit();
   TempSenseInit();
   
-  Serial.println("Scanning for MPP...");
-  
   //MPP INITIAL SEARCH/SCAN
+  Serial.println("Scanning for MPP...");
   IV_Scan(&LTChannelA, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN);
-  //initialise DAC to MPP initial guess - channel a
+  // initialise DAC to MPP initial guess
   DacSetOutput(LTChannelA.IVData.v, LTChannelA.channel.dac);
- 
+  
   IV_Scan(&LTChannelB, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN); 
   //initialise DAC to MPP initial guess - channel b
   DacSetOutput(LTChannelB.IVData.v, LTChannelB.channel.dac);

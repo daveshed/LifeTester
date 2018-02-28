@@ -176,12 +176,12 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
       }
             
       //finished measurement now so do error detection
-      if (lifeTester->IVData.pCurrent == 0)
+      if (lifeTester->IVData.pCurrent == I_THRESHOLD)
       {
         lifeTester->error = low_current;  //low power error
         lifeTester->nErrorReads++;
       }
-      else if (lifeTester->IVData.iCurrent >= 4095)
+      else if (lifeTester->IVData.iCurrent >= MAX_CURRENT)
       {
         lifeTester->error = current_limit;  //reached current limit
         lifeTester->nErrorReads++;
