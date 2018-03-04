@@ -17,7 +17,10 @@ tElapsed  0-------------------settleTime----------------(settleTime + sampleTime
 */
 
 //scan voltage and look for max power point
-void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint16_t finV, const uint16_t dV)
+void IV_Scan(LifeTester_t *const lifeTester,
+             const uint16_t      startV,
+             const uint16_t      finV,
+             const uint16_t      dV)
 {
   uint32_t v;
   uint32_t vMPP;   //everything needs to be defined as long to calculate power correctly
@@ -32,6 +35,7 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
   DBG_PRINTLN("IV scan...");
   DBG_PRINTLN("V, I, P, error, channel");
   
+  // TODO: Get rid of magic numbers
   lifeTester->Led.t(25, 500);
   
   v = startV;
@@ -40,21 +44,22 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
     tElapsed = millis() - timer;
     lifeTester->Led.update();
     lifeTester->IVData.v = v;
-    
     //measurement speed defined by settle time and sample time
     if (tElapsed < SETTLE_TIME)
     {
+      printf("tElapsed = %u\n", tElapsed);    
       //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
       DacSetOutput(v, lifeTester->channel.dac);
       iScan = 0;
     }
       
-    else if ((tElapsed >= SAMPLING_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
+    else if ((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
     {  
       //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
       iScan += AdcReadData(lifeTester->channel.adc);
       nSamples++;
       lifeTester->IVData.iTransmit = iScan / nSamples; //data requested by I2C
+      // TODO - Error from truncating in int division
     }
 
     else if (tElapsed >= (SETTLE_TIME + SAMPLING_TIME))

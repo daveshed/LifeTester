@@ -8,86 +8,27 @@
 
 // support
 #include "Arduino.h"       // arduino function prototypes - implemented MockAduino.c
-#include "MockArduino.h"   // mockDigitalPins, mockMillis, private variables
-#include <stdint.h>
+#include "Config.h"
+#include <stdio.h>
 
-#if 0
+// defines the measurement window in IV scanning or MPPT update
+typedef enum MeasurementStage_e {
+    settle,
+} MeasurementStage_t;
+
+unsigned long millis(void)
+{
+    mock().actualCall("millis");
+    uint32_t retval = mock().unsignedLongIntReturnValue();
+    printf("test millis = %u\n", retval);
+    return retval;
+}
+
 /*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
 
-/* Return data depending on how many bytes we've already read. First MSB then
- LSB then nothing. Similar for writing data too. */
-static uint8_t TransferDataFromReadReg(const uint8_t transmit)
-{
-    (void)transmit; // unused variable
-    
-    uint8_t retVal;
-    if (mockSpiState.transferIdx == 0U)
-    {
-        // first send msb
-        retVal = mockSpiState.readReg.msb;
-
-        // now write data
-        // mockSpiState.writeReg.msb = byteToSpiBus;
-
-        mockSpiState.transferIdx++;
-    }
-    else if (mockSpiState.transferIdx == 1U)
-    {
-        // send lsb next
-        retVal = mockSpiState.readReg.lsb;
-        
-        // now write data
-        // mockSpiState.writeReg.lsb = byteToSpiBus;
-        
-        mockSpiState.transferIdx++;
-    }
-    else
-    {
-        // now send/write nothing
-        retVal = 0U;
-    }
-    return retVal;
-}
-
-static void DummyCallback(const SpiSettings_t*)
-{
-    // dummy function
-}
-
-// set the status of mock hardware to ready
-static void SetReadRegReady(uint16_t *readReg)
-{
-    bitSet(*readReg, 2U);
-}
-
-// set the status of mock hardware to busy
-static void SetReadRegNotReady(uint16_t *readReg)
-{
-    bitClear(*readReg, 2U);
-}
-
-/* Puts some data into the spi read register given by the temperature it's
-exposed to. See datasheet for details on calculation. */
-static void UpdateReadReg(float temperature, bool ready)
-{
-    // convert temp into binary
-    const int16_t signedData = (int16_t)(temperature / CONVERSION_FACTOR);
-
-    uint16_t rawData = (uint16_t)(signedData << 3U);
-    if (ready)
-    {
-        SetReadRegReady(&rawData);
-    }
-    else
-    {
-        SetReadRegNotReady(&rawData);
-    }
-    // Put the data into the register
-    SetSpiReadReg(rawData);
-}
-
+#if 0
 // Mocks needed for reading data in update function
 static void MockForTC77ReadRawData(void)
 {
@@ -109,7 +50,7 @@ TEST_GROUP(IVTestGroup)
 {
     void setup(void)
     {
-        mockMillis = 0U;
+
     }
 
     void teardown(void)
@@ -118,9 +59,84 @@ TEST_GROUP(IVTestGroup)
     }
 };
 
-TEST(IVTestGroup, Dummy)
+TEST(IVTestGroup, RunIvScan)
 {
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
+
+    // mock lifetester data
+    LifeTester_t LTChannelA =
+    {
+        {chASelect, 0U},
+        Flasher(LED_A_PIN),
+        0,
+        0,
+        0,
+        ok,
+        {0},
+        0
+    };
+
+    const uint32_t tInitial = 348775U;
+    uint32_t       mockTime = tInitial;
+    uint32_t       tPrevious = mockTime;
+    const uint32_t dt = 50U; // ms
+
+    // IV scan setup - mock calls that happen prior to IV scan loop
+    mock().expectOneCall("millis").andReturnValue(tInitial);
+    mock().expectOneCall("Flasher::t")
+        .withParameter("onNew", SCAN_LED_ON_TIME)
+        .withParameter("offNew", SCAN_LED_OFF_TIME);
+    
+    // Note that voltages are sent as dac codes right now
+    const uint16_t vInitial = 0U;
+    const uint16_t vFinal   = 9U;
+    const uint16_t dV       = 3U;
+    uint16_t       mockVolts = vInitial;
+
+    // IV scan loop - queue mocks ready for calls by function under test
+    while(mockVolts <= vFinal)
+    {
+        // Setup
+        mock().expectOneCall("millis").andReturnValue(mockTime);
+        mock().expectOneCall("Flasher::update");
+
+        // (1) Set voltage during settle time
+        uint32_t tElapsed = mockTime - tPrevious;
+        if (tElapsed < SETTLE_TIME)
+        {
+            mock().expectOneCall("DacSetOutput")
+                .withParameter("output", mockVolts)
+                .withParameter("channel", LTChannelA.channel.dac);
+        }
+        // (2) Sample current during measurement time window
+        else if((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
+        {
+            mock().expectOneCall("AdcReadData")
+                .withParameter("channel", LTChannelA.channel.adc)
+                .andReturnValue(10U); // Requires diode equation or similar
+        }
+        // (3) Do calculations - update timer for next measurement
+        else
+        {
+            mock().expectOneCall("millis").andReturnValue(mockTime);
+            mockVolts += dV;
+            tPrevious = mockTime;
+        }
+
+        mockTime += dt;
+    }
+    
+    // Reset dac after measurements
+    mock().expectOneCall("DacSetOutput")
+        .withParameter("output", 0U)
+        .withParameter("channel", LTChannelA.channel.dac);
+
+    IV_Scan(&LTChannelA, 0, 9, 3);
+
     FAIL("Fail me!");
+    mock().checkExpectations();
 }
 
 #if 0

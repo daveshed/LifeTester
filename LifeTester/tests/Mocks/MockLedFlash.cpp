@@ -2,6 +2,7 @@
  Mock implementation of LedFlash for unit testing only. Class and functions 
  are declared in LedFlash.h
 */
+
 // CppUnit Test framework
 #include "CppUTest/TestHarness.h"
 #include "CppUTestExt/MockSupport.h"
@@ -15,35 +16,35 @@ Flasher::Flasher(uint8_t pin)
         .withParameter("pin", pin);
 }
 
-void Flasher::t(uint32_t onTime, uint32_t offTime)
+void Flasher::t(uint32_t onNew, uint32_t offNew)
 {
-    mock().actualCall("t")
-        .withParameter("onTime", onTime)
-        .withParameter("pin", offTime);    
+    mock().actualCall("Flasher::t")
+        .withParameter("onNew", onNew)
+        .withParameter("offNew", offNew);    
 }
 
 void Flasher::update(void)
 {
-    mock().actualCall("update");
+    mock().actualCall("Flasher::update");
 }
 
 void Flasher::on(void)
 {
-    mock().actualCall("on");
+    mock().actualCall("Flahser::on");
 }
 
 void Flasher::off(void)
 {
-    mock().actualCall("off");
+    mock().actualCall("Flasher::off");
 }
 
 void Flasher::stopAfter(int16_t n)
 {
-    mock().actualCall("stopAfter")
+    mock().actualCall("Flasher::stopAfter")
         .withParameter("n",n);
 }
 
 void Flasher::keepFlashing(void)
 {
-    mock().actualCall("keepFlashing");
+    mock().actualCall("Flasher::keepFlashing");
 }

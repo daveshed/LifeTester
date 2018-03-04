@@ -26,6 +26,7 @@ void DacSetGain(gainSelect_t requestedGain)
 gainSelect_t DacGetGain(void)
 {
     mock().actualCall("DacGetGain");
+    return (gainSelect_t)mock().intReturnValue();
 }
 
 void AdcInit(void)
@@ -37,16 +38,19 @@ uint16_t AdcReadData(const uint8_t channel)
 {
     mock().actualCall("AdcReadData")
         .withParameter("channel", channel);
+    return mock().unsignedIntReturnValue();
 }
 
 bool AdcGetError(void)
 {
     mock().actualCall("AdcGetError");
+    return mock().boolReturnValue();
 }
 
 uint8_t AdcGetGain(const uint8_t channel)
 {
     mock().actualCall("AdcGetGain");
+    return mock().unsignedIntReturnValue();
 }
 
 void AdcSetGain(const uint8_t gain, const uint8_t channel)

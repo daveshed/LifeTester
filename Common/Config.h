@@ -34,6 +34,10 @@ extern "C" {
 #define SAMPLING_TIME     200u //time interval over which ADC measurements are made continuously then averaged afterward
 #define TRACK_DELAY_TIME  200u //time period between tracking measurements
 
+// Led flasher timings
+#define SCAN_LED_ON_TIME      (25U)
+#define SCAN_LED_OFF_TIME     (500U)
+
 #endif
 #ifdef _cplusplus
 }
