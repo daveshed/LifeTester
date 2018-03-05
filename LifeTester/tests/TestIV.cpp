@@ -474,6 +474,73 @@ TEST(IVTestGroup, RunIvScanFindsMpp)
 }
 
 /*
+ IV scan shape is checked and error raised if it's not a hill shape. The first
+ and last points are compared against the maximum power point - mpp should be
+ highest. Here, the lifetester measures a linear power trace due to a constant
+ current. 
+*/
+TEST(IVTestGroup, RunIvScanInvalidScanNotHillShaped)
+{
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
+
+    const uint32_t initV = 11U;
+    // mock lifetester "object"
+    LifeTester_t lifetester =
+    {
+        {chASelect, 0U},
+        Flasher(LED_A_PIN),
+        0,
+        0,
+        0,
+        ok,
+        {initV},
+        0
+    };
+
+    TestTiming_t t;
+    t.initial = 348775U;
+    t.mock = t.initial;
+    t.previous = t.mock;
+    t.dt = 100U;
+
+    // IV scan setup - mock calls that happen prior to IV scan loop
+    mock().expectOneCall("millis").andReturnValue(t.initial);
+    mock().expectOneCall("Flasher::t")
+        .withParameter("onNew", SCAN_LED_ON_TIME)
+        .withParameter("offNew", SCAN_LED_OFF_TIME);
+    
+    TestVoltage_t v;
+    v.initial = 45U;        // initial scan voltage
+    v.final   = 70U;        // final scan voltage
+    v.dV      = 1U;         // step size
+    v.mock    = v.initial;  // mock voltage sent to dac
+
+    // IV scan loop - queue mocks ready for calls by function under test
+    while(v.mock <= v.final)
+    {
+        MocksForIvScanStep(&lifetester, &t, &v, TestGetAdcCodeConstantCurrent);
+    }
+    
+    // Reset dac after measurements
+    mock().expectOneCall("DacSetOutput")
+        .withParameter("output", initV)
+        .withParameter("channel", lifetester.channel.dac);
+
+    // Call function under test
+    IV_ScanAndUpdate(&lifetester, v.initial, v.final, v.dV);
+
+    // expect invalidScan error since the P(V) is linear not a hill.
+    CHECK_EQUAL(invalidScan, lifetester.error);
+    // lifetester voltage should not have been been changed.
+    CHECK_EQUAL(initV, lifetester.IVData.v);
+    
+    // Check mock function calls match expectations
+    mock().checkExpectations();
+}
+
+/*
  Test for running an IV scan where the measurement is interrupted at the critical
  point of measuring the mpp. No adc data is read from the device corresponding
  to that dac code. Point is reameasured and correct mpp is returned.
@@ -626,98 +693,4 @@ TEST(IVTestGroup, RunIvScanErrorStateDontScan)
     // No mocks should be called
     mock().checkExpectations();
 
-}
-
-/*
- IV scan shape is checked and error raised if it's not a hill shape. The first
- and last points are compared against the maximum power point - mpp should be
- highest. Here, the lifetester measures a linear power trace due to a constant
- current. 
-*/
-TEST(IVTestGroup, RunIvScanInvalidScanNotHillShaped)
-{
-    // mock call to instantiate flasher object
-    mock().expectOneCall("Flasher")
-        .withParameter("pin", LED_A_PIN);
-
-    const uint32_t initV = 11U;
-    // mock lifetester "object"
-    LifeTester_t lifetester =
-    {
-        {chASelect, 0U},
-        Flasher(LED_A_PIN),
-        0,
-        0,
-        0,
-        ok,
-        {initV},
-        0
-    };
-
-    const uint32_t tInitial = 348775U;
-    uint32_t       mockTime = tInitial;
-    uint32_t       tPrevious = mockTime;
-    const uint32_t dt = 100U; // time step in ms
-
-    // IV scan setup - mock calls that happen prior to IV scan loop
-    mock().expectOneCall("millis").andReturnValue(tInitial);
-    mock().expectOneCall("Flasher::t")
-        .withParameter("onNew", SCAN_LED_ON_TIME)
-        .withParameter("offNew", SCAN_LED_OFF_TIME);
-    
-    // Note that voltages are sent as dac codes
-    const uint8_t vInitial = 45U;
-    const uint8_t vFinal   = 70U;
-    const uint8_t dV       = 1U;
-    uint16_t      mockVolts = vInitial;
-
-    // IV scan loop - queue mocks ready for calls by function under test
-    while(mockVolts <= vFinal)
-    {
-        // Setup
-        mock().expectOneCall("millis").andReturnValue(mockTime);
-        mock().expectOneCall("Flasher::update");
-
-        // (1) Set voltage during settle time
-        uint32_t tElapsed = mockTime - tPrevious;
-        if (tElapsed < SETTLE_TIME)
-        {
-            mock().expectOneCall("DacSetOutput")
-                .withParameter("output", mockVolts)
-                .withParameter("channel", lifetester.channel.dac);
-        }
-        // (2) Sample current during measurement time window
-        else if((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
-        {
-            // Mock returns shockley diode current from lookup table
-            mock().expectOneCall("AdcReadData")
-                .withParameter("channel", lifetester.channel.adc)
-                .andReturnValue(TestGetAdcCodeConstantCurrent(mockVolts));
-        }
-        // (3) Do calculations - update timer for next measurement
-        else
-        {
-            mock().expectOneCall("millis").andReturnValue(mockTime);
-            mockVolts += dV;
-            tPrevious = mockTime;
-        }
-
-        mockTime += dt;
-    }
-    
-    // Reset dac after measurements
-    mock().expectOneCall("DacSetOutput")
-        .withParameter("output", initV)
-        .withParameter("channel", lifetester.channel.dac);
-
-    // Call function under test
-    IV_ScanAndUpdate(&lifetester, vInitial, vFinal, dV);
-
-    // expect invalidScan error since the P(V) is linear not a hill.
-    CHECK_EQUAL(invalidScan, lifetester.error);
-    // lifetester voltage should not have been been changed.
-    CHECK_EQUAL(initV, lifetester.IVData.v);
-    
-    // Check mock function calls match expectations
-    mock().checkExpectations();
 }
