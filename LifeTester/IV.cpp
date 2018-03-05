@@ -16,6 +16,30 @@ static uint32_t iMpp;   // current at mpp as adc code
 static uint32_t timer;  // ms timer. Decides which measurement stage we're at
 static uint16_t nSamples; //number of current readings taken during sample time window
 
+static void PrintError(errorCode_t error)
+{
+    switch(error)
+    {
+        case(ok):
+            DBG_PRINTLN("ok");
+            break;
+        case(lowCurrent):
+            DBG_PRINTLN("error: low current error");
+            break;
+        case(currentLimit):
+            DBG_PRINTLN("error: current limit");
+            break;
+        case(currentThreshold):
+            DBG_PRINTLN("error: below current threshold");
+            break;
+        case(invalidScan):
+            DBG_PRINTLN("error: invalid scan shape");
+        default:
+            DBG_PRINTLN("error: unknown")
+            break;
+    }
+}
+
 static void PrintMpp(uint32_t iMpp, uint32_t vMPP, errorCode_t error)
 {
     DBG_PRINTLN();
@@ -24,7 +48,7 @@ static void PrintMpp(uint32_t iMpp, uint32_t vMPP, errorCode_t error)
     DBG_PRINT(", Vmpp = ");
     DBG_PRINT(vMPP);
     DBG_PRINT(", error = ");
-    DBG_PRINTLN(error);
+    PrintError(error);
 }
 
 static void PrintScanPoint(uint32_t v,
@@ -84,7 +108,7 @@ static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
             iMpp = iScan;
             vMPP = voltage;
         }  
-        // Reached the current current limit
+        // Reached the current limit - flag error which will stop scan
         lifeTester->error = iScan >= MAX_CURRENT ? currentLimit : ok;
         
         PrintScanPoint(voltage, iScan, pScan, lifeTester->error, lifeTester->channel.dac);      
@@ -108,54 +132,58 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
                       const uint16_t      finV,
                       const uint16_t      dV)
 {
-    // copy the initial voltage in case the new mpp can't be found
-    const uint32_t initV = lifeTester->IVData.v;
-    
-    pMax = 0U;
-    iSum = 0U;
-    timer = millis();
-    nSamples = 0U;
-
-    PrintScanHeader();
-
-    // Signal to user that IV is being scanned with led set to fast flash
-    lifeTester->Led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
-
-    // Run IV scan - record initial and final powers for checking iv scan shape
-    uint32_t v = startV;
-    uint32_t pInitial;
-    uint32_t pFinal;
-    
-    while((v <= finV) && (lifeTester->error == ok))
+    // Only scan if we're not in an error state
+    if (lifeTester->error == ok)
     {
-        ScanStep(lifeTester, &v, dV);
-        if (v == startV)
+        // copy the initial voltage in case the new mpp can't be found
+        const uint32_t initV = lifeTester->IVData.v;
+        
+        pMax = 0U;
+        iSum = 0U;
+        timer = millis();
+        nSamples = 0U;
+
+        PrintScanHeader();
+
+        // Signal to user that IV is being scanned with led set to fast flash
+        lifeTester->Led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
+
+        // Run IV scan - record initial and final powers for checking iv scan shape
+        uint32_t v = startV;
+        uint32_t pInitial;
+        uint32_t pFinal;
+        
+        while((v <= finV) && (lifeTester->error == ok))
         {
-            pInitial = iScan * v;
+            ScanStep(lifeTester, &v, dV);
+            if (v == startV)
+            {
+                pInitial = iScan * v;
+            }
+            else if (v == finV)
+            {
+                pFinal = iScan * v;
+            }
+            else
+            {
+                // do nothing
+            }
         }
-        else if (v == finV)
-        {
-            pFinal = iScan * v;
-        }
-        else
-        {
-            // do nothing
-        }
+
+        // check that the scan is a hill shape
+        const bool scanShapeOk = (pInitial < pMax) && (pFinal < pMax);
+        lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
+        
+        // Check max is above required threshold for measurement to start
+        lifeTester->error = (iMpp < I_THRESHOLD) ? currentThreshold : lifeTester->error;  
+
+        // Update v to max power point if there's no error otherwise set back to initial value.
+        lifeTester->IVData.v = (lifeTester->error == ok) ? vMPP : initV;
+        // report max power point
+        PrintMpp(iMpp, vMPP, lifeTester->error);
+        //reset DAC
+        DacSetOutput(lifeTester->IVData.v, lifeTester->channel.dac);
     }
-
-    // check that the scan is a hill shape
-    const bool scanShapeOk = (pInitial < pMax) && (pFinal < pMax);
-    lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
-    
-    // Check max is above required threshold for measurement to start
-    lifeTester->error = (iMpp < I_THRESHOLD) ? currentThreshold : lifeTester->error;  
-
-    // Update v to max power point if there's no error otherwise set back to initial value.
-    lifeTester->IVData.v = (lifeTester->error == ok) ? vMPP : initV;
-    // report max power point
-    PrintMpp(iMpp, vMPP, lifeTester->error);
-    //reset DAC
-    DacSetOutput(lifeTester->IVData.v, lifeTester->channel.dac);
 }
 
 /*

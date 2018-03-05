@@ -446,14 +446,51 @@ TEST(IVTestGroup, RunIvScanFindsMpp)
 /*
  Tests to write:
  - current sampling interrupted at max power point
- - current threshold should be checked before running. ie. function should make
- sure there are no errors before running scan. Checking threshold should not
- happen in this function. Check I_SC and adjust gain before calling scan.
- - data should be a hill. Check that max is greater than beginning and end point
+ TODO - Check I_SC and adjust gain before calling scan (LifeTester.cpp setup)
 */
 
+/*
+ IV scan function should not be called if the lifetester object is in it's error
+ state. The lifetester data should not change in this case.
+*/
+TEST(IVTestGroup, RunIvScanErrorStateDontScan)
+{
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
 
-#if 1
+    const uint32_t initV = 11U;
+    // mock lifetester "object" - set error state
+    const LifeTester_t lifetesterInit =
+    {
+        {chASelect, 0U},
+        Flasher(LED_A_PIN),
+        0,
+        0,
+        0,
+        lowCurrent,  // set error state
+        {0},
+        0
+    };
+
+    // copy initial data and pass to function under test
+    LifeTester_t lifetesterFinal = lifetesterInit;
+
+    // Note that voltages are sent as dac codes
+    const uint8_t vInitial = 45U;
+    const uint8_t vFinal   = 70U;
+    const uint8_t dV       = 1U;
+
+    // Call function under test
+    IV_ScanAndUpdate(&lifetesterFinal, vInitial, vFinal, dV);
+    // Check that the lifetester data hasn't changed
+    MEMCMP_EQUAL(&lifetesterInit, &lifetesterFinal, sizeof(LifeTester_t));
+
+    // No mocks should be called
+    mock().checkExpectations();
+
+}
+
 /*
  IV scan shape is checked and error raised if it's not a hill shape. The first
  and last points are compared against the maximum power point - mpp should be
@@ -547,5 +584,3 @@ TEST(IVTestGroup, RunIvScanInvalidScanNotHillShaped)
     // Check mock function calls match expectations
     mock().checkExpectations();
 }
-
-#endif
