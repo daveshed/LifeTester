@@ -7,112 +7,117 @@
 #include "Macros.h"
 #include "Print.h"
 
+static void PrintMpp(uint32_t iMax, uint32_t vMPP, errorCode_t error)
+{
+    DBG_PRINTLN();
+    DBG_PRINT("iMax = ");
+    DBG_PRINT(iMax);
+    DBG_PRINT(", Vmpp = ");
+    DBG_PRINT(vMPP);
+    DBG_PRINT(", error = ");
+    DBG_PRINTLN(error);
+}
+
+static void PrintScanPoint(uint32_t v,
+                           uint32_t iScan,
+                           uint32_t pScan,
+                           errorCode_t error,
+                           chSelect_t channel)
+{
+    DBG_PRINT(v);
+    DBG_PRINT(", ");
+    DBG_PRINT(iScan);
+    DBG_PRINT(", ");
+    DBG_PRINT(pScan);
+    DBG_PRINT(", ");
+    DBG_PRINT(error);
+    DBG_PRINT(", ");
+    DBG_PRINTLN(channel);
+}
+
+static void PrintScanHeader(void)
+{
+    DBG_PRINTLN("IV scan...");
+    DBG_PRINTLN("V, I, P, error, channel");
+}
+
 /*
-function to find MPP by scanning over voltages. Updates v to the MPP. 
-also pass in DAC and LifeTester objects.
+ function to find MPP by scanning over voltages. Updates v to the MPP. 
+ also pass in DAC and LifeTester objects.
 
-          STAGE 1             STAGE 2                   STAGE 3
-          Set V & wait        Read/Average current      Calculate P
-tElapsed  0-------------------settleTime----------------(settleTime + sampleTime) 
+           STAGE 1             STAGE 2                   STAGE 3
+           Set V & wait        Read/Average current      Calculate P
+ tElapsed  0-------------------settleTime----------------(settleTime + sampleTime) 
+ measurement speed defined by settle time and sample time
 */
-
-//scan voltage and look for max power point
 void IV_Scan(LifeTester_t *const lifeTester,
              const uint16_t      startV,
              const uint16_t      finV,
              const uint16_t      dV)
 {
-  uint32_t v;
   uint32_t vMPP;   //everything needs to be defined as long to calculate power correctly
-  uint32_t pMax = 0;
-  uint32_t pScan;
-  uint32_t iScan = 0;
+  uint32_t pMax = 0U;
+  uint32_t iSum = 0U;
   uint32_t iMax;
   uint32_t timer = millis();
-  uint32_t tElapsed;
-  uint16_t nSamples = 0; //number of readings taken during sample time
+  uint16_t nSamples = 0U; //number of readings taken during sample time
 
-  DBG_PRINTLN("IV scan...");
-  DBG_PRINTLN("V, I, P, error, channel");
+  PrintScanHeader();
   
-  // TODO: Get rid of magic numbers
-  lifeTester->Led.t(25, 500);
+  // Signal to user that IV is being scanned with led set to fast flash
+  lifeTester->Led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
   
-  v = startV;
-  while(v <= finV)
+  uint32_t v = startV;
+  while((v <= finV) && (lifeTester->error == ok))
   {
-    tElapsed = millis() - timer;
+    uint32_t tElapsed = millis() - timer;
     lifeTester->Led.update();
     lifeTester->IVData.v = v;
-    //measurement speed defined by settle time and sample time
+    
+    //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
     if (tElapsed < SETTLE_TIME)
     {
-      //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
-      DacSetOutput(v, lifeTester->channel.dac);
-      iScan = 0;
+        DacSetOutput(v, lifeTester->channel.dac);
+        iSum = 0U;
     }
-      
+    //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
     else if ((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
     {  
-      //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
-      iScan += AdcReadData(lifeTester->channel.adc);
-      nSamples++;
-      lifeTester->IVData.iTransmit = iScan / nSamples; //data requested by I2C
-      // TODO - Error from truncating in int division
+        iSum += AdcReadData(lifeTester->channel.adc);
+        nSamples++;
+        lifeTester->IVData.iTransmit = iSum / nSamples; //data requested by I2C
     }
-
-    else if (tElapsed >= (SETTLE_TIME + SAMPLING_TIME))
+    //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
+    else
     {
-      //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
-      iScan /= nSamples;
-      nSamples = 0;
-      pScan = iScan * v;
+        const uint32_t iScan = iSum / nSamples;
+        nSamples = 0U;
 
-      //update max power and vMPP if we have found a maximum power point.
-      if (pScan > pMax)
-      {  
-        pMax = iScan * v;
-        iMax = iScan;
-        vMPP = v;
-      }  
-
-      if (iScan >= MAX_CURRENT)
-      {
-        lifeTester->error = current_limit;  //reached current limit
-      }
+        // Update max power and vMPP if we have found a maximum power point.
+        const uint32_t pScan = iScan * v;
+        if (pScan > pMax)
+        {  
+            pMax = iScan * v;
+            iMax = iScan;
+            vMPP = v;
+        }  
+        // Reached the current current limit
+        lifeTester->error = iScan >= MAX_CURRENT ? current_limit : ok;
+        
+        PrintScanPoint(v, iScan, pScan, lifeTester->error, lifeTester->channel.dac);      
       
-      DBG_PRINT(v);
-      DBG_PRINT(", ");
-      DBG_PRINT(iScan);
-      DBG_PRINT(", ");
-      DBG_PRINT(pScan);
-      DBG_PRINT(", ");
-      DBG_PRINT(lifeTester->error);
-      DBG_PRINT(", ");
-      DBG_PRINTLN(lifeTester->channel.dac);
-      
-      timer = millis(); //reset timer
-      
-      v += dV;  //move to the next point
+        timer = millis(); //reset timer      
+        v += dV;  //move to the next point
+        }
     }
-  }
+    PrintMpp(iMax, vMPP, lifeTester->error);
 
-  DBG_PRINTLN();
-  DBG_PRINT("iMax = ");
-  DBG_PRINT(iMax);
-  DBG_PRINT(", Vmpp = ");
-  DBG_PRINT(vMPP);
-  DBG_PRINT(", error = ");
-  DBG_PRINTLN(lifeTester->error);
+    // Check max is above required threshold for measurement to start
+    lifeTester->error = iMax < I_THRESHOLD ? threshold : ok;  
   
-  if (iMax < I_THRESHOLD)
-  {
-    lifeTester->error = threshold;  
-  }
-  
-  lifeTester->IVData.v = vMPP;
-  //reset DAC
-  DacSetOutput(0, lifeTester->channel.dac);
+    lifeTester->IVData.v = vMPP;
+    //reset DAC
+    DacSetOutput(0U, lifeTester->channel.dac);
 }
 
 /*
