@@ -7,11 +7,20 @@
 #include "Macros.h"
 #include "Print.h"
 
-static void PrintMpp(uint32_t iMax, uint32_t vMPP, errorCode_t error)
+//everything needs to be defined as long to calculate power correctly
+static uint32_t vMPP;   // maximum power point in dac code   
+static uint32_t pMax;   // keeps track of maximum power so far
+static uint32_t iSum;   // sum of currents during sampling window
+static uint32_t iScan;  // current averaged over sampling window
+static uint32_t iMpp;   // current at mpp as adc code
+static uint32_t timer;  // ms timer. Decides which measurement stage we're at
+static uint16_t nSamples; //number of current readings taken during sample time window
+
+static void PrintMpp(uint32_t iMpp, uint32_t vMPP, errorCode_t error)
 {
     DBG_PRINTLN();
-    DBG_PRINT("iMax = ");
-    DBG_PRINT(iMax);
+    DBG_PRINT("iMpp = ");
+    DBG_PRINT(iMpp);
     DBG_PRINT(", Vmpp = ");
     DBG_PRINT(vMPP);
     DBG_PRINT(", error = ");
@@ -41,43 +50,17 @@ static void PrintScanHeader(void)
     DBG_PRINTLN("V, I, P, error, channel");
 }
 
-/*
- function to find MPP by scanning over voltages. Updates v to the MPP. 
- also pass in DAC and LifeTester objects.
-
-           STAGE 1             STAGE 2                   STAGE 3
-           Set V & wait        Read/Average current      Calculate P
- tElapsed  0-------------------settleTime----------------(settleTime + sampleTime) 
- measurement speed defined by settle time and sample time
-*/
-void IV_Scan(LifeTester_t *const lifeTester,
-             const uint16_t      startV,
-             const uint16_t      finV,
-             const uint16_t      dV)
+static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
 {
-  uint32_t vMPP;   //everything needs to be defined as long to calculate power correctly
-  uint32_t pMax = 0U;
-  uint32_t iSum = 0U;
-  uint32_t iMax;
-  uint32_t timer = millis();
-  uint16_t nSamples = 0U; //number of readings taken during sample time
-
-  PrintScanHeader();
-  
-  // Signal to user that IV is being scanned with led set to fast flash
-  lifeTester->Led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
-  
-  uint32_t v = startV;
-  while((v <= finV) && (lifeTester->error == ok))
-  {
-    uint32_t tElapsed = millis() - timer;
+    const uint32_t voltage = *v;
+    const uint32_t tElapsed = millis() - timer;
     lifeTester->Led.update();
-    lifeTester->IVData.v = v;
+    lifeTester->IVData.v = voltage;
     
     //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
     if (tElapsed < SETTLE_TIME)
     {
-        DacSetOutput(v, lifeTester->channel.dac);
+        DacSetOutput(voltage, lifeTester->channel.dac);
         iSum = 0U;
     }
     //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
@@ -85,39 +68,94 @@ void IV_Scan(LifeTester_t *const lifeTester,
     {  
         iSum += AdcReadData(lifeTester->channel.adc);
         nSamples++;
-        lifeTester->IVData.iTransmit = iSum / nSamples; //data requested by I2C
+        iScan = iSum / nSamples;
+        lifeTester->IVData.iTransmit = iScan; //data requested by I2C
     }
     //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
     else
     {
-        const uint32_t iScan = iSum / nSamples;
         nSamples = 0U;
 
         // Update max power and vMPP if we have found a maximum power point.
-        const uint32_t pScan = iScan * v;
+        const uint32_t pScan = iScan * voltage;
         if (pScan > pMax)
         {  
-            pMax = iScan * v;
-            iMax = iScan;
-            vMPP = v;
+            pMax = iScan * voltage;
+            iMpp = iScan;
+            vMPP = voltage;
         }  
         // Reached the current current limit
-        lifeTester->error = iScan >= MAX_CURRENT ? current_limit : ok;
+        lifeTester->error = iScan >= MAX_CURRENT ? currentLimit : ok;
         
-        PrintScanPoint(v, iScan, pScan, lifeTester->error, lifeTester->channel.dac);      
+        PrintScanPoint(voltage, iScan, pScan, lifeTester->error, lifeTester->channel.dac);      
       
         timer = millis(); //reset timer      
-        v += dV;  //move to the next point
+        *v += dV;  //move to the next point
+    }
+}  
+
+/*
+ Function to find MPP by scanning over voltages. Updates v to the MPP. 
+ also pass in DAC and LifeTester objects.
+
+           STAGE 1             STAGE 2                   STAGE 3
+           Set V & wait        Read/Average current      Calculate P
+ tElapsed  0-------------------settleTime----------------(settleTime + sampleTime) 
+ measurement speed defined by settle time and sample time
+*/
+void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
+                      const uint16_t      startV,
+                      const uint16_t      finV,
+                      const uint16_t      dV)
+{
+    // copy the initial voltage in case the new mpp can't be found
+    const uint32_t initV = lifeTester->IVData.v;
+    
+    pMax = 0U;
+    iSum = 0U;
+    timer = millis();
+    nSamples = 0U;
+
+    PrintScanHeader();
+
+    // Signal to user that IV is being scanned with led set to fast flash
+    lifeTester->Led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
+
+    // Run IV scan - record initial and final powers for checking iv scan shape
+    uint32_t v = startV;
+    uint32_t pInitial;
+    uint32_t pFinal;
+    
+    while((v <= finV) && (lifeTester->error == ok))
+    {
+        ScanStep(lifeTester, &v, dV);
+        if (v == startV)
+        {
+            pInitial = iScan * v;
+        }
+        else if (v == finV)
+        {
+            pFinal = iScan * v;
+        }
+        else
+        {
+            // do nothing
         }
     }
-    PrintMpp(iMax, vMPP, lifeTester->error);
 
+    // check that the scan is a hill shape
+    const bool scanShapeOk = (pInitial < pMax) && (pFinal < pMax);
+    lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
+    
     // Check max is above required threshold for measurement to start
-    lifeTester->error = iMax < I_THRESHOLD ? threshold : ok;  
-  
-    lifeTester->IVData.v = vMPP;
+    lifeTester->error = (iMpp < I_THRESHOLD) ? currentThreshold : lifeTester->error;  
+
+    // Update v to max power point if there's no error otherwise set back to initial value.
+    lifeTester->IVData.v = (lifeTester->error == ok) ? vMPP : initV;
+    // report max power point
+    PrintMpp(iMpp, vMPP, lifeTester->error);
     //reset DAC
-    DacSetOutput(0U, lifeTester->channel.dac);
+    DacSetOutput(lifeTester->IVData.v, lifeTester->channel.dac);
 }
 
 /*
@@ -133,7 +171,7 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
 {
   uint32_t tElapsed = millis() - lifeTester->timer;
   
-  if ((lifeTester->error != threshold) && (lifeTester->nErrorReads < MAX_ERROR_READS))
+  if ((lifeTester->error != currentThreshold) && (lifeTester->nErrorReads < MAX_ERROR_READS))
   {
     
     if ((tElapsed >= TRACK_DELAY_TIME) && tElapsed < (TRACK_DELAY_TIME + SETTLE_TIME))
@@ -188,12 +226,12 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
       //finished measurement now so do error detection
       if (lifeTester->IVData.pCurrent == I_THRESHOLD)
       {
-        lifeTester->error = low_current;  //low power error
+        lifeTester->error = lowCurrent;  //low power error
         lifeTester->nErrorReads++;
       }
       else if (lifeTester->IVData.iCurrent >= MAX_CURRENT)
       {
-        lifeTester->error = current_limit;  //reached current limit
+        lifeTester->error = currentLimit;  //reached current limit
         lifeTester->nErrorReads++;
       }
       else//no error here so reset error counter and err_code to 0

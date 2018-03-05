@@ -12,9 +12,10 @@
 #include <stdio.h>     // REMOVE ME!
 
 /*******************************************************************************
- * Private data for tests
+ * Private data and defines used for tests
  ******************************************************************************/
-#define SCALE_FACTOR    (0.8) // arbitrary scaling used to calculate adc code from current
+#define CURRENT_TO_CODE  (0.8)      // arbitrary scaling used to calculate adc code from current
+#define FIXED_CURRENT    (2459U)    // fixed current output from bad device
 
 enum lookupColumn {voltageData, currentData, powerData};
 
@@ -288,7 +289,7 @@ static double shockleyDiode[][3] =
     {2.040000, 0.000000e+00, 0.000000e+00}
 };
 // Calculated in SchockleyData.py
-static uint8_t mppCodeExpected = 58U;
+static uint8_t mppCodeShockley = 58U;
 
 /*******************************************************************************
  * Mock function implementations for tests
@@ -311,11 +312,21 @@ unsigned long millis(void)
  Simulates an ideal diode under illumination connected to the lifetester. Returns
  an ADC code corresponding to the dac code input.
 */
-uint16_t TestGetAdcCode(uint8_t dacCode)
+static uint16_t TestGetAdcCodeForDiode(uint8_t dacCode)
 {
     double adcCurrent = shockleyDiode[dacCode][currentData];
-    uint16_t adcCode = (uint16_t)(adcCurrent * MAX_CURRENT * SCALE_FACTOR);
+    uint16_t adcCode = (uint16_t)(adcCurrent * MAX_CURRENT * CURRENT_TO_CODE);
     return adcCode;
+}
+
+/*
+ Simualtes a bad device connected to lifetester which delivers a fixed current
+ with applied voltage. Power vs v will be linear ie. no hill to extract Mpp.
+*/
+static uint16_t TestGetAdcCodeConstantCurrent(uint8_t dacCode)
+{
+    dacCode;
+    return FIXED_CURRENT;
 }
 
 /*******************************************************************************
@@ -399,7 +410,7 @@ TEST(IVTestGroup, RunIvScanFindsMpp)
             // Mock returns shockley diode current from lookup table
             mock().expectOneCall("AdcReadData")
                 .withParameter("channel", lifetester.channel.adc)
-                .andReturnValue(TestGetAdcCode(mockVolts));
+                .andReturnValue(TestGetAdcCodeForDiode(mockVolts));
         }
         // (3) Do calculations - update timer for next measurement
         else
@@ -414,16 +425,16 @@ TEST(IVTestGroup, RunIvScanFindsMpp)
     
     // Reset dac after measurements
     mock().expectOneCall("DacSetOutput")
-        .withParameter("output", 0U)
+        .withParameter("output", mppCodeShockley)
         .withParameter("channel", lifetester.channel.dac);
 
     // Call function under test
-    IV_Scan(&lifetester, vInitial, vFinal, dV);
+    IV_ScanAndUpdate(&lifetester, vInitial, vFinal, dV);
 
     // Test assertions. Does the max power point agree with expectations
     // mpp dac code stored in lifetester instance
     const uint8_t mppCodeActual = lifetester.IVData.v;
-    CHECK_EQUAL(mppCodeExpected, mppCodeActual);
+    CHECK_EQUAL(mppCodeShockley, mppCodeActual);
     // expect no errors
     CHECK_EQUAL(ok, lifetester.error);
     CHECK_EQUAL(0, lifetester.nErrorReads);
@@ -442,22 +453,31 @@ TEST(IVTestGroup, RunIvScanFindsMpp)
 */
 
 
-#if 0
+#if 1
 /*
- IV scan run as before however measurement is interrupted at 
+ IV scan shape is checked and error raised if it's not a hill shape. The first
+ and last points are compared against the maximum power point - mpp should be
+ highest. Here, the lifetester measures a linear power trace due to a constant
+ current. 
 */
-TEST(IVTestGroup, RunIvScanInterruptedAtMpp)
+TEST(IVTestGroup, RunIvScanInvalidScanNotHillShaped)
 {
     // mock call to instantiate flasher object
     mock().expectOneCall("Flasher")
         .withParameter("pin", LED_A_PIN);
 
+    const uint32_t initV = 11U;
     // mock lifetester "object"
     LifeTester_t lifetester =
     {
-        .channel = {chASelect, 0U},
-        .Led = Flasher(LED_A_PIN)
-        // Everything else default initialised to 0.
+        {chASelect, 0U},
+        Flasher(LED_A_PIN),
+        0,
+        0,
+        0,
+        ok,
+        {initV},
+        0
     };
 
     const uint32_t tInitial = 348775U;
@@ -498,7 +518,7 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMpp)
             // Mock returns shockley diode current from lookup table
             mock().expectOneCall("AdcReadData")
                 .withParameter("channel", lifetester.channel.adc)
-                .andReturnValue(TestGetAdcCode(mockVolts));
+                .andReturnValue(TestGetAdcCodeConstantCurrent(mockVolts));
         }
         // (3) Do calculations - update timer for next measurement
         else
@@ -513,19 +533,16 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMpp)
     
     // Reset dac after measurements
     mock().expectOneCall("DacSetOutput")
-        .withParameter("output", 0U)
+        .withParameter("output", initV)
         .withParameter("channel", lifetester.channel.dac);
 
     // Call function under test
-    IV_Scan(&lifetester, vInitial, vFinal, dV);
+    IV_ScanAndUpdate(&lifetester, vInitial, vFinal, dV);
 
-    // Test assertions. Does the max power point agree with expectations
-    // mpp dac code stored in lifetester instance
-    const uint8_t mppCodeActual = lifetester.IVData.v;
-    CHECK_EQUAL(mppCodeExpected, mppCodeActual);
-    // expect no errors
-    CHECK_EQUAL(ok, lifetester.error);
-    CHECK_EQUAL(0, lifetester.nErrorReads);
+    // expect invalidScan error since the P(V) is linear not a hill.
+    CHECK_EQUAL(invalidScan, lifetester.error);
+    // lifetester voltage should not have been been changed.
+    CHECK_EQUAL(initV, lifetester.IVData.v);
     
     // Check mock function calls match expectations
     mock().checkExpectations();

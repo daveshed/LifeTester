@@ -53,11 +53,11 @@ void setup()
   
   //MPP INITIAL SEARCH/SCAN
   Serial.println("Scanning for MPP...");
-  IV_Scan(&LTChannelA, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN);
+  IV_ScanAndUpdate(&LTChannelA, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN);
   // initialise DAC to MPP initial guess
   DacSetOutput(LTChannelA.IVData.v, LTChannelA.channel.dac);
   
-  IV_Scan(&LTChannelB, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN); 
+  IV_ScanAndUpdate(&LTChannelB, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN); 
   //initialise DAC to MPP initial guess - channel b
   DacSetOutput(LTChannelB.IVData.v, LTChannelB.channel.dac);
 
