@@ -19,14 +19,29 @@
 
 enum lookupColumn {voltageData, currentData, powerData};
 
+typedef struct TestTiming_s {
+    uint32_t initial;  // initial time at beginning of call
+    uint32_t mock;     // mock time returned from millis
+    uint32_t previous; // previous measurement  
+    uint32_t dt;       // time step in ms
+} TestTiming_t;
+
+// Note that voltages are sent as dac codes
+typedef struct TestVoltage_s {
+    uint8_t  initial;  // initial scan voltage
+    uint8_t  final;    // final scan voltage
+    uint8_t  dV;       // step size
+    uint8_t  mock;     // mock voltage sent to dac
+} TestVoltage_t;
+
 /*
-    Ideal diode iv data (see ShockleyData.py). Row index corresponds to the dac code.
-    I_L     1.00
-    I_0     1.00E-09
-    V_T     0.0259
-    R_S     0.00
-    R_SH    inf
-    n       1.00
+ Ideal diode iv data (see ShockleyData.py). Row index corresponds to the dac code.
+ I_L     1.00
+ I_0     1.00E-09
+ V_T     0.0259
+ R_S     0.00
+ R_SH    inf
+ n       1.00
 */
 static double shockleyDiode[][3] = 
 {
@@ -288,6 +303,7 @@ static double shockleyDiode[][3] =
     {2.032000, 0.000000e+00, 0.000000e+00},
     {2.040000, 0.000000e+00, 0.000000e+00}
 };
+
 // Calculated in SchockleyData.py
 static uint8_t mppCodeShockley = 58U;
 
@@ -325,10 +341,51 @@ static uint16_t TestGetAdcCodeForDiode(uint8_t dacCode)
 */
 static uint16_t TestGetAdcCodeConstantCurrent(uint8_t dacCode)
 {
-    dacCode;
+    dacCode;  // trying to avoid unused error
     return FIXED_CURRENT;
 }
 
+/*
+ Step function called repeatedly in tests to queue expected mock function calls
+ from individual tests as v.mock is scanned. Requires a function pointer to
+ return adc code from dac input. Gives flexibility of device behaviour.
+*/
+static void MocksForIvScanStep(LifeTester_t *const lifetester,
+                               TestTiming_t        *t,
+                               TestVoltage_t       *v,
+                               uint16_t (*GetAdcCode)(uint8_t))
+{    
+    // Setup
+    mock().expectOneCall("millis").andReturnValue(t->mock);
+    mock().expectOneCall("Flasher::update");
+
+    // (1) Set voltage during settle time
+    uint32_t tElapsed = t->mock - t->previous;
+    if (tElapsed < SETTLE_TIME)
+    {
+        mock().expectOneCall("DacSetOutput")
+            .withParameter("output", v->mock)
+            .withParameter("channel", lifetester->channel.dac);
+    }
+    // (2) Sample current during measurement time window
+    else if((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
+    {
+        // Mock returns shockley diode current from lookup table
+        uint8_t mockVolts = v->mock;
+        mock().expectOneCall("AdcReadData")
+            .withParameter("channel", lifetester->channel.adc)
+            .andReturnValue(GetAdcCode(mockVolts));
+    }
+    // (3) Do calculations - update timer for next measurement
+    else
+    {
+        mock().expectOneCall("millis").andReturnValue(t->mock);
+        v->mock += v->dV;
+        t->previous = t->mock;
+    }
+
+    t->mock += t->dt;
+}
 /*******************************************************************************
  * Unit tests
  ******************************************************************************/
@@ -372,55 +429,28 @@ TEST(IVTestGroup, RunIvScanFindsMpp)
         // Everything else default initialised to 0.
     };
 
-    const uint32_t tInitial = 348775U;
-    uint32_t       mockTime = tInitial;
-    uint32_t       tPrevious = mockTime;
-    const uint32_t dt = 100U; // time step in ms
+    TestTiming_t t;
+    t.initial = 348775U;
+    t.mock = t.initial;
+    t.previous = t.mock;
+    t.dt = 100U;
 
     // IV scan setup - mock calls that happen prior to IV scan loop
-    mock().expectOneCall("millis").andReturnValue(tInitial);
+    mock().expectOneCall("millis").andReturnValue(t.initial);
     mock().expectOneCall("Flasher::t")
         .withParameter("onNew", SCAN_LED_ON_TIME)
         .withParameter("offNew", SCAN_LED_OFF_TIME);
     
-    // Note that voltages are sent as dac codes
-    const uint8_t vInitial = 45U;
-    const uint8_t vFinal   = 70U;
-    const uint8_t dV       = 1U;
-    uint16_t      mockVolts = vInitial;
+    TestVoltage_t v;
+    v.initial = 45U;        // initial scan voltage
+    v.final   = 70U;        // final scan voltage
+    v.dV      = 1U;         // step size
+    v.mock    = v.initial;  // mock voltage sent to dac
 
     // IV scan loop - queue mocks ready for calls by function under test
-    while(mockVolts <= vFinal)
+    while(v.mock <= v.final)
     {
-        // Setup
-        mock().expectOneCall("millis").andReturnValue(mockTime);
-        mock().expectOneCall("Flasher::update");
-
-        // (1) Set voltage during settle time
-        uint32_t tElapsed = mockTime - tPrevious;
-        if (tElapsed < SETTLE_TIME)
-        {
-            mock().expectOneCall("DacSetOutput")
-                .withParameter("output", mockVolts)
-                .withParameter("channel", lifetester.channel.dac);
-        }
-        // (2) Sample current during measurement time window
-        else if((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
-        {
-            // Mock returns shockley diode current from lookup table
-            mock().expectOneCall("AdcReadData")
-                .withParameter("channel", lifetester.channel.adc)
-                .andReturnValue(TestGetAdcCodeForDiode(mockVolts));
-        }
-        // (3) Do calculations - update timer for next measurement
-        else
-        {
-            mock().expectOneCall("millis").andReturnValue(mockTime);
-            mockVolts += dV;
-            tPrevious = mockTime;
-        }
-
-        mockTime += dt;
+        MocksForIvScanStep(&lifetester, &t, &v, TestGetAdcCodeForDiode);
     }
     
     // Reset dac after measurements
@@ -429,7 +459,7 @@ TEST(IVTestGroup, RunIvScanFindsMpp)
         .withParameter("channel", lifetester.channel.dac);
 
     // Call function under test
-    IV_ScanAndUpdate(&lifetester, vInitial, vFinal, dV);
+    IV_ScanAndUpdate(&lifetester, v.initial, v.final, v.dV);
 
     // Test assertions. Does the max power point agree with expectations
     // mpp dac code stored in lifetester instance
