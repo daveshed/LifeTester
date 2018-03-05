@@ -559,22 +559,23 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
         // Everything else default initialised to 0.
     };
 
-    const uint32_t tInitial = 348775U;
-    uint32_t       mockTime = tInitial;
-    uint32_t       tPrevious = mockTime;
-    const uint32_t dt = 100U; // time step in ms
+    TestTiming_t t;
+    t.initial = 348775U;
+    t.mock = t.initial;
+    t.previous = t.mock;
+    t.dt = 100U;
 
     // IV scan setup - mock calls that happen prior to IV scan loop
-    mock().expectOneCall("millis").andReturnValue(tInitial);
+    mock().expectOneCall("millis").andReturnValue(t.initial);
     mock().expectOneCall("Flasher::t")
         .withParameter("onNew", SCAN_LED_ON_TIME)
         .withParameter("offNew", SCAN_LED_OFF_TIME);
     
-    // Note that voltages are sent as dac codes
-    const uint8_t vInitial = 54U;
-    const uint8_t vFinal   = 62U;
-    const uint8_t dV       = 1U;
-    uint16_t      mockVolts = vInitial;
+    TestVoltage_t v;
+    v.initial = 54U;        // initial scan voltage
+    v.final   = 62U;        // final scan voltage
+    v.dV      = 1U;         // step size
+    v.mock    = v.initial;  // mock voltage sent to dac
 
     // flags
     bool dacSet = false;
@@ -582,28 +583,27 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
     bool interruptScan = true;
 
     // IV scan loop - queue mocks ready for calls by function under test
-    while(mockVolts <= vFinal)
+    while(v.mock <= v.final)
     {
-        uint32_t tElapsed = mockTime - tPrevious;
-        if ((mockVolts == mppCodeShockley)
+        uint32_t tElapsed = t.mock - t.previous;
+        if ((v.mock == mppCodeShockley)
             && (tElapsed >= SETTLE_TIME)
-            && (tElapsed < (SETTLE_TIME + SAMPLING_TIME))
             && interruptScan)
         {
-            mockTime += SAMPLING_TIME;
+            t.mock += SAMPLING_TIME;
             interruptScan = false;
         }
+        tElapsed = t.mock - t.previous;
 
-        tElapsed = mockTime - tPrevious;
         // Updating timer and flasher
-        mock().expectOneCall("millis").andReturnValue(mockTime);
+        mock().expectOneCall("millis").andReturnValue(t.mock);
         mock().expectOneCall("Flasher::update");
 
         // (1) Set voltage during settle time
         if (tElapsed < SETTLE_TIME)
         {
             mock().expectOneCall("DacSetOutput")
-                .withParameter("output", mockVolts)
+                .withParameter("output", v.mock)
                 .withParameter("channel", lifetester.channel.dac);
 
             dacSet = true;
@@ -614,7 +614,7 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
             // Mock returns shockley diode current from lookup table
             mock().expectOneCall("AdcReadData")
                 .withParameter("channel", lifetester.channel.adc)
-                .andReturnValue(TestGetAdcCodeForDiode(mockVolts));
+                .andReturnValue(TestGetAdcCodeForDiode(v.mock));
 
             adcRead = true;
         }
@@ -623,15 +623,15 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
         {
             if (dacSet && adcRead)
             {
-                mockVolts += dV;
+                v.mock += v.dV;
                 dacSet = false;
                 adcRead = false;
             }
-            tPrevious = mockTime;
-            mock().expectOneCall("millis").andReturnValue(mockTime);
+            t.previous = t.mock;
+            mock().expectOneCall("millis").andReturnValue(t.mock);
         }
 
-        mockTime += dt;
+        t.mock += t.dt;
     }
     
     // Reset dac after measurements
@@ -640,7 +640,7 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
         .withParameter("channel", lifetester.channel.dac);
 
     // Call function under test
-    IV_ScanAndUpdate(&lifetester, vInitial, vFinal, dV);
+    IV_ScanAndUpdate(&lifetester, v.initial, v.final, v.dV);
 
     // Test assertions. Does the max power point agree with expectations
     // mpp dac code stored in lifetester instance
