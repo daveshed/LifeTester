@@ -47,7 +47,6 @@ void IV_Scan(LifeTester_t *const lifeTester,
     //measurement speed defined by settle time and sample time
     if (tElapsed < SETTLE_TIME)
     {
-      printf("tElapsed = %u\n", tElapsed);    
       //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
       DacSetOutput(v, lifeTester->channel.dac);
       iScan = 0;
