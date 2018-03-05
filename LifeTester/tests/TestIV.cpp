@@ -444,10 +444,117 @@ TEST(IVTestGroup, RunIvScanFindsMpp)
 }
 
 /*
- Tests to write:
- - current sampling interrupted at max power point
- TODO - Check I_SC and adjust gain before calling scan (LifeTester.cpp setup)
+ Test for running an IV scan where the measurement is interrupted at the critical
+ point of measuring the mpp. No adc data is read from the device corresponding
+ to that dac code. Point is reameasured and correct mpp is returned.
 */
+TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
+{
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
+
+    // mock lifetester "object"
+    LifeTester_t lifetester =
+    {
+        .channel = {chASelect, 0U},
+        .Led = Flasher(LED_A_PIN)
+        // Everything else default initialised to 0.
+    };
+
+    const uint32_t tInitial = 348775U;
+    uint32_t       mockTime = tInitial;
+    uint32_t       tPrevious = mockTime;
+    const uint32_t dt = 100U; // time step in ms
+
+    // IV scan setup - mock calls that happen prior to IV scan loop
+    mock().expectOneCall("millis").andReturnValue(tInitial);
+    mock().expectOneCall("Flasher::t")
+        .withParameter("onNew", SCAN_LED_ON_TIME)
+        .withParameter("offNew", SCAN_LED_OFF_TIME);
+    
+    // Note that voltages are sent as dac codes
+    const uint8_t vInitial = 54U;
+    const uint8_t vFinal   = 62U;
+    const uint8_t dV       = 1U;
+    uint16_t      mockVolts = vInitial;
+
+    // flags
+    bool dacSet = false;
+    bool adcRead = false;
+    bool interruptScan = true;
+
+    // IV scan loop - queue mocks ready for calls by function under test
+    while(mockVolts <= vFinal)
+    {
+        uint32_t tElapsed = mockTime - tPrevious;
+        if ((mockVolts == mppCodeShockley)
+            && (tElapsed >= SETTLE_TIME)
+            && (tElapsed < (SETTLE_TIME + SAMPLING_TIME))
+            && interruptScan)
+        {
+            mockTime += SAMPLING_TIME;
+            interruptScan = false;
+        }
+
+        tElapsed = mockTime - tPrevious;
+        // Updating timer and flasher
+        mock().expectOneCall("millis").andReturnValue(mockTime);
+        mock().expectOneCall("Flasher::update");
+
+        // (1) Set voltage during settle time
+        if (tElapsed < SETTLE_TIME)
+        {
+            mock().expectOneCall("DacSetOutput")
+                .withParameter("output", mockVolts)
+                .withParameter("channel", lifetester.channel.dac);
+
+            dacSet = true;
+        }
+        // (2) Sample current during measurement time window
+        else if((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
+        {
+            // Mock returns shockley diode current from lookup table
+            mock().expectOneCall("AdcReadData")
+                .withParameter("channel", lifetester.channel.adc)
+                .andReturnValue(TestGetAdcCodeForDiode(mockVolts));
+
+            adcRead = true;
+        }
+        // (3) Do calculations - update timer for next measurement
+        else
+        {
+            if (dacSet && adcRead)
+            {
+                mockVolts += dV;
+                dacSet = false;
+                adcRead = false;
+            }
+            tPrevious = mockTime;
+            mock().expectOneCall("millis").andReturnValue(mockTime);
+        }
+
+        mockTime += dt;
+    }
+    
+    // Reset dac after measurements
+    mock().expectOneCall("DacSetOutput")
+        .withParameter("output", mppCodeShockley)
+        .withParameter("channel", lifetester.channel.dac);
+
+    // Call function under test
+    IV_ScanAndUpdate(&lifetester, vInitial, vFinal, dV);
+
+    // Test assertions. Does the max power point agree with expectations
+    // mpp dac code stored in lifetester instance
+    const uint8_t mppCodeActual = lifetester.IVData.v;
+    CHECK_EQUAL(mppCodeShockley, mppCodeActual);
+    // expect no errors
+    CHECK_EQUAL(ok, lifetester.error);
+    
+    // Check mock function calls match expectations
+    mock().checkExpectations();
+}
 
 /*
  IV scan function should not be called if the lifetester object is in it's error

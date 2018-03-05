@@ -15,6 +15,7 @@ static uint32_t iScan;  // current averaged over sampling window
 static uint32_t iMpp;   // current at mpp as adc code
 static uint32_t timer;  // ms timer. Decides which measurement stage we're at
 static uint16_t nSamples; //number of current readings taken during sample time window
+static bool     dacOutputSet = false;
 
 static void PrintError(errorCode_t error)
 {
@@ -80,12 +81,13 @@ static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
     const uint32_t tElapsed = millis() - timer;
     lifeTester->Led.update();
     lifeTester->IVData.v = voltage;
-    
     //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
     if (tElapsed < SETTLE_TIME)
     {
         DacSetOutput(voltage, lifeTester->channel.dac);
+        dacOutputSet = true;
         iSum = 0U;
+
     }
     //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
     else if ((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
@@ -98,23 +100,27 @@ static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
     //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
     else
     {
+        if (dacOutputSet && (nSamples > 0U))
+        {
+            // Update max power and vMPP if we have found a maximum power point.
+            const uint32_t pScan = iScan * voltage;
+            if (pScan > pMax)
+            {  
+                pMax = iScan * voltage;
+                iMpp = iScan;
+                vMPP = voltage;
+            }  
+            // Reached the current limit - flag error which will stop scan
+            lifeTester->error = iScan >= MAX_CURRENT ? currentLimit : ok;
+            
+            PrintScanPoint(voltage, iScan, pScan, lifeTester->error, lifeTester->channel.dac);
+    
+            *v += dV;  //move to the next point only if we've got this one ok.
+        }
+        // reset timers and flags
+        dacOutputSet = false;
         nSamples = 0U;
-
-        // Update max power and vMPP if we have found a maximum power point.
-        const uint32_t pScan = iScan * voltage;
-        if (pScan > pMax)
-        {  
-            pMax = iScan * voltage;
-            iMpp = iScan;
-            vMPP = voltage;
-        }  
-        // Reached the current limit - flag error which will stop scan
-        lifeTester->error = iScan >= MAX_CURRENT ? currentLimit : ok;
-        
-        PrintScanPoint(voltage, iScan, pScan, lifeTester->error, lifeTester->channel.dac);      
-      
         timer = millis(); //reset timer      
-        *v += dV;  //move to the next point
     }
 }  
 
