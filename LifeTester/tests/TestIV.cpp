@@ -721,3 +721,215 @@ TEST(IVTestGroup, RunIvScanErrorStateDontScan)
     mock().checkExpectations();
 
 }
+
+/*
+ Test for updating mpp during settle time. Expect the dac to be set only. No
+ calls to read adc and no change to lifetester data.
+*/
+TEST(IVTestGroup, UpdateMppDuringSettleTime)
+{
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
+
+    const uint32_t tPrevious = 239348U;               // last time mpp was updated 
+    const uint32_t tElapsed = TRACK_DELAY_TIME + 10U; // time elapsed since
+    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+    // lifetester data.
+    LifeTester_t lifetester =
+    {
+        {chASelect, 0U},
+        Flasher(LED_A_PIN),
+        0,
+        0,
+        0,
+        ok,  // set error state
+        {0},
+        tPrevious
+    };
+    
+    // 1) check time. millis should return time within settle time window
+    mock().expectOneCall("millis").andReturnValue(tMock);
+    
+    // 2) therefore expect dac to be set
+    mock().expectOneCall("DacSetOutput")
+        .withParameter("output", lifetester.IVData.v)
+        .withParameter("channel", lifetester.channel.dac);
+
+    const LifeTester_t lifetesterInit = lifetester;
+    IV_MpptUpdate(&lifetester);
+    const LifeTester_t lifetesterFinal = lifetester;
+    // Expect no change to lifetester data
+    MEMCMP_EQUAL(&lifetesterInit, &lifetesterFinal, sizeof(LifeTester_t));
+}
+
+/*
+ Test for updating mpp during track delay. Expect nothing to happen here. Delay time
+ inserted to ensure that we aren't trying to update mpp too often.
+*/
+TEST(IVTestGroup, UpdateMppDuringTrackDelayTime)
+{
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
+
+    const uint32_t tPrevious = 239348U;               // last time mpp was updated 
+    const uint32_t tElapsed = 10U;                    // time elapsed since
+    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+    // lifetester data.
+    LifeTester_t lifetester =
+    {
+        {chASelect, 0U},
+        Flasher(LED_A_PIN),
+        0,
+        0,
+        0,
+        ok,  // set error state
+        {0},
+        tPrevious
+    };
+    
+    // Check time. millis should return time within tracking delay time window
+    mock().expectOneCall("millis").andReturnValue(tMock);
+    // Call function under test
+    const LifeTester_t lifetesterInit = lifetester;
+    IV_MpptUpdate(&lifetester);
+    const LifeTester_t lifetesterFinal = lifetester;
+    // Expect no change to lifetester data
+    MEMCMP_EQUAL(&lifetesterInit, &lifetesterFinal, sizeof(LifeTester_t));
+}
+
+/*
+ Test for updating mpp during settle time. Expect the dac to be set only. No
+ calls to read adc and no change to lifetester data.
+*/
+TEST(IVTestGroup, UpdateMppDuringSettleTimeForThisPoint)
+{
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
+
+    const uint32_t tPrevious = 239348U;               // last time mpp was updated 
+    const uint32_t tElapsed = TRACK_DELAY_TIME + 10U; // time elapsed since
+    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+    const uint32_t vMock = 43U;
+    // lifetester data.
+    LifeTester_t lifetester =
+    {
+        {chASelect, 0U},
+        Flasher(LED_A_PIN),
+        0,
+        0,
+        0,
+        ok,  // set error state
+        {vMock},
+        tPrevious
+    };
+    
+    // 1) check time. millis should return time within settle time window
+    mock().expectOneCall("millis").andReturnValue(tMock);
+    
+    // 2) therefore expect dac to be set
+    mock().expectOneCall("DacSetOutput")
+        .withParameter("output", lifetester.IVData.v)
+        .withParameter("channel", lifetester.channel.dac);
+
+    const LifeTester_t lifetesterInit = lifetester;
+    IV_MpptUpdate(&lifetester);
+    const LifeTester_t lifetesterFinal = lifetester;
+    // Expect no change to lifetester data
+    MEMCMP_EQUAL(&lifetesterInit, &lifetesterFinal, sizeof(LifeTester_t));
+}
+
+/*
+ Test for updating mpp during sampling time window. Expect the adc to be read and
+ relevant data in the lifetester object to be updated.
+*/
+TEST(IVTestGroup, UpdateMppDuringSamplingTime)
+{
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
+
+    const uint32_t tPrevious = 239348U;               // last time mpp was updated 
+    const uint32_t tElapsed = TRACK_DELAY_TIME
+                              + SETTLE_TIME +  10U;   // time elapsed since
+    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+    const uint32_t vMock = 47U;                       // voltage at current op point
+    
+    // lifetester initial data.
+    LifeTester_t lifetesterInit =
+    {
+        {chASelect, 0U},
+        Flasher(LED_A_PIN),
+        0,
+        0,
+        0,
+        ok,  // set error state
+        {vMock},
+        tPrevious
+    };
+    
+    // Check time. millis should return time within sampling time window
+    mock().expectOneCall("millis").andReturnValue(tMock);
+    // Expect call to adc since we're in the current sampling window
+    const uint16_t iMock = TestGetAdcCodeForDiode(vMock);
+    mock().expectOneCall("AdcReadData")
+        .withParameter("channel", lifetesterInit.channel.adc)
+        .andReturnValue(iMock);
+
+    // Call function under test
+    LifeTester_t lifetesterActual = lifetesterInit;
+    IV_MpptUpdate(&lifetesterActual);
+
+    // expect the current and number of readings to be updated only
+    LifeTester_t lifetesterExpected = lifetesterInit;
+    lifetesterExpected.IVData.iCurrent = iMock;
+    lifetesterExpected.nReadsCurrent++;
+    MEMCMP_EQUAL(&lifetesterExpected, &lifetesterActual, sizeof(LifeTester_t));
+}
+
+/*
+ Test for updating mpp during second settle time ie. after current point has been
+ measured. Next point is to be measured now for comparison. Expect the dac to be
+ set only - to v + dV. No calls to read adc and no change to lifetester data.
+*/
+TEST(IVTestGroup, UpdateMppDuringSettleTimeForNextPoint)
+{
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
+
+    const uint32_t tPrevious = 239348U;               // last time mpp was updated 
+    const uint32_t tElapsed = TRACK_DELAY_TIME
+                              + SETTLE_TIME
+                              + SAMPLING_TIME + 10U;  // time elapsed since
+    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+    const uint32_t vMock = 43U;
+    // lifetester data.
+    LifeTester_t lifetester =
+    {
+        {chASelect, 0U},
+        Flasher(LED_A_PIN),
+        0,
+        0,
+        0,
+        ok,  // set error state
+        {vMock},
+        tPrevious
+    };
+    
+    // 1) check time. millis should return time within settle time window
+    mock().expectOneCall("millis").andReturnValue(tMock);
+    
+    // 2) therefore expect dac to be set
+    mock().expectOneCall("DacSetOutput")
+        .withParameter("output", vMock + DV_MPPT)
+        .withParameter("channel", lifetester.channel.dac);
+
+    const LifeTester_t lifetesterInit = lifetester;
+    IV_MpptUpdate(&lifetester);
+    const LifeTester_t lifetesterFinal = lifetester;
+    // Expect no change to lifetester data
+    MEMCMP_EQUAL(&lifetesterInit, &lifetesterFinal, sizeof(LifeTester_t));
+}

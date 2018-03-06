@@ -189,7 +189,7 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
         lifeTester->IVData.v = (lifeTester->error == ok) ? vMPP : initV;
         // report max power point
         PrintMpp(iMpp, vMPP, lifeTester->error);
-        //reset DAC
+        // Now set Dac to MPP
         DacSetOutput(lifeTester->IVData.v, lifeTester->channel.dac);
     }
 }
