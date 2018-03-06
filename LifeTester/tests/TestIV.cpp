@@ -10,6 +10,7 @@
 #include "Arduino.h"   // arduino function prototypes eg. millis (defined here)
 #include "Config.h"
 #include <stdio.h>     // REMOVE ME!
+#include <string.h>
 
 /*******************************************************************************
  * Private data and defines used for tests
@@ -419,6 +420,12 @@ static void MocksForIvScanStep(LifeTester_t *const lifetester,
 /*******************************************************************************
  * Unit tests
  ******************************************************************************/
+
+static void InitMockLifeTester(LifeTester_t *data)
+{
+    data->Led = Flasher(LED_A_PIN);
+}
+
 // Define a test group for IV - all tests share common setup/teardown
 TEST_GROUP(IVTestGroup)
 {
@@ -1003,8 +1010,8 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
     const uint32_t vMock = 47U;                       // voltage at current op point
     
     const uint16_t nAdcSamples = 4U;
-    const uint16_t iCurrent = 100U;     // ensure that the next point has more power
-    const uint16_t iNext = 200U;
+    const uint16_t iCurrent = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
+    const uint16_t iNext = (MIN_CURRENT + 20U) * nAdcSamples;
 
     const uint32_t pCurrent = iCurrent / nAdcSamples * vMock;
     const uint32_t pNext = iNext / nAdcSamples * (vMock + DV_MPPT);
@@ -1037,6 +1044,8 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
     CHECK_EQUAL(vMock + DV_MPPT, lifetesterActual.IVData.v);
     // that timer should be updated since measurement is done
     CHECK_EQUAL(tMock, lifetesterActual.timer);
+    // check there's no error
+    CHECK_EQUAL(ok, lifetesterActual.error);
 }
 
 /*
@@ -1058,8 +1067,8 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
     const uint32_t vMock = 47U;                       // voltage at current op point
     
     const uint16_t nAdcSamples = 4U;
-    const uint16_t iCurrent = 200U;     // ensure that the current point has more power
-    const uint16_t iNext = 100U;
+    const uint16_t iCurrent = (MIN_CURRENT + 20U) * nAdcSamples;
+    const uint16_t iNext = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
 
     const uint32_t pCurrent = iCurrent / nAdcSamples * vMock;
     const uint32_t pNext = iNext / nAdcSamples * (vMock + DV_MPPT);
@@ -1093,5 +1102,63 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
     // that timer should be updated since measurement is done
     CHECK_EQUAL(tMock, lifetesterActual.timer);
     // expect low current error here since iNext and iCurrent are very low
+    CHECK_EQUAL(ok, lifetesterActual.error);
+}
+
+/*
+ Test for updating mpp with current below minimum allowed limit. Expect error
+ status to be changed and for the number of error readings to increase.
+*/
+TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltageLowCurrent)
+{
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
+
+    const uint32_t tPrevious = 239348U;               // last time mpp was updated 
+    const uint32_t tElapsed = TRACK_DELAY_TIME        // set elapsed time past...
+                              + (2 * SETTLE_TIME)     // the measurement windows
+                              + (2 * SAMPLING_TIME) + 10U;  
+    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+    const uint32_t vMock = 47U;                       // voltage at current op point
+    
+    const uint16_t nAdcSamples = 4U;
+    const uint16_t iCurrent = (MIN_CURRENT - 10U) * nAdcSamples;
+    const uint16_t iNext = (MIN_CURRENT - 100U) * nAdcSamples;
+
+    const uint32_t pCurrent = iCurrent / nAdcSamples * vMock;
+    const uint32_t pNext = iNext / nAdcSamples * (vMock + DV_MPPT);
+    // ensure that the next point has more power
+    CHECK(pNext < pCurrent);
+
+    // lifetester initial data.
+    LifeTester_t lifetesterInit =
+    {
+        {chASelect, 0U},
+        Flasher(LED_A_PIN),
+        nAdcSamples,
+        nAdcSamples,
+        0,
+        ok,  // set error state
+        {vMock, 0U, 0U, iCurrent, iNext},
+        tPrevious
+    };
+    // Check time. millis should return time within sampling time window
+    mock().expectOneCall("millis").andReturnValue(tMock);
+    // Expect call to change led state - indicates decrease in voltage
+    mock().expectOneCall("Flasher::stopAfter")
+        .withParameter("n", 1);
+    // Expect another call to millis to update the value of the timmer in lifetester object
+    mock().expectOneCall("millis").andReturnValue(tMock);
+    // Call function under test
+    LifeTester_t lifetesterActual = lifetesterInit;
+    IV_MpptUpdate(&lifetesterActual);
+
+    // Exoect that working voltage should reduce
+    CHECK_EQUAL(vMock - DV_MPPT, lifetesterActual.IVData.v);
+    // that timer should be updated since measurement is done
+    CHECK_EQUAL(tMock, lifetesterActual.timer);
+    // expect low current error here since iNext and iCurrent are very low
     CHECK_EQUAL(lowCurrent, lifetesterActual.error);
+    CHECK_EQUAL((lifetesterInit.error + 1U), lifetesterActual.error);
 }

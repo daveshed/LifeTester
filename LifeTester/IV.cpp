@@ -235,10 +235,10 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
       lifeTester->IVData.iNext += AdcReadData(lifeTester->channel.adc);
       lifeTester->nReadsNext++;
     }
-    
+    //STAGE 5: MEASUREMENTS DONE. DO CALCULATIONS
     else if (tElapsed >= (TRACK_DELAY_TIME + 2 * SETTLE_TIME + 2 * SAMPLING_TIME))
     {
-      //STAGE 5: MEASUREMENTS DONE. DO CALCULATIONS
+      // TODO: readings are summed together and then averaged. Naughty reusing variables
       lifeTester->IVData.iCurrent /= lifeTester->nReadsCurrent; //calculate average
       lifeTester->IVData.pCurrent = lifeTester->IVData.v * lifeTester->IVData.iCurrent; //calculate power now
       lifeTester->nReadsCurrent = 0; //reset counter
