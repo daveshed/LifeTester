@@ -325,6 +325,24 @@ unsigned long millis(void)
  * Private function implementations for tests
  ******************************************************************************/
 /*
+ Manages simulated interrupt in IV scan step.
+*/
+static void InterruptScan(bool          *interruptRequest,
+                          uint32_t      *tElapsed,
+                          TestVoltage_t *v,
+                          TestTiming_t  *t)
+{    
+    if ((v->mock == mppCodeShockley)
+        && (*tElapsed >= SETTLE_TIME)
+        && *interruptRequest)
+    {
+        t->mock += SAMPLING_TIME;
+        *interruptRequest = false;
+    }
+    *tElapsed = t->mock - t->previous;
+}
+
+/*
  Simulates an ideal diode under illumination connected to the lifetester. Returns
  an ADC code corresponding to the dac code input.
 */
@@ -586,14 +604,7 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
     while(v.mock <= v.final)
     {
         uint32_t tElapsed = t.mock - t.previous;
-        if ((v.mock == mppCodeShockley)
-            && (tElapsed >= SETTLE_TIME)
-            && interruptScan)
-        {
-            t.mock += SAMPLING_TIME;
-            interruptScan = false;
-        }
-        tElapsed = t.mock - t.previous;
+        InterruptScan(&interruptScan, &tElapsed, &v, &t);
 
         // Updating timer and flasher
         mock().expectOneCall("millis").andReturnValue(t.mock);
@@ -609,7 +620,8 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
             dacSet = true;
         }
         // (2) Sample current during measurement time window
-        else if((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
+        else if((tElapsed >= SETTLE_TIME)
+                && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
         {
             // Mock returns shockley diode current from lookup table
             mock().expectOneCall("AdcReadData")
@@ -630,7 +642,6 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
             t.previous = t.mock;
             mock().expectOneCall("millis").andReturnValue(t.mock);
         }
-
         t.mock += t.dt;
     }
     
