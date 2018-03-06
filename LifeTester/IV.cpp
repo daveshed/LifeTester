@@ -36,7 +36,7 @@ static void PrintError(errorCode_t error)
         case(invalidScan):
             DBG_PRINTLN("error: invalid scan shape");
         default:
-            DBG_PRINTLN("error: unknown")
+            DBG_PRINTLN("error: unknown");
             break;
     }
 }
