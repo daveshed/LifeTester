@@ -989,7 +989,7 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForNextPoint)
  object. Expect function to calculate which point provides the greatest power
  and set the stored value of voltage accordingly.
 */
-TEST(IVTestGroup, UpdateMppDuringAfterMeasurementsIncreaseVoltage)
+TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
 {
     // mock call to instantiate flasher object
     mock().expectOneCall("Flasher")
@@ -1044,7 +1044,7 @@ TEST(IVTestGroup, UpdateMppDuringAfterMeasurementsIncreaseVoltage)
  object. Expect function to determine that the current point has more power so
  it should decide to decrement the working voltage. 
 */
-TEST(IVTestGroup, UpdateMppDuringAfterMeasurementsDecreaseVoltage)
+TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
 {
     // mock call to instantiate flasher object
     mock().expectOneCall("Flasher")
@@ -1092,4 +1092,6 @@ TEST(IVTestGroup, UpdateMppDuringAfterMeasurementsDecreaseVoltage)
     CHECK_EQUAL(vMock - DV_MPPT, lifetesterActual.IVData.v);
     // that timer should be updated since measurement is done
     CHECK_EQUAL(tMock, lifetesterActual.timer);
+    // expect low current error here since iNext and iCurrent are very low
+    CHECK_EQUAL(lowCurrent, lifetesterActual.error);
 }

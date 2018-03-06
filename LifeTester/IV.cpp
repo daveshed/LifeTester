@@ -183,7 +183,7 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
         lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
         
         // Check max is above required threshold for measurement to start
-        lifeTester->error = (iMpp < I_THRESHOLD) ? currentThreshold : lifeTester->error;  
+        lifeTester->error = (iMpp < THRESHOLD_CURRENT) ? currentThreshold : lifeTester->error;  
 
         // Update v to max power point if there's no error otherwise set back to initial value.
         lifeTester->IVData.v = (lifeTester->error == ok) ? vMPP : initV;
@@ -260,7 +260,7 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
       }
             
       //finished measurement now so do error detection
-      if (lifeTester->IVData.pCurrent == I_THRESHOLD)
+      if (lifeTester->IVData.iCurrent < MIN_CURRENT)
       {
         lifeTester->error = lowCurrent;  //low power error
         lifeTester->nErrorReads++;
