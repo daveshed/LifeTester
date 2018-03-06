@@ -19,14 +19,30 @@
 
 enum lookupColumn {voltageData, currentData, powerData};
 
+/*
+ handles interrupting iv scan
+*/
+typedef struct MockInterrupt_s {
+    bool     requested; // do you want to interrupt?
+    uint32_t start;     // start of interrupt
+    uint32_t duration;  // duration of interrupt
+} MockInterrupt_t;
+
+/*
+ Type holds information regarding test timers.
+*/
 typedef struct TestTiming_s {
-    uint32_t initial;  // initial time at beginning of call
-    uint32_t mock;     // mock time returned from millis
-    uint32_t previous; // previous measurement  
-    uint32_t dt;       // time step in ms
+    uint32_t        initial;  // initial time at beginning of call
+    uint32_t        mock;     // mock time returned from millis
+    uint32_t        elapsed;  // time elapsed since previous measurement
+    uint32_t        previous; // previous measurement  
+    uint32_t        dt;       // time step in ms
+    MockInterrupt_t interrupt;// interrupt scan requests
 } TestTiming_t;
 
-// Note that voltages are sent as dac codes
+/*
+ Note that voltages are sent as dac codes
+ */
 typedef struct TestVoltage_s {
     uint8_t  initial;  // initial scan voltage
     uint8_t  final;    // final scan voltage
@@ -327,19 +343,16 @@ unsigned long millis(void)
 /*
  Manages simulated interrupt in IV scan step.
 */
-static void InterruptScan(bool          *interruptRequest,
-                          uint32_t      *tElapsed,
-                          TestVoltage_t *v,
-                          TestTiming_t  *t)
+static void InterruptScan(TestVoltage_t *v, TestTiming_t  *t)
 {    
     if ((v->mock == mppCodeShockley)
-        && (*tElapsed >= SETTLE_TIME)
-        && *interruptRequest)
+        && (t->elapsed >= t->interrupt.start)
+        && t->interrupt.requested)
     {
-        t->mock += SAMPLING_TIME;
-        *interruptRequest = false;
+        t->mock += t->interrupt.duration;
+        t->interrupt.requested = false;
     }
-    *tElapsed = t->mock - t->previous;
+    t->elapsed = t->mock - t->previous;
 }
 
 /*
@@ -378,21 +391,20 @@ static void MocksForIvScanStep(LifeTester_t *const lifetester,
     mock().expectOneCall("Flasher::update");
 
     // (1) Set voltage during settle time
-    uint32_t tElapsed = t->mock - t->previous;
-    if (tElapsed < SETTLE_TIME)
+    t->elapsed = t->mock - t->previous;
+    if (t->elapsed < SETTLE_TIME)
     {
         mock().expectOneCall("DacSetOutput")
             .withParameter("output", v->mock)
             .withParameter("channel", lifetester->channel.dac);
     }
     // (2) Sample current during measurement time window
-    else if((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
+    else if((t->elapsed >= SETTLE_TIME) && (t->elapsed < (SETTLE_TIME + SAMPLING_TIME)))
     {
         // Mock returns shockley diode current from lookup table
-        uint8_t mockVolts = v->mock;
         mock().expectOneCall("AdcReadData")
             .withParameter("channel", lifetester->channel.adc)
-            .andReturnValue(GetAdcCode(mockVolts));
+            .andReturnValue(GetAdcCode(v->mock));
     }
     // (3) Do calculations - update timer for next measurement
     else
@@ -577,11 +589,15 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
         // Everything else default initialised to 0.
     };
 
-    TestTiming_t t;
-    t.initial = 348775U;
-    t.mock = t.initial;
-    t.previous = t.mock;
+    const uint32_t initialTimestamp = 348775U; 
+    TestTiming_t t = t;
+    t.initial = initialTimestamp;
+    t.mock = initialTimestamp;
+    t.previous = initialTimestamp;
     t.dt = 100U;
+    t.interrupt.requested = true;
+    t.interrupt.start = SETTLE_TIME;
+    t.interrupt.duration = SAMPLING_TIME;
 
     // IV scan setup - mock calls that happen prior to IV scan loop
     mock().expectOneCall("millis").andReturnValue(t.initial);
@@ -589,29 +605,29 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
         .withParameter("onNew", SCAN_LED_ON_TIME)
         .withParameter("offNew", SCAN_LED_OFF_TIME);
     
-    TestVoltage_t v;
-    v.initial = 54U;        // initial scan voltage
-    v.final   = 62U;        // final scan voltage
-    v.dV      = 1U;         // step size
-    v.mock    = v.initial;  // mock voltage sent to dac
+    TestVoltage_t v = {
+        .initial = 54U,
+        .final = 62U,
+        .dV = 1U,
+        .mock = 54U
+    };
 
     // flags
     bool dacSet = false;
     bool adcRead = false;
-    bool interruptScan = true;
 
     // IV scan loop - queue mocks ready for calls by function under test
     while(v.mock <= v.final)
     {
-        uint32_t tElapsed = t.mock - t.previous;
-        InterruptScan(&interruptScan, &tElapsed, &v, &t);
+        t.elapsed = t.mock - t.previous;
+        InterruptScan(&v, &t);
 
         // Updating timer and flasher
         mock().expectOneCall("millis").andReturnValue(t.mock);
         mock().expectOneCall("Flasher::update");
 
         // (1) Set voltage during settle time
-        if (tElapsed < SETTLE_TIME)
+        if (t.elapsed < SETTLE_TIME)
         {
             mock().expectOneCall("DacSetOutput")
                 .withParameter("output", v.mock)
@@ -620,8 +636,8 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
             dacSet = true;
         }
         // (2) Sample current during measurement time window
-        else if((tElapsed >= SETTLE_TIME)
-                && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
+        else if((t.elapsed >= SETTLE_TIME)
+                && (t.elapsed < (SETTLE_TIME + SAMPLING_TIME)))
         {
             // Mock returns shockley diode current from lookup table
             mock().expectOneCall("AdcReadData")

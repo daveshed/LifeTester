@@ -100,7 +100,8 @@ static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
     //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
     else
     {
-        if (dacOutputSet && (nSamples > 0U))
+        const bool adcRead = (nSamples > 0U); 
+        if (dacOutputSet && adcRead)
         {
             // Update max power and vMPP if we have found a maximum power point.
             const uint32_t pScan = iScan * voltage;
@@ -162,6 +163,7 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
         while((v <= finV) && (lifeTester->error == ok))
         {
             ScanStep(lifeTester, &v, dV);
+            // record final and initial power too so we can check scan shape.
             if (v == startV)
             {
                 pInitial = iScan * v;
