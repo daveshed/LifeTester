@@ -53,7 +53,7 @@ typedef struct LifeTesterIo_s {
  measurements and a pointer to the next state that needs to run.
 */
 struct LifeTester_s;
-typedef void StateFn_t(struct LifeTester_s *);
+typedef void StateFn_t(struct LifeTester_s *const);
 
 /*
  Combined lifetester state and data type.

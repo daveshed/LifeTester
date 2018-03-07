@@ -57,14 +57,24 @@ uint8_t DacGetOutput(LifeTester_t const *const lifeTester)
     return dacOutput[ch];
 }
 
+bool DacOutputSetToThisVoltage(LifeTester_t const *const lifeTester)
+{
+    return DacGetOutput(lifeTester) == lifeTester.data.vThis;
+}
+
+bool DacOutputSetToNextVoltage(LifeTester_t const *const lifeTester)
+{
+    return DacGetOutput(lifeTester) == lifeTester.data.vNext;
+}
+
 void DacSetGain(gainSelect_t requestedGain)
 {
-  MCP4802_SetGain(requestedGain);
+    MCP4802_SetGain(requestedGain);
 }
 
 gainSelect_t DacGetGain(void)
 {
-  return MCP4802_GetGain();
+    return MCP4802_GetGain();
 }
 
 /////////////////

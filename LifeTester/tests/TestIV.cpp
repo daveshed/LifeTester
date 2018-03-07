@@ -456,6 +456,7 @@ TEST_GROUP(IVTestGroup)
         mock().clear();
     }
 };
+
 /*
  Test to run an IV scan and search for the maximum power point on a model device
  (shockley diode - https://en.wikipedia.org/wiki/Shockley_diode_equation.
