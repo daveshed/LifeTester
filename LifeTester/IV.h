@@ -3,16 +3,6 @@
 #include <stdint.h>
 #include "LifeTesterTypes.h"
 
-typedef enum TimedEvent_e {
-    trackingDelay,
-    settleTimeThis,
-    samplingThis,
-    settleTimeNext,
-    samplingNext,
-    done,
-    nEvents
-} TimedEvent_t;
-
 /*
  Function to find MPP by scanning over voltages. Updates v to the MPP. 
  also pass in DAC and LifeTester objects.

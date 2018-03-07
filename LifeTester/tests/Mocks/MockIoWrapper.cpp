@@ -34,6 +34,9 @@ void DacSetOutput(uint8_t output, chSelect_t channel)
     mock().actualCall("DacSetOutput")
         .withParameter("output", output)
         .withParameter("channel", channel);
+    
+    // keep a copy of last voltage set on this channel
+    dacOutput[channel] = output;
 }
 
 uint8_t DacGetOutput(LifeTester_t const *const lifeTester)
