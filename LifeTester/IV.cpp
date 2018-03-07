@@ -66,7 +66,7 @@ static void PrintScanHeader(void)
     DBG_PRINTLN("V, I, P, error, channel");
 }
 
-static void PrintNewMpp(void)
+static void PrintNewMpp(LifeTester_t const *const lifeTester)
 {
         DBG_PRINT(lifeTester->data.vThis);
         DBG_PRINT(", ");
@@ -200,6 +200,18 @@ static void ResetTimer(LifeTester_t *const lifeTester)
     lifeTester->timer = millis(); //reset timer
 }
 
+static void ResetForNextMeasurement(LifeTester_t *const lifeTester)
+{
+    // Reset lifetester data
+    lifeTester->data.nReadsThis = 0U;
+    lifeTester->data.nReadsNext = 0U;
+    lifeTester->data.iThis = 0U;
+    lifeTester->data.iNext = 0U;
+    ResetTimer(lifeTester);
+    // Go back to initial state.
+    lifeTester->nextState = StateWaitForTrackingDelay;
+}
+
 STATIC TimedEvent_t GetTimedEvent(LifeTester_t *const lifeTester)
 {
     TimedEvent_t event;
@@ -278,8 +290,7 @@ STATIC void StateSampleThisCurrent(LifeTester_t *const lifeTester)
     }
     else  // dac wasn't set. Restart the measurement
     {
-        ResetTimer(lifeTester);
-        lifeTester->nextState = StateWaitForTrackingDelay;
+        ResetForNextMeasurement(lifeTester);
     }
 }
 
@@ -312,8 +323,7 @@ STATIC void StateSampleNextCurrent(LifeTester_t *const lifeTester)
     }
     else // dac wasn't set. Restart the measurement
     {
-        ResetTimer(lifeTester);
-        lifeTester->nextState = StateWaitForTrackingDelay;
+        ResetForNextMeasurement(lifeTester);
     }
 }
 
@@ -359,18 +369,11 @@ STATIC void StateAnalyseMeasurement(LifeTester_t *const lifeTester)
             lifeTester->data.nErrorReads = 0U;
         }
 
-        PrintNewMpp();
+        PrintNewMpp(lifeTester);
 
     }
-    // Begin hill climibing algorightm again
-    lifeTester->nextState = StateWaitForTrackingDelay;
-    
-    // Reset lifetester data
-    lifeTester->data.nReadsThis = 0U; //reset counter
-    lifeTester->data.nReadsNext = 0U;
-    lifeTester->data.iThis = 0U;
-    lifeTester->data.iNext = 0U;
-    ResetTimer(lifeTester);
+    // Begin hill climibing algorigthm again
+    ResetForNextMeasurement(lifeTester);
 }
 
 /*
@@ -392,7 +395,6 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
 
     else //error condition - trigger LED
     {
-        //error condition
         lifeTester->led.t(500,500);
         lifeTester->led.keepFlashing();
     }
