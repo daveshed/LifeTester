@@ -5,9 +5,28 @@
 
 #include "IoWrapper.h"
 
+// records a copy of the last output set on the dac for each channel.
+static uint8_t dacOutput[nChannels];
+
+
 void DacInit(void)
 {
     mock().actualCall("DacInit");
+}
+
+void DacSetOutputToThisVoltage(LifeTester_t const *const lifeTester)
+{
+    DacSetOutput(lifeTester->data.vThis, lifeTester->io.dac);
+}
+
+void DacSetOutputToNextVoltage(LifeTester_t const *const lifeTester)
+{
+    DacSetOutput(lifeTester->data.vNext, lifeTester->io.dac);
+}
+
+void DacSetOutputToScanVoltage(LifeTester_t const *const lifeTester)
+{
+    DacSetOutput(lifeTester->data.vScan, lifeTester->io.dac);
 }
 
 void DacSetOutput(uint8_t output, chSelect_t channel)
@@ -15,6 +34,12 @@ void DacSetOutput(uint8_t output, chSelect_t channel)
     mock().actualCall("DacSetOutput")
         .withParameter("output", output)
         .withParameter("channel", channel);
+}
+
+uint8_t DacGetOutput(LifeTester_t const *const lifeTester)
+{
+    const chSelect_t ch = lifeTester->io.dac;
+    return dacOutput[ch];
 }
 
 void DacSetGain(gainSelect_t requestedGain)
@@ -39,6 +64,11 @@ uint16_t AdcReadData(const uint8_t channel)
     mock().actualCall("AdcReadData")
         .withParameter("channel", channel);
     return mock().unsignedIntReturnValue();
+}
+
+uint16_t AdcReadLifeTesterCurrent(LifeTester_t const *const lifeTester)
+{
+    return AdcReadData(lifeTester->io.adc);
 }
 
 bool AdcGetError(void)

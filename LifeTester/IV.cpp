@@ -80,11 +80,11 @@ static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
     const uint32_t voltage = *v;
     const uint32_t tElapsed = millis() - timer;
     lifeTester->led.update();
-    lifeTester->data.v = voltage;
+    lifeTester->data.vScan = voltage;
     //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
     if (tElapsed < SETTLE_TIME)
     {
-        DacSetOutput(voltage, lifeTester->io.dac);
+        DacSetOutputToScanVoltage(lifeTester);
         dacOutputSet = true;
         iSum = 0U;
 
@@ -92,10 +92,9 @@ static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
     //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
     else if ((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
     {  
-        iSum += AdcReadData(lifeTester->io.adc);
+        iSum += AdcReadLifeTesterCurrent(lifeTester);
         nSamples++;
         iScan = iSum / nSamples;
-        lifeTester->data.iTransmit = iScan; //data requested by I2C
     }
     //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
     else
@@ -143,7 +142,7 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
     if (lifeTester->error == ok)
     {
         // copy the initial voltage in case the new mpp can't be found
-        const uint32_t initV = lifeTester->data.v;
+        const uint32_t initV = lifeTester->data.vThis;
         
         pMax = 0U;
         iSum = 0U;
@@ -187,12 +186,12 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
             (iMpp < THRESHOLD_CURRENT) ? currentThreshold : lifeTester->error;  
 
         // Update v to max power point if there's no error otherwise set back to initial value.
-        lifeTester->data.v =
+        lifeTester->data.vThis =
             (lifeTester->error == ok) ? vMPP : initV;
         // report max power point
         PrintMpp(iMpp, vMPP, lifeTester->error);
         // Now set Dac to MPP
-        DacSetOutput(lifeTester->data.v, lifeTester->io.dac);
+        DacSetOutputToThisVoltage(lifeTester);
     }
 }
 
@@ -211,30 +210,27 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
   
   if ((lifeTester->error != currentThreshold) && (lifeTester->data.nErrorReads < MAX_ERROR_READS))
   {
-    
+    //STAGE 1: SET INITIAL STATE OF DAC V0
     if ((tElapsed >= TRACK_DELAY_TIME) && tElapsed < (TRACK_DELAY_TIME + SETTLE_TIME))
     {
-      //STAGE 1: SET INITIAL STATE OF DAC V0
-      DacSetOutput(lifeTester->data.v, lifeTester->io.dac);
+        DacSetOutputToThisVoltage(lifeTester);
     }
-    
+    //STAGE 2: KEEP READING THE CURRENT AND SUMMING IT AFTER THE SETTLE TIME
     else if ((tElapsed >= (TRACK_DELAY_TIME + SETTLE_TIME)) && (tElapsed < (TRACK_DELAY_TIME + SETTLE_TIME + SAMPLING_TIME)))  
     {
-      //STAGE 2: KEEP READING THE CURRENT AND SUMMING IT AFTER THE SETTLE TIME
-      lifeTester->data.iThis += AdcReadData(lifeTester->io.adc);
-      lifeTester->data.nReadsThis++;
+        lifeTester->data.iThis += AdcReadLifeTesterCurrent(lifeTester);
+        lifeTester->data.nReadsThis++;
     }
-    
+    //STAGE 3: STOP SAMPLING. SET DAC TO V1.
     else if (tElapsed >= (TRACK_DELAY_TIME + SETTLE_TIME + SAMPLING_TIME) && (tElapsed < (TRACK_DELAY_TIME + 2 * SETTLE_TIME + SAMPLING_TIME)))
     {
-      //STAGE 3: STOP SAMPLING. SET DAC TO V1.
-      DacSetOutput((lifeTester->data.v + DV_MPPT), lifeTester->io.dac);
+        lifeTester->data.vNext = lifeTester->data.vThis + DV_MPPT;
+        DacSetOutputToNextVoltage(lifeTester);
     }
-    
+    //STAGE 4: KEEP READING THE CURRENT AND SUMMING IT AFTER ANOTHER SETTLE TIME
     else if (tElapsed >= (TRACK_DELAY_TIME + 2 * SETTLE_TIME + SAMPLING_TIME) && (tElapsed < (TRACK_DELAY_TIME + 2 * SETTLE_TIME + 2 * SAMPLING_TIME)))
     {
-      //STAGE 4: KEEP READING THE CURRENT AND SUMMING IT AFTER ANOTHER SETTLE TIME
-      lifeTester->data.iNext += AdcReadData(lifeTester->io.adc);
+      lifeTester->data.iNext += AdcReadLifeTesterCurrent(lifeTester);
       lifeTester->data.nReadsNext++;
     }
     //STAGE 5: MEASUREMENTS DONE. DO CALCULATIONS
@@ -242,22 +238,22 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
     {
       // TODO: readings are summed together and then averaged. Naughty reusing variables
       lifeTester->data.iThis /= lifeTester->data.nReadsThis; //calculate average
-      lifeTester->data.pThis = lifeTester->data.v * lifeTester->data.iThis; //calculate power now
+      lifeTester->data.pThis = lifeTester->data.vThis * lifeTester->data.iThis; //calculate power now
       lifeTester->data.nReadsThis = 0U; //reset counter
 
       lifeTester->data.iNext /= lifeTester->data.nReadsNext;
-      lifeTester->data.pNext = (lifeTester->data.v + DV_MPPT) * lifeTester->data.iNext;
+      lifeTester->data.pNext = (lifeTester->data.vNext) * lifeTester->data.iNext;
       lifeTester->data.nReadsNext = 0U;
 
       //if power is lower here, we must be going downhill then move back one point for next loop
       if (lifeTester->data.pNext > lifeTester->data.pThis)
       {
-        lifeTester->data.v += DV_MPPT;
+        lifeTester->data.vThis += DV_MPPT;
         lifeTester->led.stopAfter(2); //two flashes
       }
       else
       {
-        lifeTester->data.v -= DV_MPPT;
+        lifeTester->data.vThis -= DV_MPPT;
         lifeTester->led.stopAfter(1); //one flash
       }
             
@@ -278,7 +274,7 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
         lifeTester->data.nErrorReads = 0;
       }
 
-      DBG_PRINT(lifeTester->data.v);
+      DBG_PRINT(lifeTester->data.vThis);
       DBG_PRINT(", ");
       DBG_PRINT(lifeTester->data.iThis);
       DBG_PRINT(", ");
@@ -293,8 +289,6 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
       DBG_PRINT(lifeTester->io.dac);
       DBG_PRINTLN();
 
-      lifeTester->data.iTransmit =
-        0.5 * (lifeTester->data.iThis + lifeTester->data.iNext);
       lifeTester->timer = millis(); //reset timer
       lifeTester->data.iThis = 0;
       lifeTester->data.iNext = 0;

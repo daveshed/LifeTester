@@ -456,7 +456,6 @@ TEST_GROUP(IVTestGroup)
         mock().clear();
     }
 };
-
 /*
  Test to run an IV scan and search for the maximum power point on a model device
  (shockley diode - https://en.wikipedia.org/wiki/Shockley_diode_equation.
@@ -503,7 +502,7 @@ TEST(IVTestGroup, RunIvScanFindsMpp)
 
     // Test assertions. Does the max power point agree with expectations
     // mpp dac code stored in lifetester instance
-    const uint8_t mppCodeActual = mockLifeTester->data.v;
+    const uint8_t mppCodeActual = mockLifeTester->data.vThis;
     CHECK_EQUAL(mppCodeShockley, mppCodeActual);
     // expect no errors
     CHECK_EQUAL(ok, mockLifeTester->error);
@@ -522,7 +521,7 @@ TEST(IVTestGroup, RunIvScanFindsMpp)
 TEST(IVTestGroup, RunIvScanInvalidScanNotHillShaped)
 {
     const uint32_t initV = 11U;
-    mockLifeTester->data.v = initV;
+    mockLifeTester->data.vThis = initV;
 
     TestTiming_t t;
     t.initial = 348775U;
@@ -559,7 +558,7 @@ TEST(IVTestGroup, RunIvScanInvalidScanNotHillShaped)
     // expect invalidScan error since the P(V) is linear not a hill.
     CHECK_EQUAL(invalidScan, mockLifeTester->error);
     // lifetester voltage should not have been been changed.
-    CHECK_EQUAL(initV, mockLifeTester->data.v);
+    CHECK_EQUAL(initV, mockLifeTester->data.vThis);
     
     // Check mock function calls match expectations
     mock().checkExpectations();
@@ -654,7 +653,7 @@ TEST(IVTestGroup, RunIvScanInterruptedAtMppSample)
 
     // Test assertions. Does the max power point agree with expectations
     // mpp dac code stored in lifetester instance
-    const uint8_t mppCodeActual = mockLifeTester->data.v;
+    const uint8_t mppCodeActual = mockLifeTester->data.vThis;
     CHECK_EQUAL(mppCodeShockley, mppCodeActual);
     // expect no errors
     CHECK_EQUAL(ok, mockLifeTester->error);
@@ -710,7 +709,7 @@ TEST(IVTestGroup, UpdateMppDuringSettleTime)
     
     // 2) therefore expect dac to be set
     mock().expectOneCall("DacSetOutput")
-        .withParameter("output", mockLifeTester->data.v)
+        .withParameter("output", mockLifeTester->data.vThis)
         .withParameter("channel", mockLifeTester->io.dac);
 
     IV_MpptUpdate(mockLifeTester);
@@ -752,7 +751,7 @@ TEST(IVTestGroup, UpdateMppDuringSettleTimeForThisPoint)
     const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
     const uint32_t vMock = 43U;
 
-    mockLifeTester->data.v = vMock;
+    mockLifeTester->data.vThis = vMock;
     mockLifeTester->timer = tPrevious;
     // 1) check time. millis should return time within settle time window
     mock().expectOneCall("millis").andReturnValue(tMock);
@@ -775,15 +774,15 @@ TEST(IVTestGroup, UpdateMppDuringSettleTimeForThisPoint)
 */
 TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPoint)
 {
-    // mock call to instantiate flasher object
-    mock().expectOneCall("Flasher")
-        .withParameter("pin", LED_A_PIN);
 
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
     const uint32_t tElapsed = TRACK_DELAY_TIME
                               + SETTLE_TIME +  10U;   // time elapsed since
     const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
     const uint32_t vMock = 47U;                       // voltage at current op point
+    // mock call to instantiate flasher object
+    mock().expectOneCall("Flasher")
+        .withParameter("pin", LED_A_PIN);
     
     // lifetester initial data.
     LifeTester_t lifetesterInit = {
@@ -821,40 +820,32 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPoint)
 */
 TEST(IVTestGroup, UpdateMppDuringSettleTimeForNextPoint)
 {
-    // mock call to instantiate flasher object
-    mock().expectOneCall("Flasher")
-        .withParameter("pin", LED_A_PIN);
-
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
     const uint32_t tElapsed = TRACK_DELAY_TIME
                               + SETTLE_TIME
                               + SAMPLING_TIME + 10U;  // time elapsed since
     const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
     const uint32_t vMock = 43U;
-    // lifetester data.
-    LifeTester_t lifetester = {
-        {chASelect, 0U},
-        Flasher(LED_A_PIN),
-        {vMock},
-        NULL,
-        tPrevious,
-        ok  // set error state
-    };
-    
+
+    mockLifeTester->data.vThis = vMock;
+    mockLifeTester->data.vNext = vMock + DV_MPPT;
+    mockLifeTester->timer = tPrevious;
+
     // 1) check time. millis should return time within settle time window
     mock().expectOneCall("millis").andReturnValue(tMock);
     
     // 2) therefore expect dac to be set
     mock().expectOneCall("DacSetOutput")
         .withParameter("output", vMock + DV_MPPT)
-        .withParameter("channel", lifetester.io.dac);
+        .withParameter("channel", mockLifeTester->io.dac);
 
-    const LifeTester_t lifetesterInit = lifetester;
-    IV_MpptUpdate(&lifetester);
-    const LifeTester_t lifetesterFinal = lifetester;
+    const LifeTester_t lifetesterExp = *mockLifeTester;
+    IV_MpptUpdate(mockLifeTester);
+    const LifeTester_t lifetesterActual = *mockLifeTester;
     // Expect no change to lifetester data
-    MEMCMP_EQUAL(&lifetesterInit, &lifetesterFinal, sizeof(LifeTester_t));
+    MEMCMP_EQUAL(&lifetesterExp, &lifetesterActual, sizeof(LifeTester_t));
 }
+
 /*
  Test for updating mpp during the second sampling time window. Expect the adc to
  be read and relevant data in the lifetester object corresponding to the next
@@ -909,10 +900,6 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForNextPoint)
 */
 TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
 {
-    // mock call to instantiate flasher object
-    mock().expectOneCall("Flasher")
-        .withParameter("pin", LED_A_PIN);
-
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
     const uint32_t tElapsed = TRACK_DELAY_TIME        // set elapsed time past...
                               + (2 * SETTLE_TIME)     // the measurement windows
@@ -921,21 +908,19 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
     const uint32_t vMock = 47U;                       // voltage at current op point
     
     const uint16_t nAdcSamples = 4U;
-    const uint16_t iCurrent = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
+    const uint16_t iThis = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
     const uint16_t iNext = (MIN_CURRENT + 20U) * nAdcSamples;
 
-    const uint32_t pCurrent = iCurrent / nAdcSamples * vMock;
+    const uint32_t pThis = iThis / nAdcSamples * vMock;
     const uint32_t pNext = iNext / nAdcSamples * (vMock + DV_MPPT);
-    CHECK(pNext > pCurrent);
+    CHECK(pNext > pThis);
 
-    LifeTester_t lifetesterInit = {
-        {chASelect, 0U},
-        Flasher(LED_A_PIN),
-        {vMock, 0U, 0U, iCurrent, iNext, 0U, nAdcSamples, nAdcSamples},
-        NULL,
-        tPrevious,
-        ok  // set error state
-    };
+    mockLifeTester->data.vThis = vMock;
+    mockLifeTester->data.vNext = vMock + DV_MPPT;
+    mockLifeTester->data.iThis = iThis;
+    mockLifeTester->data.iNext = iNext;
+    mockLifeTester->data.nReadsThis = nAdcSamples;
+    mockLifeTester->data.nReadsNext = nAdcSamples;
 
     // Check time. millis should return time within sampling time window
     mock().expectOneCall("millis").andReturnValue(tMock);
@@ -945,15 +930,14 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
     // Expect another call to millis to update the value of the timmer in lifetester object
     mock().expectOneCall("millis").andReturnValue(tMock);
     // Call function under test
-    LifeTester_t lifetesterActual = lifetesterInit;
-    IV_MpptUpdate(&lifetesterActual);
+    IV_MpptUpdate(mockLifeTester);
 
     // Exoect that working voltage should increase
-    CHECK_EQUAL(vMock + DV_MPPT, lifetesterActual.data.v);
+    CHECK_EQUAL(vMock + DV_MPPT, mockLifeTester->data.vThis);
     // that timer should be updated since measurement is done
-    CHECK_EQUAL(tMock, lifetesterActual.timer);
+    CHECK_EQUAL(tMock, mockLifeTester->timer);
     // check there's no error
-    CHECK_EQUAL(ok, lifetesterActual.error);
+    CHECK_EQUAL(ok, mockLifeTester->error);
 }
 
 /*
@@ -963,10 +947,6 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
 */
 TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
 {
-    // mock call to instantiate flasher object
-    mock().expectOneCall("Flasher")
-        .withParameter("pin", LED_A_PIN);
-
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
     const uint32_t tElapsed = TRACK_DELAY_TIME        // set elapsed time past...
                               + (2 * SETTLE_TIME)     // the measurement windows
@@ -975,21 +955,19 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
     const uint32_t vMock = 47U;                       // voltage at current op point
     
     const uint16_t nAdcSamples = 4U;
-    const uint16_t iCurrent = (MIN_CURRENT + 20U) * nAdcSamples;
+    const uint16_t iThis = (MIN_CURRENT + 20U) * nAdcSamples;
     const uint16_t iNext = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
 
-    const uint32_t pCurrent = iCurrent / nAdcSamples * vMock;
+    const uint32_t pCurrent = iThis / nAdcSamples * vMock;
     const uint32_t pNext = iNext / nAdcSamples * (vMock + DV_MPPT);
     CHECK(pNext < pCurrent);
 
-    LifeTester_t lifetesterInit = {
-        {chASelect, 0U},
-        Flasher(LED_A_PIN),
-        {vMock, 0U, 0U, iCurrent, iNext, 0U, nAdcSamples, nAdcSamples},
-        NULL,
-        tPrevious,
-        ok  // set error state
-    };
+    mockLifeTester->data.vThis = vMock;
+    mockLifeTester->data.vNext = vMock + DV_MPPT;
+    mockLifeTester->data.iThis = iThis;
+    mockLifeTester->data.iNext = iNext;
+    mockLifeTester->data.nReadsThis = nAdcSamples;
+    mockLifeTester->data.nReadsNext = nAdcSamples;
 
     // Check time. millis should return time within sampling time window
     mock().expectOneCall("millis").andReturnValue(tMock);
@@ -999,13 +977,12 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
     // Expect another call to millis to update the value of the timmer in lifetester object
     mock().expectOneCall("millis").andReturnValue(tMock);
     // Call function under test
-    LifeTester_t lifetesterActual = lifetesterInit;
-    IV_MpptUpdate(&lifetesterActual);
+    IV_MpptUpdate(mockLifeTester);
 
     // Exoect that working voltage should reduce
-    CHECK_EQUAL(vMock - DV_MPPT, lifetesterActual.data.v);
+    CHECK_EQUAL(vMock - DV_MPPT, mockLifeTester->data.vThis);
     // that timer should be updated since measurement is done
-    CHECK_EQUAL(tMock, lifetesterActual.timer);
+    CHECK_EQUAL(tMock, mockLifeTester->timer);
     // expect low current error here since iNext and iCurrent are very low
-    CHECK_EQUAL(ok, lifetesterActual.error);
+    CHECK_EQUAL(ok, mockLifeTester->error);
 }

@@ -21,14 +21,21 @@ typedef enum errorCode_e {
     invalidScan       // scan is the wrong shape
 } errorCode_t;
 
-// Measurements that the lifetester may take on a given channel
+/*
+ Measurements that the lifetester may take on a given channel. Note that this
+ and next refer to the current operating point and another neigbouring point for
+ comparison in mpp tracking.
+*/
 typedef struct LifeTesterData_s {
-    uint32_t v;
+    uint32_t vThis;
+    uint32_t vNext;
+    uint32_t vScan;
     uint32_t pThis;
     uint32_t pNext;
+    uint32_t pScan;
     uint32_t iThis;
     uint32_t iNext;
-    uint32_t iTransmit;    // current transmitted over I2C
+    uint32_t iScan;
     uint16_t nReadsThis;
     uint16_t nReadsNext;   // counting number of readings taken by ADC during sampling window
     uint16_t nErrorReads;  // number of readings outside allowed limits
