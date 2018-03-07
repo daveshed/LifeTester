@@ -32,7 +32,7 @@ static void PrintError(errorCode_t error)
     }
 }
 
-static void PrintMpp(uint32_t iMpp, uint32_t vMPP, errorCode_t error)
+static void PrintScanMpp(uint32_t iMpp, uint32_t vMPP, errorCode_t error)
 {
     DBG_PRINTLN();
     DBG_PRINT("iMpp = ");
@@ -64,6 +64,24 @@ static void PrintScanHeader(void)
 {
     DBG_PRINTLN("IV scan...");
     DBG_PRINTLN("V, I, P, error, channel");
+}
+
+static void PrintNewMpp(void)
+{
+        DBG_PRINT(lifeTester->data.vThis);
+        DBG_PRINT(", ");
+        DBG_PRINT(lifeTester->data.iThis);
+        DBG_PRINT(", ");
+        DBG_PRINT(lifeTester->data.pThis);
+        DBG_PRINT(", ");
+        DBG_PRINT(lifeTester->error);
+        DBG_PRINT(", ");
+        DBG_PRINT(analogRead(LIGHT_SENSOR_PIN));
+        DBG_PRINT(", ");
+        DBG_PRINT(TempReadDegC());
+        DBG_PRINT(", ");
+        DBG_PRINT(lifeTester->io.dac);
+        DBG_PRINTLN();
 }
 
 static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
@@ -171,7 +189,7 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
         lifeTester->data.vThis =
             (lifeTester->error == ok) ? vMPP : initV;
         // report max power point
-        PrintMpp(iMpp, vMPP, lifeTester->error);
+        PrintScanMpp(iMpp, vMPP, lifeTester->error);
         // Now set Dac to MPP
         DacSetOutputToThisVoltage(lifeTester);
     }
@@ -341,20 +359,8 @@ STATIC void StateAnalyseMeasurement(LifeTester_t *const lifeTester)
             lifeTester->data.nErrorReads = 0U;
         }
 
-        DBG_PRINT(lifeTester->data.vThis);
-        DBG_PRINT(", ");
-        DBG_PRINT(lifeTester->data.iThis);
-        DBG_PRINT(", ");
-        DBG_PRINT(lifeTester->data.pThis);
-        DBG_PRINT(", ");
-        DBG_PRINT(lifeTester->error);
-        DBG_PRINT(", ");
-        DBG_PRINT(analogRead(LIGHT_SENSOR_PIN));
-        DBG_PRINT(", ");
-        DBG_PRINT(TempReadDegC());
-        DBG_PRINT(", ");
-        DBG_PRINT(lifeTester->io.dac);
-        DBG_PRINTLN();
+        PrintNewMpp();
+
     }
     // Begin hill climibing algorightm again
     lifeTester->nextState = StateWaitForTrackingDelay;

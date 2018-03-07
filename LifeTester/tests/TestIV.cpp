@@ -458,7 +458,7 @@ TEST_GROUP(IVTestGroup)
         mock().clear();
     }
 };
-#if 0
+
 /*
  Test to run an IV scan and search for the maximum power point on a model device
  (shockley diode - https://en.wikipedia.org/wiki/Shockley_diode_equation.
@@ -690,7 +690,7 @@ TEST(IVTestGroup, RunIvScanErrorStateDontScan)
     // No mocks should be called
     mock().checkExpectations();
 }
-#endif
+
 /*
  Test for updating mpp during settle time. Expect the dac to be set only. No
  calls to read adc and no change to lifetester data.
@@ -892,7 +892,6 @@ TEST(IVTestGroup, UpdateMppDuringSettleTimeForNextPoint)
     // Expect no change to lifetester data
     MEMCMP_EQUAL(&lifetesterExp, &lifetesterActual, sizeof(LifeTester_t));
 }
-#if 0
 
 /*
  Test for updating mpp during the second sampling time window. Expect the adc to
@@ -901,44 +900,39 @@ TEST(IVTestGroup, UpdateMppDuringSettleTimeForNextPoint)
 */
 TEST(IVTestGroup, UpdateMppDuringSamplingTimeForNextPoint)
 {
-    // mock call to instantiate flasher object
-    mock().expectOneCall("Flasher")
-        .withParameter("pin", LED_A_PIN);
-
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
     const uint32_t tElapsed = TRACK_DELAY_TIME        // set elapsed time to next sample window
                               + (2 * SETTLE_TIME)
                               + SAMPLING_TIME + 10U;  
     const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
     const uint32_t vMock = 47U;                       // voltage at current op point
-    
-    // lifetester initial data.
-    LifeTester_t lifetesterInit = {
-        {chASelect, 0U},
-        Flasher(LED_A_PIN),
-        {vMock},
-        NULL,
-        tPrevious,
-        ok  // set error state
-    };
-  
+
+    mockLifeTester->data.vNext = vMock + DV_MPPT;
+    mockLifeTester->timer = tPrevious;
+    mockLifeTester->nextState = StateSampleNextCurrent;
+
+    mock().disable();
+    DacSetOutput(vMock + DV_MPPT, mockLifeTester->io.dac);
+    CHECK(DacOutputSetToNextVoltage(mockLifeTester));
+    mock().enable();
+
     // Check time. millis should return time within sampling time window
     mock().expectOneCall("millis").andReturnValue(tMock);
     // Expect call to adc since we're in the current sampling window
     const uint16_t iMock = TestGetAdcCodeForDiode(vMock + DV_MPPT);
     mock().expectOneCall("AdcReadData")
-        .withParameter("channel", lifetesterInit.io.adc)
+        .withParameter("channel", mockLifeTester->io.adc)
         .andReturnValue(iMock);
 
     // Call function under test
-    LifeTester_t lifetesterActual = lifetesterInit;
-    IV_MpptUpdate(&lifetesterActual);
+    LifeTester_t lifeTesterActual = *mockLifeTester;
+    IV_MpptUpdate(&lifeTesterActual);
 
     // expect the current and number of readings to be updated only
-    LifeTester_t lifetesterExpected = lifetesterInit;
-    lifetesterExpected.data.iNext = iMock;
-    lifetesterExpected.data.nReadsNext++;
-    MEMCMP_EQUAL(&lifetesterExpected, &lifetesterActual, sizeof(LifeTester_t));
+    LifeTester_t lifeTesterExpected = *mockLifeTester;
+    lifeTesterExpected.data.iNext = iMock;
+    lifeTesterExpected.data.nReadsNext++;
+    MEMCMP_EQUAL(&lifeTesterExpected, &lifeTesterActual, sizeof(LifeTester_t));
 }
 
 /*
@@ -969,6 +963,7 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
     mockLifeTester->data.iNext = iNext;
     mockLifeTester->data.nReadsThis = nAdcSamples;
     mockLifeTester->data.nReadsNext = nAdcSamples;
+    mockLifeTester->nextState = StateAnalyseMeasurement;
 
     // Check time. millis should return time within sampling time window
     mock().expectOneCall("millis").andReturnValue(tMock);
@@ -1016,6 +1011,7 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
     mockLifeTester->data.iNext = iNext;
     mockLifeTester->data.nReadsThis = nAdcSamples;
     mockLifeTester->data.nReadsNext = nAdcSamples;
+    mockLifeTester->nextState = StateAnalyseMeasurement;
 
     // Check time. millis should return time within sampling time window
     mock().expectOneCall("millis").andReturnValue(tMock);
@@ -1034,4 +1030,3 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
     // expect low current error here since iNext and iCurrent are very low
     CHECK_EQUAL(ok, mockLifeTester->error);
 }
-#endif
