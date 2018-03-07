@@ -13,26 +13,22 @@
 //////////////////////////////////
 //Initialise lifetester channels//
 ////////////////////////////////// 
-LifeTester_t LTChannelA = {
-  {chASelect, 0U},  // dac, adc - TODO: check that these are correct settings!
-  Flasher(LED_A_PIN),
-  0,
-  0,
-  0,
-  ok,
-  {0},
-  0
+LifeTester_t channelA = {
+  {chASelect, 0U},    // io
+  Flasher(LED_A_PIN), // led
+  {0},                // data
+  NULL,               // state function
+  0U,                 // timer
+  ok                  // error
 };
 
-LifeTester_t LTChannelB = {
-  {chBSelect, 1U},  // dac, adc
+LifeTester_t channelB = {
+  {chBSelect, 1U},
   Flasher(LED_B_PIN),
-  0,
-  0,
-  0,
-  ok,
   {0},
-  0
+  NULL,
+  0U,
+  ok
 };
 
 void setup()
@@ -54,8 +50,8 @@ void setup()
   //MPP INITIAL SEARCH/SCAN
   Serial.println("Scanning for MPP...");
   // Scan IV and initialise DACs to MPP initial guess
-  IV_ScanAndUpdate(&LTChannelA, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN);
-  IV_ScanAndUpdate(&LTChannelB, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN); 
+  IV_ScanAndUpdate(&channelA, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN);
+  IV_ScanAndUpdate(&channelB, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN); 
 
   //DATA HEADINGS
   Serial.println();
@@ -63,26 +59,23 @@ void setup()
   Serial.println("DACx, ADCx, power, error, Light Sensor, T(C), channel");
 
   //SETUP LEDS FOR MAIN LOOP
-  LTChannelA.Led.t(50, 50);
-  LTChannelB.Led.t(50, 50);
+  channelA.led.t(50, 50);
+  channelB.led.t(50, 50);
 
   //set timer ready for measurements
-  LTChannelA.timer = LTChannelB.timer = millis();
+  channelA.timer = channelB.timer = millis();
 
   Serial.println("Finished setup. Entering main loop.");
 }
 
 void loop()
 {
-  IV_MpptUpdate(&LTChannelA);
-  IV_MpptUpdate(&LTChannelB);
+  IV_MpptUpdate(&channelA);
+  IV_MpptUpdate(&channelB);
 
-  //LED will update every time the loop runs
-  LTChannelA.Led.update();
-  LTChannelB.Led.update();
+  channelA.led.update();
+  channelB.led.update();
 
   TempSenseUpdate();
-  
-  I2C_PrepareData(&LTChannelA, &LTChannelB);
+  I2C_PrepareData(&channelA, &channelB);
 }
-

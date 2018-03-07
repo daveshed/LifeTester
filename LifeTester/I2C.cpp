@@ -74,17 +74,17 @@ void I2C_TransmitData(void)
   Wire.write(I2CByteBuffer, bufferIdx);  
 }
 
-void I2C_PrepareData(const LifeTester_t *LTChannelA, const LifeTester_t *LTChannelB)
+void I2C_PrepareData(LifeTester_t const *const LTChannelA, LifeTester_t const *const LTChannelB)
 {
   BUFFER_RST();
   
   // assign elements of the buffer
   
   BUFFER_WRITE(millis());
-  BUFFER_WRITE((uint16_t)LTChannelA->IVData.v);
-  BUFFER_WRITE((uint16_t)LTChannelA->IVData.iTransmit);
-  BUFFER_WRITE((uint16_t)LTChannelB->IVData.v);
-  BUFFER_WRITE((uint16_t)LTChannelB->IVData.iTransmit);
+  BUFFER_WRITE((uint16_t)LTChannelA->data.v);
+  BUFFER_WRITE((uint16_t)LTChannelA->data.iTransmit);
+  BUFFER_WRITE((uint16_t)LTChannelB->data.v);
+  BUFFER_WRITE((uint16_t)LTChannelB->data.iTransmit);
   BUFFER_WRITE((uint16_t)TempGetRawData());
   BUFFER_WRITE((uint16_t)analogRead(LIGHT_SENSOR_PIN));
   BUFFER_WRITE((uint8_t)LTChannelA->error);

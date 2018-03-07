@@ -79,12 +79,12 @@ static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
 {
     const uint32_t voltage = *v;
     const uint32_t tElapsed = millis() - timer;
-    lifeTester->Led.update();
-    lifeTester->IVData.v = voltage;
+    lifeTester->led.update();
+    lifeTester->data.v = voltage;
     //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
     if (tElapsed < SETTLE_TIME)
     {
-        DacSetOutput(voltage, lifeTester->channel.dac);
+        DacSetOutput(voltage, lifeTester->io.dac);
         dacOutputSet = true;
         iSum = 0U;
 
@@ -92,10 +92,10 @@ static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
     //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
     else if ((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
     {  
-        iSum += AdcReadData(lifeTester->channel.adc);
+        iSum += AdcReadData(lifeTester->io.adc);
         nSamples++;
         iScan = iSum / nSamples;
-        lifeTester->IVData.iTransmit = iScan; //data requested by I2C
+        lifeTester->data.iTransmit = iScan; //data requested by I2C
     }
     //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
     else
@@ -114,7 +114,7 @@ static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
             // Reached the current limit - flag error which will stop scan
             lifeTester->error = iScan >= MAX_CURRENT ? currentLimit : ok;
             
-            PrintScanPoint(voltage, iScan, pScan, lifeTester->error, lifeTester->channel.dac);
+            PrintScanPoint(voltage, iScan, pScan, lifeTester->error, lifeTester->io.dac);
     
             *v += dV;  //move to the next point only if we've got this one ok.
         }
@@ -143,7 +143,7 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
     if (lifeTester->error == ok)
     {
         // copy the initial voltage in case the new mpp can't be found
-        const uint32_t initV = lifeTester->IVData.v;
+        const uint32_t initV = lifeTester->data.v;
         
         pMax = 0U;
         iSum = 0U;
@@ -153,7 +153,7 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
         PrintScanHeader();
 
         // Signal to user that IV is being scanned with led set to fast flash
-        lifeTester->Led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
+        lifeTester->led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
 
         // Run IV scan - record initial and final powers for checking iv scan shape
         uint32_t v = startV;
@@ -183,14 +183,16 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
         lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
         
         // Check max is above required threshold for measurement to start
-        lifeTester->error = (iMpp < THRESHOLD_CURRENT) ? currentThreshold : lifeTester->error;  
+        lifeTester->error =
+            (iMpp < THRESHOLD_CURRENT) ? currentThreshold : lifeTester->error;  
 
         // Update v to max power point if there's no error otherwise set back to initial value.
-        lifeTester->IVData.v = (lifeTester->error == ok) ? vMPP : initV;
+        lifeTester->data.v =
+            (lifeTester->error == ok) ? vMPP : initV;
         // report max power point
         PrintMpp(iMpp, vMPP, lifeTester->error);
         // Now set Dac to MPP
-        DacSetOutput(lifeTester->IVData.v, lifeTester->channel.dac);
+        DacSetOutput(lifeTester->data.v, lifeTester->io.dac);
     }
 }
 
@@ -207,80 +209,80 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
 {
   uint32_t tElapsed = millis() - lifeTester->timer;
   
-  if ((lifeTester->error != currentThreshold) && (lifeTester->nErrorReads < MAX_ERROR_READS))
+  if ((lifeTester->error != currentThreshold) && (lifeTester->data.nErrorReads < MAX_ERROR_READS))
   {
     
     if ((tElapsed >= TRACK_DELAY_TIME) && tElapsed < (TRACK_DELAY_TIME + SETTLE_TIME))
     {
       //STAGE 1: SET INITIAL STATE OF DAC V0
-      DacSetOutput(lifeTester->IVData.v, lifeTester->channel.dac);
+      DacSetOutput(lifeTester->data.v, lifeTester->io.dac);
     }
     
     else if ((tElapsed >= (TRACK_DELAY_TIME + SETTLE_TIME)) && (tElapsed < (TRACK_DELAY_TIME + SETTLE_TIME + SAMPLING_TIME)))  
     {
       //STAGE 2: KEEP READING THE CURRENT AND SUMMING IT AFTER THE SETTLE TIME
-      lifeTester->IVData.iCurrent += AdcReadData(lifeTester->channel.adc);
-      lifeTester->nReadsCurrent++;
+      lifeTester->data.iCurrent += AdcReadData(lifeTester->io.adc);
+      lifeTester->data.nReadsCurrent++;
     }
     
     else if (tElapsed >= (TRACK_DELAY_TIME + SETTLE_TIME + SAMPLING_TIME) && (tElapsed < (TRACK_DELAY_TIME + 2 * SETTLE_TIME + SAMPLING_TIME)))
     {
       //STAGE 3: STOP SAMPLING. SET DAC TO V1.
-      DacSetOutput((lifeTester->IVData.v + DV_MPPT), lifeTester->channel.dac);
+      DacSetOutput((lifeTester->data.v + DV_MPPT), lifeTester->io.dac);
     }
     
-    else if (tElapsed >= (TRACK_DELAY_TIME + 2*SETTLE_TIME + SAMPLING_TIME) && (tElapsed < (TRACK_DELAY_TIME + 2 * SETTLE_TIME + 2 * SAMPLING_TIME)))
+    else if (tElapsed >= (TRACK_DELAY_TIME + 2 * SETTLE_TIME + SAMPLING_TIME) && (tElapsed < (TRACK_DELAY_TIME + 2 * SETTLE_TIME + 2 * SAMPLING_TIME)))
     {
       //STAGE 4: KEEP READING THE CURRENT AND SUMMING IT AFTER ANOTHER SETTLE TIME
-      lifeTester->IVData.iNext += AdcReadData(lifeTester->channel.adc);
-      lifeTester->nReadsNext++;
+      lifeTester->data.iNext += AdcReadData(lifeTester->io.adc);
+      lifeTester->data.nReadsNext++;
     }
     //STAGE 5: MEASUREMENTS DONE. DO CALCULATIONS
     else if (tElapsed >= (TRACK_DELAY_TIME + 2 * SETTLE_TIME + 2 * SAMPLING_TIME))
     {
       // TODO: readings are summed together and then averaged. Naughty reusing variables
-      lifeTester->IVData.iCurrent /= lifeTester->nReadsCurrent; //calculate average
-      lifeTester->IVData.pCurrent = lifeTester->IVData.v * lifeTester->IVData.iCurrent; //calculate power now
-      lifeTester->nReadsCurrent = 0; //reset counter
+      lifeTester->data.iCurrent /= lifeTester->data.nReadsCurrent; //calculate average
+      lifeTester->data.pCurrent = lifeTester->data.v * lifeTester->data.iCurrent; //calculate power now
+      lifeTester->data.nReadsCurrent = 0U; //reset counter
 
-      lifeTester->IVData.iNext /= lifeTester->nReadsNext;
-      lifeTester->IVData.pNext = (lifeTester->IVData.v + DV_MPPT) * lifeTester->IVData.iNext;
-      lifeTester->nReadsNext = 0;
+      lifeTester->data.iNext /= lifeTester->data.nReadsNext;
+      lifeTester->data.pNext = (lifeTester->data.v + DV_MPPT) * lifeTester->data.iNext;
+      lifeTester->data.nReadsNext = 0U;
 
       //if power is lower here, we must be going downhill then move back one point for next loop
-      if (lifeTester->IVData.pNext > lifeTester->IVData.pCurrent)
+      if (lifeTester->data.pNext > lifeTester->data.pCurrent)
       {
-        lifeTester->IVData.v += DV_MPPT;
-        lifeTester->Led.stopAfter(2); //two flashes
+        lifeTester->data.v += DV_MPPT;
+        lifeTester->led.stopAfter(2); //two flashes
       }
       else
       {
-        lifeTester->IVData.v -= DV_MPPT;
-        lifeTester->Led.stopAfter(1); //one flash
+        lifeTester->data.v -= DV_MPPT;
+        lifeTester->led.stopAfter(1); //one flash
       }
             
       //finished measurement now so do error detection
-      if (lifeTester->IVData.iCurrent < MIN_CURRENT)
+      if (lifeTester->data.iCurrent < MIN_CURRENT)
       {
         lifeTester->error = lowCurrent;  //low power error
-        lifeTester->nErrorReads++;
+        lifeTester->data.nErrorReads++;
       }
-      else if (lifeTester->IVData.iCurrent >= MAX_CURRENT)
+      else if (lifeTester->data.iCurrent >= MAX_CURRENT)
       {
         lifeTester->error = currentLimit;  //reached current limit
-        lifeTester->nErrorReads++;
+        lifeTester->data.nErrorReads++;
       }
       else//no error here so reset error counter and err_code to 0
       {
         lifeTester->error = ok;
-        lifeTester->nErrorReads = 0;
+        lifeTester->data.nErrorReads = 0;
       }
 
-      DBG_PRINT(lifeTester->IVData.v);
+      DBG_PRINT(lifeTester->data.v);
       DBG_PRINT(", ");
-      DBG_PRINT(lifeTester->IVData.iCurrent);
+      DBG_PRINT(lifeTester->data.iCurrent);
       DBG_PRINT(", ");
-      DBG_PRINT(lifeTester->IVData.pCurrent);
+      DBG_PRINT(lifeTester->data.pCurrent);
       DBG_PRINT(", ");
       DBG_PRINT(lifeTester->error);
       DBG_PRINT(", ");
@@ -288,21 +290,21 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
       DBG_PRINT(", ");
       DBG_PRINT(TempReadDegC());
       DBG_PRINT(", ");
-      DBG_PRINT(lifeTester->channel.dac);
+      DBG_PRINT(lifeTester->io.dac);
       DBG_PRINTLN();
 
-      lifeTester->IVData.iTransmit =
-        0.5 * (lifeTester->IVData.iCurrent + lifeTester->IVData.iNext);
+      lifeTester->data.iTransmit =
+        0.5 * (lifeTester->data.iCurrent + lifeTester->data.iNext);
       lifeTester->timer = millis(); //reset timer
-      lifeTester->IVData.iCurrent = 0;
-      lifeTester->IVData.iNext = 0;
+      lifeTester->data.iCurrent = 0;
+      lifeTester->data.iNext = 0;
     }
   }
   
   else //error condition - trigger LED
   {
     //error condition
-    lifeTester->Led.t(500,500);
-    lifeTester->Led.keepFlashing();
+    lifeTester->led.t(500,500);
+    lifeTester->led.keepFlashing();
   }
 }
