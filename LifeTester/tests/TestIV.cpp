@@ -814,7 +814,7 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPoint)
 
     // expect the current and number of readings to be updated only
     LifeTester_t lifeTesterExpected = *mockLifeTester;
-    lifeTesterExpected.data.iThis = iMock;
+    lifeTesterExpected.data.iThisSum = iMock;
     lifeTesterExpected.data.nReadsThis++;
     MEMCMP_EQUAL(&lifeTesterExpected, &lifeTesterActual, sizeof(LifeTester_t));
 }
@@ -930,7 +930,7 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForNextPoint)
 
     // expect the current and number of readings to be updated only
     LifeTester_t lifeTesterExpected = *mockLifeTester;
-    lifeTesterExpected.data.iNext = iMock;
+    lifeTesterExpected.data.iNextSum = iMock;
     lifeTesterExpected.data.nReadsNext++;
     MEMCMP_EQUAL(&lifeTesterExpected, &lifeTesterActual, sizeof(LifeTester_t));
 }
@@ -950,17 +950,17 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
     const uint32_t vMock = 47U;                       // voltage at current op point
     
     const uint16_t nAdcSamples = 4U;
-    const uint16_t iThis = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
-    const uint16_t iNext = (MIN_CURRENT + 20U) * nAdcSamples;
+    const uint16_t iThisSum = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
+    const uint16_t iNextSum = (MIN_CURRENT + 20U) * nAdcSamples;
 
-    const uint32_t pThis = iThis / nAdcSamples * vMock;
-    const uint32_t pNext = iNext / nAdcSamples * (vMock + DV_MPPT);
+    const uint32_t pThis = iThisSum / nAdcSamples * vMock;
+    const uint32_t pNext = iNextSum / nAdcSamples * (vMock + DV_MPPT);
     CHECK(pNext > pThis);
 
     mockLifeTester->data.vThis = vMock;
     mockLifeTester->data.vNext = vMock + DV_MPPT;
-    mockLifeTester->data.iThis = iThis;
-    mockLifeTester->data.iNext = iNext;
+    mockLifeTester->data.iThisSum = iThisSum;
+    mockLifeTester->data.iNextSum = iNextSum;
     mockLifeTester->data.nReadsThis = nAdcSamples;
     mockLifeTester->data.nReadsNext = nAdcSamples;
     mockLifeTester->nextState = StateAnalyseMeasurement;
@@ -1000,17 +1000,17 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
     const uint32_t vMock = 47U;                       // voltage at current op point
     
     const uint16_t nAdcSamples = 4U;
-    const uint16_t iThis = (MIN_CURRENT + 20U) * nAdcSamples;
-    const uint16_t iNext = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
+    const uint16_t iThisSum = (MIN_CURRENT + 20U) * nAdcSamples;
+    const uint16_t iNextSum = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
 
-    const uint32_t pCurrent = iThis / nAdcSamples * vMock;
-    const uint32_t pNext = iNext / nAdcSamples * (vMock + DV_MPPT);
+    const uint32_t pCurrent = iThisSum / nAdcSamples * vMock;
+    const uint32_t pNext = iNextSum / nAdcSamples * (vMock + DV_MPPT);
     CHECK(pNext < pCurrent);
 
     mockLifeTester->data.vThis = vMock;
     mockLifeTester->data.vNext = vMock + DV_MPPT;
-    mockLifeTester->data.iThis = iThis;
-    mockLifeTester->data.iNext = iNext;
+    mockLifeTester->data.iThisSum = iThisSum;
+    mockLifeTester->data.iNextSum = iNextSum;
     mockLifeTester->data.nReadsThis = nAdcSamples;
     mockLifeTester->data.nReadsNext = nAdcSamples;
     mockLifeTester->nextState = StateAnalyseMeasurement;

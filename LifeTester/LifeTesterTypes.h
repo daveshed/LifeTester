@@ -27,18 +27,22 @@ typedef enum errorCode_e {
  comparison in mpp tracking.
 */
 typedef struct LifeTesterData_s {
-    uint32_t vThis;
-    uint32_t vNext;
-    uint32_t vScan;
-    uint32_t pThis;
-    uint32_t pNext;
-    uint32_t pScan;
-    uint32_t iThis;
+    uint32_t vThis;       // voltage of operating point (dac code)
+    uint32_t vNext;       // voltage of the neighbouring point
+    uint32_t vScan;       // voltage of point being scanned
+    uint32_t pThis;       // power at this point
+    uint32_t pNext;       // power at neighbouring point
+    uint32_t pScan;       // power at point being scanned
+    uint32_t iThis;       // average current from current samples at this point
+    uint32_t iThisSum;    // sum of all samples
     uint32_t iNext;
+    uint32_t iNextSum;
     uint32_t iScan;
+    uint32_t iScanSum;
     uint16_t nReadsThis;
-    uint16_t nReadsNext;   // counting number of readings taken by ADC during sampling window
-    uint16_t nErrorReads;  // number of readings outside allowed limits
+    uint16_t nReadsNext;  // counting number of readings taken by ADC during sampling window
+    uint16_t nReadsScan;
+    uint16_t nErrorReads; // number of readings outside allowed limits
 } LifeTesterData_t;
 
 // holds the channel info for the DAC and ADC

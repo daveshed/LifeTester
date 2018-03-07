@@ -205,8 +205,8 @@ static void ResetForNextMeasurement(LifeTester_t *const lifeTester)
     // Reset lifetester data
     lifeTester->data.nReadsThis = 0U;
     lifeTester->data.nReadsNext = 0U;
-    lifeTester->data.iThis = 0U;
-    lifeTester->data.iNext = 0U;
+    lifeTester->data.iThisSum = 0U;
+    lifeTester->data.iNextSum = 0U;
     ResetTimer(lifeTester);
     // Go back to initial state.
     lifeTester->nextState = StateWaitForTrackingDelay;
@@ -279,7 +279,7 @@ STATIC void StateSampleThisCurrent(LifeTester_t *const lifeTester)
     {
         if (GetTimedEvent(lifeTester) == samplingThis)
         {
-            lifeTester->data.iThis += AdcReadLifeTesterCurrent(lifeTester);
+            lifeTester->data.iThisSum += AdcReadLifeTesterCurrent(lifeTester);
             lifeTester->data.nReadsThis++;
         }
         else
@@ -313,7 +313,7 @@ STATIC void StateSampleNextCurrent(LifeTester_t *const lifeTester)
     {
         if (GetTimedEvent(lifeTester) == samplingNext)
         {
-            lifeTester->data.iNext += AdcReadLifeTesterCurrent(lifeTester);
+            lifeTester->data.iNextSum += AdcReadLifeTesterCurrent(lifeTester);
             lifeTester->data.nReadsNext++;
         }
         else
@@ -333,20 +333,25 @@ STATIC void StateAnalyseMeasurement(LifeTester_t *const lifeTester)
         && (lifeTester->data.nReadsThis > 0U)  // Readings must have been taken
         && (lifeTester->data.nReadsNext > 0U))
     {
-    // TODO: readings are summed together and then averaged. Naughty reusing variables
-        lifeTester->data.iThis /= lifeTester->data.nReadsThis; //calculate average
-        lifeTester->data.pThis = lifeTester->data.vThis * lifeTester->data.iThis; //calculate power now
+        // Average current
+        lifeTester->data.iThis =
+            lifeTester->data.iThisSum + lifeTester->data.nReadsThis;
+        // Power
+        lifeTester->data.pThis = lifeTester->data.vThis * lifeTester->data.iThis; 
 
-        lifeTester->data.iNext /= lifeTester->data.nReadsNext;
-        lifeTester->data.pNext = (lifeTester->data.vNext) * lifeTester->data.iNext;
+        // Similarly for the next point at +DV_MPPT
+        lifeTester->data.iNext =
+            lifeTester->data.iNextSum + lifeTester->data.nReadsNext;
+        lifeTester->data.pNext = lifeTester->data.vNext * lifeTester->data.iNext;
         
-        //if power is lower here, we must be going downhill then move back one point for next loop
+        /*if power is higher at the next point, we must be going uphill so move
+        forwards one point for next loop*/
         if (lifeTester->data.pNext > lifeTester->data.pThis)
         {
             lifeTester->data.vThis += DV_MPPT;
             lifeTester->led.stopAfter(2); //two flashes
         }
-        else
+        else // otherwise go the other way...
         {
             lifeTester->data.vThis -= DV_MPPT;
             lifeTester->led.stopAfter(1); //one flash
@@ -363,7 +368,7 @@ STATIC void StateAnalyseMeasurement(LifeTester_t *const lifeTester)
             lifeTester->error = currentLimit;  //reached current limit
             lifeTester->data.nErrorReads++;
         }
-        else//no error here so reset error status and counter
+        else //no error here so reset error status and counter
         {
             lifeTester->error = ok;
             lifeTester->data.nErrorReads = 0U;

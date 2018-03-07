@@ -59,12 +59,12 @@ uint8_t DacGetOutput(LifeTester_t const *const lifeTester)
 
 bool DacOutputSetToThisVoltage(LifeTester_t const *const lifeTester)
 {
-    return DacGetOutput(lifeTester) == lifeTester.data.vThis;
+    return DacGetOutput(lifeTester) == lifeTester->data.vThis;
 }
 
 bool DacOutputSetToNextVoltage(LifeTester_t const *const lifeTester)
 {
-    return DacGetOutput(lifeTester) == lifeTester.data.vNext;
+    return DacGetOutput(lifeTester) == lifeTester->data.vNext;
 }
 
 void DacSetGain(gainSelect_t requestedGain)
