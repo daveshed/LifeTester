@@ -221,8 +221,8 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
     else if ((tElapsed >= (TRACK_DELAY_TIME + SETTLE_TIME)) && (tElapsed < (TRACK_DELAY_TIME + SETTLE_TIME + SAMPLING_TIME)))  
     {
       //STAGE 2: KEEP READING THE CURRENT AND SUMMING IT AFTER THE SETTLE TIME
-      lifeTester->data.iCurrent += AdcReadData(lifeTester->io.adc);
-      lifeTester->data.nReadsCurrent++;
+      lifeTester->data.iThis += AdcReadData(lifeTester->io.adc);
+      lifeTester->data.nReadsThis++;
     }
     
     else if (tElapsed >= (TRACK_DELAY_TIME + SETTLE_TIME + SAMPLING_TIME) && (tElapsed < (TRACK_DELAY_TIME + 2 * SETTLE_TIME + SAMPLING_TIME)))
@@ -241,16 +241,16 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
     else if (tElapsed >= (TRACK_DELAY_TIME + 2 * SETTLE_TIME + 2 * SAMPLING_TIME))
     {
       // TODO: readings are summed together and then averaged. Naughty reusing variables
-      lifeTester->data.iCurrent /= lifeTester->data.nReadsCurrent; //calculate average
-      lifeTester->data.pCurrent = lifeTester->data.v * lifeTester->data.iCurrent; //calculate power now
-      lifeTester->data.nReadsCurrent = 0U; //reset counter
+      lifeTester->data.iThis /= lifeTester->data.nReadsThis; //calculate average
+      lifeTester->data.pThis = lifeTester->data.v * lifeTester->data.iThis; //calculate power now
+      lifeTester->data.nReadsThis = 0U; //reset counter
 
       lifeTester->data.iNext /= lifeTester->data.nReadsNext;
       lifeTester->data.pNext = (lifeTester->data.v + DV_MPPT) * lifeTester->data.iNext;
       lifeTester->data.nReadsNext = 0U;
 
       //if power is lower here, we must be going downhill then move back one point for next loop
-      if (lifeTester->data.pNext > lifeTester->data.pCurrent)
+      if (lifeTester->data.pNext > lifeTester->data.pThis)
       {
         lifeTester->data.v += DV_MPPT;
         lifeTester->led.stopAfter(2); //two flashes
@@ -262,12 +262,12 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
       }
             
       //finished measurement now so do error detection
-      if (lifeTester->data.iCurrent < MIN_CURRENT)
+      if (lifeTester->data.iThis < MIN_CURRENT)
       {
         lifeTester->error = lowCurrent;  //low power error
         lifeTester->data.nErrorReads++;
       }
-      else if (lifeTester->data.iCurrent >= MAX_CURRENT)
+      else if (lifeTester->data.iThis >= MAX_CURRENT)
       {
         lifeTester->error = currentLimit;  //reached current limit
         lifeTester->data.nErrorReads++;
@@ -280,9 +280,9 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
 
       DBG_PRINT(lifeTester->data.v);
       DBG_PRINT(", ");
-      DBG_PRINT(lifeTester->data.iCurrent);
+      DBG_PRINT(lifeTester->data.iThis);
       DBG_PRINT(", ");
-      DBG_PRINT(lifeTester->data.pCurrent);
+      DBG_PRINT(lifeTester->data.pThis);
       DBG_PRINT(", ");
       DBG_PRINT(lifeTester->error);
       DBG_PRINT(", ");
@@ -294,9 +294,9 @@ void IV_MpptUpdate(LifeTester_t * const lifeTester)
       DBG_PRINTLN();
 
       lifeTester->data.iTransmit =
-        0.5 * (lifeTester->data.iCurrent + lifeTester->data.iNext);
+        0.5 * (lifeTester->data.iThis + lifeTester->data.iNext);
       lifeTester->timer = millis(); //reset timer
-      lifeTester->data.iCurrent = 0;
+      lifeTester->data.iThis = 0;
       lifeTester->data.iNext = 0;
     }
   }

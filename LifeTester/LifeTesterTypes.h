@@ -24,12 +24,12 @@ typedef enum errorCode_e {
 // Measurements that the lifetester may take on a given channel
 typedef struct LifeTesterData_s {
     uint32_t v;
-    uint32_t pCurrent;
+    uint32_t pThis;
     uint32_t pNext;
-    uint32_t iCurrent;
+    uint32_t iThis;
     uint32_t iNext;
-    uint32_t iTransmit;
-    uint16_t nReadsCurrent;
+    uint32_t iTransmit;    // current transmitted over I2C
+    uint16_t nReadsThis;
     uint16_t nReadsNext;   // counting number of readings taken by ADC during sampling window
     uint16_t nErrorReads;  // number of readings outside allowed limits
 } LifeTesterData_t;
