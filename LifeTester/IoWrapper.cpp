@@ -67,6 +67,11 @@ bool DacOutputSetToNextVoltage(LifeTester_t const *const lifeTester)
     return DacGetOutput(lifeTester) == lifeTester->data.vNext;
 }
 
+bool DacOutputSetToScanVoltage(LifeTester_t const *const lifeTester)
+{
+    return DacGetOutput(lifeTester) == lifeTester->data.vScan;
+}
+
 void DacSetGain(gainSelect_t requestedGain)
 {
     MCP4802_SetGain(requestedGain);

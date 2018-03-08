@@ -19,6 +19,7 @@ void DacSetOutput(uint8_t output, chSelect_t ch);
 uint8_t DacGetOutput(LifeTester_t const *const lifeTester);
 bool DacOutputSetToThisVoltage(LifeTester_t const *const lifeTester);
 bool DacOutputSetToNextVoltage(LifeTester_t const *const lifeTester);
+bool DacOutputSetToScanVoltage(LifeTester_t const *const lifeTester);
 void DacSetGain(gainSelect_t requestedGain);
 gainSelect_t DacGetGain(void);
 void AdcInit(void);

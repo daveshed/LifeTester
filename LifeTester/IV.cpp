@@ -84,6 +84,61 @@ static void PrintNewMpp(LifeTester_t const *const lifeTester)
         DBG_PRINTLN();
 }
 
+
+static void ResetTimer(LifeTester_t *const lifeTester)
+{
+    lifeTester->timer = millis(); //reset timer
+}
+
+static void ResetForNextMeasurement(LifeTester_t *const lifeTester)
+{
+    // Reset lifetester data
+    lifeTester->data.nReadsThis = 0U;
+    lifeTester->data.nReadsNext = 0U;
+    lifeTester->data.iThisSum = 0U;
+    lifeTester->data.iNextSum = 0U;
+    ResetTimer(lifeTester);
+    // Go back to initial state.
+    lifeTester->nextState = StateWaitForTrackingDelay;
+}
+
+
+STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
+{
+
+    if ((tElapsed < SETTLE_TIME) && !DacOutputSetToScanVoltage(lifeTester))
+    {
+        DacSetOutputToScanVoltage(lifeTester);
+    }
+    else
+    {
+        lifeTester->nextState = StateSampleScanCurrent;
+        lifeTester->data.iScanSum = 0U;
+        lifeTester->data.nReadsScan = 0U;
+    }
+}
+
+STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
+{
+    if (DacOutputSetToThisVoltage(lifeTester))
+    {
+        if (GetTimedEvent(lifeTester) == samplingThis)
+        {
+            lifeTester->data.iThisSum += AdcReadLifeTesterCurrent(lifeTester);
+            lifeTester->data.nReadsThis++;
+        }
+        else
+        {
+            lifeTester->nextState = StateSetToNextVoltage;
+        }
+
+    }
+    else  // dac wasn't set. Restart the measurement
+    {
+        ResetForNextMeasurement(lifeTester);
+    }
+}
+
 static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
 {
     const uint32_t voltage = *v;
@@ -93,9 +148,12 @@ static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
     //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
     if (tElapsed < SETTLE_TIME)
     {
+        #if 1
         DacSetOutputToScanVoltage(lifeTester);
         dacOutputSet = true;
         iSum = 0U;
+        #endif
+        // StateSetToScanVoltage(lifeTester);
 
     }
     //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
@@ -193,23 +251,6 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
         // Now set Dac to MPP
         DacSetOutputToThisVoltage(lifeTester);
     }
-}
-
-static void ResetTimer(LifeTester_t *const lifeTester)
-{
-    lifeTester->timer = millis(); //reset timer
-}
-
-static void ResetForNextMeasurement(LifeTester_t *const lifeTester)
-{
-    // Reset lifetester data
-    lifeTester->data.nReadsThis = 0U;
-    lifeTester->data.nReadsNext = 0U;
-    lifeTester->data.iThisSum = 0U;
-    lifeTester->data.iNextSum = 0U;
-    ResetTimer(lifeTester);
-    // Go back to initial state.
-    lifeTester->nextState = StateWaitForTrackingDelay;
 }
 
 STATIC TimedEvent_t GetTimedEvent(LifeTester_t *const lifeTester)
