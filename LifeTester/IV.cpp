@@ -106,15 +106,18 @@ static void ResetForNextMeasurement(LifeTester_t *const lifeTester)
 STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
 {
 
-    if ((tElapsed < SETTLE_TIME) && !DacOutputSetToScanVoltage(lifeTester))
+    /*Need this line so dac is only set if it hasn't been set. Mocks expect 
+    multiple calls at present. */
+    // if ((tElapsed < SETTLE_TIME) && !DacOutputSetToScanVoltage(lifeTester))
+    if (tElapsed < SETTLE_TIME)
     {
         DacSetOutputToScanVoltage(lifeTester);
+        lifeTester->data.iScanSum = 0U;
+        lifeTester->data.nReadsScan = 0U;
     }
     else
     {
         lifeTester->nextState = StateSampleScanCurrent;
-        lifeTester->data.iScanSum = 0U;
-        lifeTester->data.nReadsScan = 0U;
     }
 }
 
@@ -139,55 +142,51 @@ STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
     }
 }
 
-static void ScanStep(LifeTester_t *const lifeTester, uint32_t *v, uint16_t dV)
+static void ScanStep(LifeTester_t *const lifeTester, uint16_t dV)
 {
-    const uint32_t voltage = *v;
-    tElapsed = millis() - timer;
+    tElapsed = millis() - lifeTester->timer;
     lifeTester->led.update();
-    lifeTester->data.vScan = voltage;
     //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
     if (tElapsed < SETTLE_TIME)
     {
-        #if 1
-        DacSetOutputToScanVoltage(lifeTester);
+        StateSetToScanVoltage(lifeTester);
         dacOutputSet = true;
-        iSum = 0U;
-        #endif
-        // StateSetToScanVoltage(lifeTester);
 
     }
     //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
     else if ((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
     {  
-        iSum += AdcReadLifeTesterCurrent(lifeTester);
-        nSamples++;
-        iScan = iSum / nSamples;
+        lifeTester->data.iScanSum += AdcReadLifeTesterCurrent(lifeTester);
+        lifeTester->data.nReadsScan++;
+        lifeTester->data.iScan = lifeTester->data.iScanSum / lifeTester->data.nReadsScan;
     }
     //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
     else
     {
-        const bool adcRead = (nSamples > 0U); 
+        const bool adcRead = (lifeTester->data.nReadsScan > 0U); 
         if (dacOutputSet && adcRead)
         {
             // Update max power and vMPP if we have found a maximum power point.
-            const uint32_t pScan = iScan * voltage;
+            const uint32_t pScan = lifeTester->data.iScan * lifeTester->data.vScan;
             if (pScan > pMax)
             {  
-                pMax = iScan * voltage;
-                iMpp = iScan;
-                vMPP = voltage;
+                pMax = lifeTester->data.iScan * lifeTester->data.vScan;
+                iMpp = lifeTester->data.iScan;
+                vMPP = lifeTester->data.vScan;
             }  
             // Reached the current limit - flag error which will stop scan
-            lifeTester->error = iScan >= MAX_CURRENT ? currentLimit : ok;
+            lifeTester->error =
+                lifeTester->data.iScan >= MAX_CURRENT ? currentLimit : ok;
             
-            PrintScanPoint(voltage, iScan, pScan, lifeTester->error, lifeTester->io.dac);
+            PrintScanPoint(lifeTester->data.vScan, lifeTester->data.iScan,
+                pScan, lifeTester->error, lifeTester->io.dac);
     
-            *v += dV;  //move to the next point only if we've got this one ok.
+            lifeTester->data.vScan += dV;  //move to the next point only if we've got this one ok.
         }
         // reset timers and flags
         dacOutputSet = false;
-        nSamples = 0U;
-        timer = millis(); //reset timer      
+        lifeTester->data.nReadsScan = 0U;
+        lifeTester->timer = millis(); //reset timer      
     }
 }  
 
@@ -203,9 +202,9 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
         const uint32_t initV = lifeTester->data.vThis;
         
         pMax = 0U;
-        iSum = 0U;
-        timer = millis();
-        nSamples = 0U;
+        lifeTester->data.iScanSum = 0U;
+        lifeTester->timer = millis();
+        lifeTester->data.nReadsScan = 0U;
 
         PrintScanHeader();
 
@@ -213,21 +212,21 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
         lifeTester->led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
 
         // Run IV scan - record initial and final powers for checking iv scan shape
-        uint32_t v = startV;
+        lifeTester->data.vScan = startV;
         uint32_t pInitial;
         uint32_t pFinal;
         
-        while((v <= finV) && (lifeTester->error == ok))
+        while((lifeTester->data.vScan <= finV) && (lifeTester->error == ok))
         {
-            ScanStep(lifeTester, &v, dV);
+            ScanStep(lifeTester, dV);
             // record final and initial power too so we can check scan shape.
-            if (v == startV)
+            if (lifeTester->data.vScan == startV)
             {
-                pInitial = iScan * v;
+                pInitial = lifeTester->data.iScan * lifeTester->data.vScan;
             }
-            else if (v == finV)
+            else if (lifeTester->data.vScan == finV)
             {
-                pFinal = iScan * v;
+                pFinal = lifeTester->data.iScan * lifeTester->data.vScan;
             }
             else
             {
