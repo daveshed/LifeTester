@@ -22,6 +22,7 @@ typedef enum TimedEvent_e {
 
 STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester);
 STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester);
+STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester);
 STATIC TimedEvent_t GetTimedEvent(LifeTester_t *const lifeTester);
 STATIC void StateWaitForTrackingDelay(LifeTester_t *const lifeTester);
 STATIC void StateSetToThisVoltage(LifeTester_t *const lifeTester);

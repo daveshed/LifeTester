@@ -123,16 +123,19 @@ STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
 
 STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
 {
-    if (DacOutputSetToThisVoltage(lifeTester))
+    // if (DacOutputSetToScanVoltage(lifeTester))
+    if (dacOutputSet)
     {
-        if (GetTimedEvent(lifeTester) == samplingThis)
+        if ((tElapsed >= SETTLE_TIME)
+            && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
         {
-            lifeTester->data.iThisSum += AdcReadLifeTesterCurrent(lifeTester);
-            lifeTester->data.nReadsThis++;
+            lifeTester->data.iScanSum += AdcReadLifeTesterCurrent(lifeTester);
+            lifeTester->data.nReadsScan++;
+            lifeTester->data.iScan = lifeTester->data.iScanSum / lifeTester->data.nReadsScan;
         }
         else
         {
-            lifeTester->nextState = StateSetToNextVoltage;
+            lifeTester->nextState = StateAnalyseScanMeasurement;
         }
 
     }
@@ -140,6 +143,34 @@ STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
     {
         ResetForNextMeasurement(lifeTester);
     }
+}
+
+STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
+{
+    const bool adcRead = (lifeTester->data.nReadsScan > 0U); 
+    if (dacOutputSet && adcRead)
+    {
+        // Update max power and vMPP if we have found a maximum power point.
+        const uint32_t pScan = lifeTester->data.iScan * lifeTester->data.vScan;
+        if (pScan > pMax)
+        {  
+            pMax = lifeTester->data.iScan * lifeTester->data.vScan;
+            iMpp = lifeTester->data.iScan;
+            vMPP = lifeTester->data.vScan;
+        }  
+        // Reached the current limit - flag error which will stop scan
+        lifeTester->error =
+            lifeTester->data.iScan >= MAX_CURRENT ? currentLimit : ok;
+        
+        PrintScanPoint(lifeTester->data.vScan, lifeTester->data.iScan,
+            pScan, lifeTester->error, lifeTester->io.dac);
+
+        lifeTester->data.vScan += DV_SCAN;  //move to the next point only if we've got this one ok.
+    }
+    // reset timers and flags
+    dacOutputSet = false;
+    lifeTester->data.nReadsScan = 0U;
+    lifeTester->timer = millis(); //reset timer      
 }
 
 static void ScanStep(LifeTester_t *const lifeTester, uint16_t dV)
@@ -156,37 +187,12 @@ static void ScanStep(LifeTester_t *const lifeTester, uint16_t dV)
     //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
     else if ((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
     {  
-        lifeTester->data.iScanSum += AdcReadLifeTesterCurrent(lifeTester);
-        lifeTester->data.nReadsScan++;
-        lifeTester->data.iScan = lifeTester->data.iScanSum / lifeTester->data.nReadsScan;
+        StateSampleScanCurrent(lifeTester);
     }
     //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
     else
     {
-        const bool adcRead = (lifeTester->data.nReadsScan > 0U); 
-        if (dacOutputSet && adcRead)
-        {
-            // Update max power and vMPP if we have found a maximum power point.
-            const uint32_t pScan = lifeTester->data.iScan * lifeTester->data.vScan;
-            if (pScan > pMax)
-            {  
-                pMax = lifeTester->data.iScan * lifeTester->data.vScan;
-                iMpp = lifeTester->data.iScan;
-                vMPP = lifeTester->data.vScan;
-            }  
-            // Reached the current limit - flag error which will stop scan
-            lifeTester->error =
-                lifeTester->data.iScan >= MAX_CURRENT ? currentLimit : ok;
-            
-            PrintScanPoint(lifeTester->data.vScan, lifeTester->data.iScan,
-                pScan, lifeTester->error, lifeTester->io.dac);
-    
-            lifeTester->data.vScan += dV;  //move to the next point only if we've got this one ok.
-        }
-        // reset timers and flags
-        dacOutputSet = false;
-        lifeTester->data.nReadsScan = 0U;
-        lifeTester->timer = millis(); //reset timer      
+        StateAnalyseScanMeasurement(lifeTester);
     }
 }  
 
