@@ -9,7 +9,7 @@
 # options:
 # make debug - gives you extra debug information over serial
 # make PORT=/dev/ttyACM1 - manually specifies port. Defaults to ...ACM0
-# make I2C_ADDRESS=0x0B - manully specifies I2C address. Defaults to 0x0A
+# make I2C_ADDRESS=0x0B - manually specifies I2C address. Defaults to 0x0A
 
 PROGRAM=Lifetester
 LIBS=../Arduino ../LifeTester ../Hardware ../Common

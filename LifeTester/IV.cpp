@@ -3,6 +3,7 @@
 #include "IoWrapper.h"
 #include "LedFlash.h"
 #include "LifeTesterTypes.h"
+#include "I2C.h"
 #include "IV.h"
 #include "Print.h"
 
@@ -89,6 +90,16 @@ void IV_Scan(LifeTester_t * const lifeTester, const uint16_t startV, const uint1
       timer = millis(); //reset timer
       
       v += dV;  //move to the next point
+
+      // dirty hack to get the iv scan data out over i2c
+      if (lifeTester->channel.adc == 0U)
+      {
+        I2C_PrepareData(lifeTester, (LifeTester_t *)NULL);
+      }
+      else
+      {
+        I2C_PrepareData((LifeTester_t *)NULL, lifeTester);
+      }
     }
   }
 

@@ -1,5 +1,6 @@
 #include "Arduino.h"
 #include "Config.h"
+#include "I2C.h"
 #include "IoWrapper.h"
 #include "LifeTesterTypes.h"
 #include <stdint.h>

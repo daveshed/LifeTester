@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include "LifeTesterTypes.h"
 
 void I2C_ClearArray(uint8_t byteArray[], const uint8_t numBytes);
 void I2C_PackIntToBytes(const uint64_t data, uint8_t byteArray[], const uint8_t numBytes);
