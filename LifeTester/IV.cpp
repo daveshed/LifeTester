@@ -43,21 +43,17 @@ static void PrintScanMpp(uint32_t iMpp, uint32_t vMPP, errorCode_t error)
     PrintError(error);
 }
 
-static void PrintScanPoint(uint32_t v,
-                           uint32_t iScan,
-                           uint32_t pScan,
-                           errorCode_t error,
-                           chSelect_t channel)
+static void PrintScanPoint(LifeTester_t const *const lifeTester)
 {
-    DBG_PRINT(v);
+    DBG_PRINT(lifeTester->data.vScan);
     DBG_PRINT(", ");
-    DBG_PRINT(iScan);
+    DBG_PRINT(lifeTester->data.iScan);
     DBG_PRINT(", ");
-    DBG_PRINT(pScan);
+    DBG_PRINT(lifeTester->data.pScan);
     DBG_PRINT(", ");
-    DBG_PRINT(error);
+    DBG_PRINT(lifeTester->error);
     DBG_PRINT(", ");
-    DBG_PRINTLN(channel);
+    DBG_PRINTLN(lifeTester->io.dac);
 }
 
 static void PrintScanHeader(void)
@@ -123,8 +119,7 @@ STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
 
 STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
 {
-    // if (DacOutputSetToScanVoltage(lifeTester))
-    if (dacOutputSet)
+    if (DacOutputSetToScanVoltage(lifeTester))
     {
         if ((tElapsed >= SETTLE_TIME)
             && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
@@ -148,11 +143,11 @@ STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
 STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
 {
     const bool adcRead = (lifeTester->data.nReadsScan > 0U); 
-    if (dacOutputSet && adcRead)
+    if (adcRead)
     {
         // Update max power and vMPP if we have found a maximum power point.
-        const uint32_t pScan = lifeTester->data.iScan * lifeTester->data.vScan;
-        if (pScan > pMax)
+        lifeTester->data.pScan = lifeTester->data.iScan * lifeTester->data.vScan;
+        if (lifeTester->data.pScan > pMax)
         {  
             pMax = lifeTester->data.iScan * lifeTester->data.vScan;
             iMpp = lifeTester->data.iScan;
@@ -160,17 +155,15 @@ STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
         }  
         // Reached the current limit - flag error which will stop scan
         lifeTester->error =
-            lifeTester->data.iScan >= MAX_CURRENT ? currentLimit : ok;
+            (lifeTester->data.iScan >= MAX_CURRENT) ? currentLimit : ok;
         
-        PrintScanPoint(lifeTester->data.vScan, lifeTester->data.iScan,
-            pScan, lifeTester->error, lifeTester->io.dac);
+        PrintScanPoint(lifeTester);
 
         lifeTester->data.vScan += DV_SCAN;  //move to the next point only if we've got this one ok.
     }
-    // reset timers and flags
-    dacOutputSet = false;
+    // reset timers and flags - no measurement or measurement is done
     lifeTester->data.nReadsScan = 0U;
-    lifeTester->timer = millis(); //reset timer      
+    lifeTester->timer = millis();
 }
 
 static void ScanStep(LifeTester_t *const lifeTester, uint16_t dV)
@@ -181,8 +174,6 @@ static void ScanStep(LifeTester_t *const lifeTester, uint16_t dV)
     if (tElapsed < SETTLE_TIME)
     {
         StateSetToScanVoltage(lifeTester);
-        dacOutputSet = true;
-
     }
     //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
     else if ((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
