@@ -101,12 +101,12 @@ static void ResetForNextMeasurement(LifeTester_t *const lifeTester)
 
 STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
 {
+    tElapsed = millis() - lifeTester->timer;
 
-    /*Need this line so dac is only set if it hasn't been set. Mocks expect 
-    multiple calls at present. */
-    // if ((tElapsed < SETTLE_TIME) && !DacOutputSetToScanVoltage(lifeTester))
-    if (tElapsed < SETTLE_TIME)
+    /* Only set the dac if it hasn't been set already */    
+    if ((tElapsed < SETTLE_TIME) && !DacOutputSetToScanVoltage(lifeTester))
     {
+        printf("setting dac to %u\n", lifeTester->data.vScan);
         DacSetOutputToScanVoltage(lifeTester);
         lifeTester->data.iScanSum = 0U;
         lifeTester->data.nReadsScan = 0U;
@@ -119,8 +119,11 @@ STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
 
 STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
 {
+    // The dac must be set to the correct voltage otherwise restart the measurement
     if (DacOutputSetToScanVoltage(lifeTester))
     {
+        tElapsed = millis() - lifeTester->timer;
+        
         if ((tElapsed >= SETTLE_TIME)
             && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
         {
@@ -136,14 +139,18 @@ STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
     }
     else  // dac wasn't set. Restart the measurement
     {
-        ResetForNextMeasurement(lifeTester);
+        lifeTester->data.iScanSum = 0U;
+        lifeTester->data.nReadsScan = 0U;
+        lifeTester->timer = millis();
+       lifeTester->nextState = StateSetToScanVoltage;
+
     }
 }
 
 STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
 {
     const bool adcRead = (lifeTester->data.nReadsScan > 0U); 
-    if (adcRead)
+    if (adcRead)  // check that the adc has actually been read
     {
         // Update max power and vMPP if we have found a maximum power point.
         lifeTester->data.pScan = lifeTester->data.iScan * lifeTester->data.vScan;
@@ -162,14 +169,31 @@ STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
         lifeTester->data.vScan += DV_SCAN;  //move to the next point only if we've got this one ok.
     }
     // reset timers and flags - no measurement or measurement is done
+    lifeTester->data.iScanSum = 0U;
     lifeTester->data.nReadsScan = 0U;
     lifeTester->timer = millis();
+    lifeTester->nextState = StateSetToScanVoltage;
+}
+
+
+/*
+ Calls the state function stored in the lifetester object.
+*/
+static void StateMachineDispatcher(LifeTester_t *const lifeTester)
+{
+    lifeTester->nextState(lifeTester);
+}
+
+void IV_ScanUpdate(LifeTester_t *const lifeTester)
+{
+    StateMachineDispatcher(lifeTester);
 }
 
 static void ScanStep(LifeTester_t *const lifeTester, uint16_t dV)
 {
-    tElapsed = millis() - lifeTester->timer;
-    lifeTester->led.update();
+    printf("actual elapsed time %u\n", tElapsed);
+    StateMachineDispatcher(lifeTester);
+    #if 0
     //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
     if (tElapsed < SETTLE_TIME)
     {
@@ -185,6 +209,7 @@ static void ScanStep(LifeTester_t *const lifeTester, uint16_t dV)
     {
         StateAnalyseScanMeasurement(lifeTester);
     }
+    #endif
 }  
 
 void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
@@ -192,6 +217,7 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
                       const uint16_t      finV,
                       const uint16_t      dV)
 {
+    lifeTester->nextState = StateSetToScanVoltage;
     // Only scan if we're not in an error state
     if (lifeTester->error == ok)
     {
@@ -418,21 +444,13 @@ STATIC void StateAnalyseMeasurement(LifeTester_t *const lifeTester)
     ResetForNextMeasurement(lifeTester);
 }
 
-/*
- Calls the state function stored in the lifetester object.
-*/
-static void StateMachineDispacther(LifeTester_t *const lifeTester)
-{
-    lifeTester->nextState(lifeTester);
-}
-
 void IV_MpptUpdate(LifeTester_t * const lifeTester)
 {
     tElapsed = millis() - lifeTester->timer;
   
     if ((lifeTester->error != currentThreshold) && (lifeTester->data.nErrorReads < MAX_ERROR_READS))
     {
-        StateMachineDispacther(lifeTester);
+        StateMachineDispatcher(lifeTester);
     }
 
     else //error condition - trigger LED

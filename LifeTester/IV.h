@@ -17,6 +17,8 @@ void IV_ScanAndUpdate(LifeTester_t * const lifeTester,
                       const uint16_t finV,
                       const uint16_t dV);
 
+void IV_ScanUpdate(LifeTester_t *const lifeTester);
+
 /*
  Function to track/update maximum point durint operation. Pass in lifetester
  struct and values are updated. Only track if we don't have an error and it's
