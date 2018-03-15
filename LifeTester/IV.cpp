@@ -106,7 +106,6 @@ STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
     /* Only set the dac if it hasn't been set already */    
     if ((tElapsed < SETTLE_TIME) && !DacOutputSetToScanVoltage(lifeTester))
     {
-        printf("setting dac to %u\n", lifeTester->data.vScan);
         DacSetOutputToScanVoltage(lifeTester);
         lifeTester->data.iScanSum = 0U;
         lifeTester->data.nReadsScan = 0U;
@@ -142,7 +141,7 @@ STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
         lifeTester->data.iScanSum = 0U;
         lifeTester->data.nReadsScan = 0U;
         lifeTester->timer = millis();
-       lifeTester->nextState = StateSetToScanVoltage;
+        lifeTester->nextState = StateSetToScanVoltage;
 
     }
 }
@@ -150,27 +149,29 @@ STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
 STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
 {
     const bool adcRead = (lifeTester->data.nReadsScan > 0U); 
+    LifeTesterData_t *const data = &lifeTester->data;
     if (adcRead)  // check that the adc has actually been read
     {
         // Update max power and vMPP if we have found a maximum power point.
-        lifeTester->data.pScan = lifeTester->data.iScan * lifeTester->data.vScan;
-        if (lifeTester->data.pScan > pMax)
+        data->pScan = data->iScan * data->vScan;
+        if (data->pScan > data->pScanMpp)
         {  
-            pMax = lifeTester->data.iScan * lifeTester->data.vScan;
-            iMpp = lifeTester->data.iScan;
-            vMPP = lifeTester->data.vScan;
+            data->pScanMpp = data->iScan * data->vScan;
+            data->iScanMpp = data->iScan;
+            data->vScanMpp = data->vScan;
         }  
         // Reached the current limit - flag error which will stop scan
         lifeTester->error =
-            (lifeTester->data.iScan >= MAX_CURRENT) ? currentLimit : ok;
+            (data->iScan >= MAX_CURRENT) ? currentLimit : ok;
         
         PrintScanPoint(lifeTester);
 
-        lifeTester->data.vScan += DV_SCAN;  //move to the next point only if we've got this one ok.
+        data->vScan += DV_SCAN;  //move to the next point only if we've got this one ok.
     }
     // reset timers and flags - no measurement or measurement is done
-    lifeTester->data.iScanSum = 0U;
-    lifeTester->data.nReadsScan = 0U;
+    data->iScan = 0U;
+    data->iScanSum = 0U;
+    data->nReadsScan = 0U;
     lifeTester->timer = millis();
     lifeTester->nextState = StateSetToScanVoltage;
 }
@@ -193,23 +194,6 @@ static void ScanStep(LifeTester_t *const lifeTester, uint16_t dV)
 {
     printf("actual elapsed time %u\n", tElapsed);
     StateMachineDispatcher(lifeTester);
-    #if 0
-    //STAGE 1 (DURING SETTLE TIME): SET TO VOLTAGE
-    if (tElapsed < SETTLE_TIME)
-    {
-        StateSetToScanVoltage(lifeTester);
-    }
-    //STAGE 2: (DURING SAMPLING TIME): KEEP READING ADC AND STORING DATA.
-    else if ((tElapsed >= SETTLE_TIME) && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
-    {  
-        StateSampleScanCurrent(lifeTester);
-    }
-    //STAGE 3: MEASUREMENTS FINISHED. UPDATE MAX POWER IF THERE IS ONE. RESET VARIABLES.
-    else
-    {
-        StateAnalyseScanMeasurement(lifeTester);
-    }
-    #endif
 }  
 
 void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
