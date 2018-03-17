@@ -180,17 +180,62 @@ STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
             data->iScanMpp = data->iScan;
             data->vScanMpp = data->vScan;
         }  
+        // Store first and last powers to check scan shape. 
+        if (data->vScan == V_SCAN_MIN)
+        {
+            data->pScanInitial = data->iScan * data->vScan;
+        }
+        else if (data->vScan == V_SCAN_MAX)
+        {
+            data->pScanFinal = data->iScan * data->vScan;
+        }
+        else
+        {
+            // do nothing
+        }
+
+        PrintScanPoint(lifeTester);
         // Reached the current limit - flag error which will stop scan
         lifeTester->error =
             (data->iScan >= MAX_CURRENT) ? currentLimit : ok;
-        
-        PrintScanPoint(lifeTester);
 
         data->vScan += DV_SCAN;  //move to the next point only if we've got this one ok.
     }
-    // restart measurement
 
-    lifeTester->nextState = StateSetToScanVoltage;
+    /*Check whether the scan has finished or not. If so, check scan shape and 
+    set tracking to the correct voltage. If not, then go to the next point.*/
+    if (data->vScan <= V_SCAN_MAX)
+    {
+        // restart measurement or go to next point
+        lifeTester->nextState = StateSetToScanVoltage;
+    } 
+    else
+    {
+
+        // check that the scan is a hill shape
+        const bool scanShapeOk = (data->pScanInitial < data->pScanMpp)
+                                 && (data->pScanFinal < data->pScanMpp);
+        lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
+        
+        // Check max is above required threshold for measurement to start
+        lifeTester->error =
+            (data->iScanMpp < THRESHOLD_CURRENT) ? currentThreshold : lifeTester->error;  
+
+        // report max power point
+        PrintScanMpp(data->iScanMpp, data->vScanMpp, lifeTester->error);
+
+        // Update v to max power point if there's no error otherwise set back to initial value.
+        // Scanning is done so go to tracking
+        if (lifeTester->error == ok)
+        {
+            data->vThis = data->vScanMpp;
+            lifeTester->nextState = StateSetToThisVoltage;
+        }
+        else
+        {
+            // TODO: go to error state
+        }
+    }
 }
 
 

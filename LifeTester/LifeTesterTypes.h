@@ -31,10 +31,14 @@ typedef struct LifeTesterData_s {
     uint32_t vNext;       // voltage of the neighbouring point
     uint32_t vScan;       // voltage of point being scanned
     uint32_t vScanMpp;    // max power point measured in scan
+    
     uint32_t pThis;       // power at this point
     uint32_t pNext;       // power at neighbouring point
     uint32_t pScan;       // power at point being scanned
+    uint32_t pScanInitial;// power associated with first point
+    uint32_t pScanFinal;  // ...and the last one (for checking scan shape)
     uint32_t pScanMpp;    // max power measured from scan
+
     uint32_t iThis;       // average current from current samples at this point
     uint32_t iThisSum;    // sum of all samples
     uint32_t iNext;
@@ -42,6 +46,7 @@ typedef struct LifeTesterData_s {
     uint32_t iScan;
     uint32_t iScanSum;
     uint32_t iScanMpp;
+    
     uint16_t nReadsThis;
     uint16_t nReadsNext;  // counting number of readings taken by ADC during sampling window
     uint16_t nReadsScan;

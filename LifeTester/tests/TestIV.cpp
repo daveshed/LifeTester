@@ -774,7 +774,7 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
     // increment time a little
     tMock += dt;
     // keep executing scan loop until finished.
-    while (vExpect < V_SCAN_MAX)
+    while (vExpect <= V_SCAN_MAX)
     {
         // (1) Expect to set voltage during settle time if it isn't already
         POINTERS_EQUAL(StateSetToScanVoltage, mockLifeTester->nextState);
@@ -817,6 +817,10 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
     }
     // Expect the result to be the calculated mpp.
     CHECK_EQUAL(mppCodeShockley, mockLifeTester->data.vScanMpp);
+    
+    // Should change mode to tracking with mpp
+    CHECK_EQUAL(StateSetToThisVoltage, mockLifeTester->nextState);
+    CHECK_EQUAL(mppCodeShockley, mockLifeTester->data.vThis);
     mock().checkExpectations();
 }
 
