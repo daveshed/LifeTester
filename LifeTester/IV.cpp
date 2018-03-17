@@ -7,6 +7,7 @@
 #include "IV.h"
 #include "Macros.h"
 #include "Print.h"
+#include <string.h> // memset
 
 static void PrintError(errorCode_t error)
 {
@@ -98,22 +99,33 @@ static void ResetForNextMeasurement(LifeTester_t *const lifeTester)
     lifeTester->nextState = StateWaitForTrackingDelay;
 }
 
+STATIC void StateInitialise(LifeTester_t *const lifeTester)
+{
+    // reset all the data and errors
+    memset(&lifeTester->data, 0U, sizeof(LifeTesterData_t));
+    lifeTester->error = ok;
+    // Setup for a voltage scan
+    lifeTester->data.vScan = V_SCAN_MIN;
+    lifeTester->timer = millis();
+    lifeTester->nextState = StateSetToScanVoltage;
+}
 
 STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
 {
-    tElapsed = millis() - lifeTester->timer;
-
     /* Only set the dac if it hasn't been set already */    
-    if ((tElapsed < SETTLE_TIME) && !DacOutputSetToScanVoltage(lifeTester))
+    if (!DacOutputSetToScanVoltage(lifeTester))
     {
+        printf("setting dac voltage to %u\n", lifeTester->data.vScan);
         DacSetOutputToScanVoltage(lifeTester);
-        lifeTester->data.iScanSum = 0U;
-        lifeTester->data.nReadsScan = 0U;
+        printf("resetting timer\n");
+        lifeTester->timer = millis();
     }
-    else
-    {
-        lifeTester->nextState = StateSampleScanCurrent;
-    }
+
+    // transition to next mode and setup data
+    lifeTester->data.iScan = 0U;
+    lifeTester->data.iScanSum = 0U;
+    lifeTester->data.nReadsScan = 0U;
+    lifeTester->nextState = StateSampleScanCurrent;
 }
 
 STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
@@ -121,41 +133,49 @@ STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
     // The dac must be set to the correct voltage otherwise restart the measurement
     if (DacOutputSetToScanVoltage(lifeTester))
     {
-        tElapsed = millis() - lifeTester->timer;
+        const uint32_t tElapsed = millis() - lifeTester->timer;
+        printf("tElapsed = %u, dac is set...\n", tElapsed);
         
         if ((tElapsed >= SETTLE_TIME)
-            && (tElapsed < (SETTLE_TIME + SAMPLING_TIME)))
+            && tElapsed < (SAMPLING_TIME + SETTLE_TIME))
         {
+            printf("reading adc...\n");
             lifeTester->data.iScanSum += AdcReadLifeTesterCurrent(lifeTester);
             lifeTester->data.nReadsScan++;
             lifeTester->data.iScan = lifeTester->data.iScanSum / lifeTester->data.nReadsScan;
         }
+        else if (tElapsed >= (SETTLE_TIME + SAMPLING_TIME))
+        {
+            printf("going to analyse scan\n");
+            lifeTester->nextState = StateAnalyseScanMeasurement;
+        }
         else
         {
-            lifeTester->nextState = StateAnalyseScanMeasurement;
+            lifeTester->nextState = StateSampleScanCurrent;
         }
 
     }
     else  // dac wasn't set. Restart the measurement
     {
-        lifeTester->data.iScanSum = 0U;
-        lifeTester->data.nReadsScan = 0U;
+        printf("adc not set. resetting\n");
         lifeTester->timer = millis();
         lifeTester->nextState = StateSetToScanVoltage;
-
     }
 }
 
 STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
 {
-    const bool adcRead = (lifeTester->data.nReadsScan > 0U); 
     LifeTesterData_t *const data = &lifeTester->data;
+    const bool adcRead = (data->nReadsScan > 0U); 
+
     if (adcRead)  // check that the adc has actually been read
     {
+        printf("adc read.\n");
         // Update max power and vMPP if we have found a maximum power point.
         data->pScan = data->iScan * data->vScan;
         if (data->pScan > data->pScanMpp)
         {  
+            printf("found a mpp!\n");
             data->pScanMpp = data->iScan * data->vScan;
             data->iScanMpp = data->iScan;
             data->vScanMpp = data->vScan;
@@ -168,11 +188,8 @@ STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
 
         data->vScan += DV_SCAN;  //move to the next point only if we've got this one ok.
     }
-    // reset timers and flags - no measurement or measurement is done
-    data->iScan = 0U;
-    data->iScanSum = 0U;
-    data->nReadsScan = 0U;
-    lifeTester->timer = millis();
+    // restart measurement
+
     lifeTester->nextState = StateSetToScanVoltage;
 }
 
@@ -192,10 +209,9 @@ void IV_ScanUpdate(LifeTester_t *const lifeTester)
 
 static void ScanStep(LifeTester_t *const lifeTester, uint16_t dV)
 {
-    printf("actual elapsed time %u\n", tElapsed);
     StateMachineDispatcher(lifeTester);
 }  
-
+#if 0
 void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
                       const uint16_t      startV,
                       const uint16_t      finV,
@@ -258,7 +274,7 @@ void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
         DacSetOutputToThisVoltage(lifeTester);
     }
 }
-
+#endif
 STATIC TimedEvent_t GetTimedEvent(LifeTester_t *const lifeTester)
 {
     TimedEvent_t event;
@@ -267,6 +283,8 @@ STATIC TimedEvent_t GetTimedEvent(LifeTester_t *const lifeTester)
     const uint32_t settleTimeNextStart = samplingThisStart + SAMPLING_TIME;
     const uint32_t samplingNextStart = settleTimeNextStart + SETTLE_TIME;
     const uint32_t samplingNextFinish = samplingNextStart + SAMPLING_TIME;
+
+    const uint32_t tElapsed = millis() - lifeTester->timer;
 
     if (tElapsed < settleTimeThisStart)
     {
@@ -430,8 +448,6 @@ STATIC void StateAnalyseMeasurement(LifeTester_t *const lifeTester)
 
 void IV_MpptUpdate(LifeTester_t * const lifeTester)
 {
-    tElapsed = millis() - lifeTester->timer;
-  
     if ((lifeTester->error != currentThreshold) && (lifeTester->data.nErrorReads < MAX_ERROR_READS))
     {
         StateMachineDispatcher(lifeTester);

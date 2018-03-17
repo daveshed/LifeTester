@@ -323,7 +323,7 @@ static double shockleyDiode[][3] =
     {2.040000, 0.000000e+00, 0.000000e+00}
 };
 
-// Calculated in SchockleyData.py
+// Calculated in -.py
 static uint8_t mppCodeShockley = 58U;
 
 /*******************************************************************************
@@ -379,7 +379,7 @@ static uint16_t TestGetAdcCodeConstantCurrent(uint8_t dacCode)
     dacCode;  // trying to avoid unused error
     return FIXED_CURRENT;
 }
-
+#if 0
 /*
  Step function called repeatedly in tests to queue expected mock function calls
  from individual tests as v.mock is scanned. Requires a function pointer to
@@ -418,6 +418,7 @@ static void MocksForIvScanStep(LifeTester_t *const lifeTester,
 
     t->mock += t->dt;
 }
+#endif
 /*******************************************************************************
  * Unit tests
  ******************************************************************************/
@@ -457,7 +458,7 @@ TEST_GROUP(IVTestGroup)
         mock().clear();
     }
 };
-
+#if 0
 /*
  Test that updating the state machine while in scanning mode set dac state sets
  the dac when not set and when within the settle time.
@@ -812,7 +813,74 @@ TEST(IVTestGroup, RunIvScanErrorStateExpectDontScan)
     // No mocks should be called
     mock().checkExpectations();
 }
+#endif
+/*
+ Test for running through an iv scan without errors. Expect to return the mpp 
+ of a shockley diode.
+*/
+TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
+{    
+    uint32_t tMock = 9348U;          // time last measurement was made 
+    const uint32_t dt = 50U;
+    uint32_t tPrevious = tMock;
+    mockLifeTester->nextState = StateInitialise;
 
+    // start in initialise state - timer should be set
+    mock().expectOneCall("millis").andReturnValue(tMock);
+    IV_ScanUpdate(mockLifeTester);
+    POINTERS_EQUAL(StateSetToScanVoltage, mockLifeTester->nextState);
+    CHECK_EQUAL(tPrevious, mockLifeTester->timer);
+    
+    uint32_t vExpect = V_SCAN_MIN;
+    // increment time a little
+    tMock += dt;
+    // keep executing scan loop until finished.
+    while (vExpect < V_SCAN_MAX)
+    {
+        // (1) Expect to set voltage during settle time if it isn't already
+        POINTERS_EQUAL(StateSetToScanVoltage, mockLifeTester->nextState);
+        // timer should be zeroed as soon as dac is set for the measurement
+        if (!DacOutputSetToScanVoltage(mockLifeTester))
+        {
+            mock().expectOneCall("DacSetOutput")
+                .withParameter("output", vExpect)
+                .withParameter("channel", mockLifeTester->io.dac);
+            mock().expectOneCall("millis").andReturnValue(tMock);
+            tPrevious = tMock;
+        }
+        IV_ScanUpdate(mockLifeTester);
+        CHECK(DacOutputSetToScanVoltage(mockLifeTester));
+        CHECK_EQUAL(tPrevious, mockLifeTester->timer);
+
+        // (2) Expect to sample current during measurement time window
+        POINTERS_EQUAL(StateSampleScanCurrent, mockLifeTester->nextState);
+        tMock += SETTLE_TIME;
+        // Mock returns shockley diode current from lookup table
+        mock().expectOneCall("millis").andReturnValue(tMock);
+        mock().expectOneCall("AdcReadData")
+            .withParameter("channel", mockLifeTester->io.adc)
+            .andReturnValue(TestGetAdcCodeForDiode(vExpect));
+        IV_ScanUpdate(mockLifeTester);
+
+        // Sampling time expired. Expect to transition to analyse measurement.
+        tMock += SAMPLING_TIME;
+        mock().expectOneCall("millis").andReturnValue(tMock);
+        IV_ScanUpdate(mockLifeTester);
+        POINTERS_EQUAL(StateAnalyseScanMeasurement, mockLifeTester->nextState);
+        
+        /*(3) Expect to do calculations and check the power point for new mpp
+        Not expecting timer to be read here - only calculations*/
+        IV_ScanUpdate(mockLifeTester);
+        vExpect += DV_SCAN;
+
+        printf("mock time = %u elapsed = %u\n", tMock, tMock - tPrevious);
+        mock().checkExpectations();
+    }
+    // Expect the result to be the calculated mpp.
+    CHECK_EQUAL(mppCodeShockley, mockLifeTester->data.vScanMpp);
+}
+
+#if 1
 /*
  Test for updating mpp during settle time. Expect the dac to be set only. No
  calls to read adc and no change to lifetester data.
@@ -843,6 +911,7 @@ TEST(IVTestGroup, UpdateMppDuringSettleTime)
     // Expect no change to lifetester data
     MEMCMP_EQUAL(&lifeTesterExp, mockLifeTester, sizeof(LifeTester_t));
 }
+
 /*
  Test for updating mpp during track delay. Expect nothing to happen here. Delay time
  inserted to ensure that we aren't trying to update mpp too often.
@@ -1249,3 +1318,4 @@ TEST(IVTestGroup, IndividualStateTransitionsFromTrackingDelayOnwards)
     CHECK_EQUAL(StateWaitForTrackingDelay, mockLifeTester->nextState);
 
 }
+#endif
