@@ -117,8 +117,8 @@ STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
     {
         printf("setting dac voltage to %u\n", lifeTester->data.vScan);
         DacSetOutputToScanVoltage(lifeTester);
-        printf("resetting timer\n");
         lifeTester->timer = millis();
+        printf("resetting timer to %u\n", lifeTester->timer);
     }
 
     // transition to next mode and setup data
