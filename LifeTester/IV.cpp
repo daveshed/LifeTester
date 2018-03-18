@@ -33,15 +33,15 @@ static void PrintError(errorCode_t error)
     }
 }
 
-static void PrintScanMpp(uint32_t iMpp, uint32_t vMPP, errorCode_t error)
+static void PrintScanMpp(LifeTester_t const *const lifeTester)
 {
     DBG_PRINTLN();
     DBG_PRINT("iMpp = ");
-    DBG_PRINT(iMpp);
+    DBG_PRINT(lifeTester->data.iScanMpp);
     DBG_PRINT(", Vmpp = ");
-    DBG_PRINT(vMPP);
+    DBG_PRINT(lifeTester->data.vScanMpp);
     DBG_PRINT(", error = ");
-    PrintError(error);
+    PrintError(lifeTester->error);
 }
 
 static void PrintScanPoint(LifeTester_t const *const lifeTester)
@@ -104,10 +104,36 @@ STATIC void StateInitialise(LifeTester_t *const lifeTester)
     // reset all the data and errors
     memset(&lifeTester->data, 0U, sizeof(LifeTesterData_t));
     lifeTester->error = ok;
-    // Setup for a voltage scan
-    lifeTester->data.vScan = V_SCAN_MIN;
-    lifeTester->timer = millis();
-    lifeTester->nextState = StateSetToScanVoltage;
+
+    // Go to self test before going on to scanning mode.
+    lifeTester->nextState = StatePowerOnSelfTest;
+}
+
+STATIC void StatePowerOnSelfTest(LifeTester_t *const lifeTester)
+{
+    // TODO: Auto gain. Need a new state for this.
+    // Check short-circuit current is above required threshold for measurements
+    DacSetOutput(0U, lifeTester->io.dac);
+    delay(POST_DELAY_TIME);
+    const uint16_t iShortCircuit = AdcReadLifeTesterCurrent(lifeTester);
+
+    lifeTester->error =
+        (iShortCircuit < THRESHOLD_CURRENT) ? currentThreshold : lifeTester->error;
+    
+    if (lifeTester->error == ok)
+    {
+        // Setup for a voltage scan
+        lifeTester->nextState = StateSetToScanVoltage;
+        lifeTester->data.vScan = V_SCAN_MIN;
+        lifeTester->timer = millis();
+        // Signal to user that IV is being scanned with led set to fast flash
+        lifeTester->led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);        
+        PrintScanHeader();
+    }
+    else
+    {
+        lifeTester->nextState = StateError;
+    }
 }
 
 STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
@@ -209,20 +235,15 @@ STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
         // restart measurement or go to next point
         lifeTester->nextState = StateSetToScanVoltage;
     } 
-    else
+    else  // scan finished
     {
-
         // check that the scan is a hill shape
         const bool scanShapeOk = (data->pScanInitial < data->pScanMpp)
                                  && (data->pScanFinal < data->pScanMpp);
         lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
         
-        // Check max is above required threshold for measurement to start
-        lifeTester->error =
-            (data->iScanMpp < THRESHOLD_CURRENT) ? currentThreshold : lifeTester->error;  
-
         // report max power point
-        PrintScanMpp(data->iScanMpp, data->vScanMpp, lifeTester->error);
+        PrintScanMpp(lifeTester);
 
         // Update v to max power point if there's no error otherwise set back to initial value.
         // Scanning is done so go to tracking
@@ -231,9 +252,9 @@ STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
             data->vThis = data->vScanMpp;
             lifeTester->nextState = StateSetToThisVoltage;
         }
-        else
+        else // error condition so go to error state
         {
-            // TODO: go to error state
+            lifeTester->nextState = StateError;
         }
     }
 }
@@ -487,11 +508,18 @@ STATIC void StateAnalyseMeasurement(LifeTester_t *const lifeTester)
         PrintNewMpp(lifeTester);
 
     }
-    // Begin hill climibing algorigthm again
+    // Begin hill climbing algorithm again
     ResetForNextMeasurement(lifeTester);
 }
 
-void IV_MpptUpdate(LifeTester_t * const lifeTester)
+STATIC void StateError(LifeTester_t *const lifeTester)
+{
+    lifeTester->led.t(ERROR_LED_ON_TIME,ERROR_LED_OFF_TIME);
+    lifeTester->led.keepFlashing();    
+    DacSetOutput(0U, lifeTester->io.dac);
+}
+
+void IV_MpptUpdate(LifeTester_t *const lifeTester)
 {
     if ((lifeTester->error != currentThreshold) && (lifeTester->data.nErrorReads < MAX_ERROR_READS))
     {

@@ -28,6 +28,7 @@ extern "C" {
 #define SETTLE_TIME       200u //settle time after setting DAC to ADC measurement
 #define SAMPLING_TIME     200u //time interval over which ADC measurements are made continuously then averaged afterward
 #define TRACK_DELAY_TIME  200u //time period between tracking measurements
+#define POST_DELAY_TIME   (100U)
 
 // error handling
 #define MAX_ERROR_READS   20u  //number of allowed bad readings before error state
@@ -38,6 +39,8 @@ extern "C" {
 // Led flasher timings
 #define SCAN_LED_ON_TIME      (25U)
 #define SCAN_LED_OFF_TIME     (500U)
+#define ERROR_LED_ON_TIME     (500U)
+#define ERROR_LED_OFF_TIME    (500U)
 
 #endif
 #ifdef _cplusplus
