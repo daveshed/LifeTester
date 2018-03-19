@@ -332,6 +332,9 @@ static uint32_t mockTime;
 // Mocks the current returned from the adc
 static uint16_t mockCurrent;
 
+// Mock lifetester object that's used in lots of tests.
+static LifeTester_t *mockLifeTester;
+
 /*******************************************************************************
  * Mock function implementations for tests
  ******************************************************************************/
@@ -396,10 +399,10 @@ static uint16_t TestGetAdcCodeConstantCurrent(uint8_t dacCode)
 }
 
 /*
- Queues up the mocks needed to pass post. Short cirucuit current is checked and
- checked against the threshold before measurements start.
+ Queues up the mocks needed to pass initialise. Short cirucuit current is checked
+ and checked against the threshold before measurements start.
 */
-static void MocksForPassPost(LifeTester_t const *const lifeTester)
+static void MocksForPassInitialise(LifeTester_t const *const lifeTester)
 {    
     mock().expectOneCall("DacSetOutput")
         .withParameter("output", 0U)
@@ -417,10 +420,10 @@ static void MocksForPassPost(LifeTester_t const *const lifeTester)
 }
 
 /*
- Queues up mocks needed for failing post. Short circuit current is checked and 
- current returned is below this level. Should trigger an error in source.
+ Queues up mocks needed for failing initialise. Short circuit current is checked
+ and current returned is below this level. Should trigger an error in source.
 */
-static void MocksForFailPost(LifeTester_t const *const lifeTester)
+static void MocksForFailInitilise(LifeTester_t const *const lifeTester)
 {
     mock().expectOneCall("DacSetOutput")
         .withParameter("output", 0U)
@@ -451,8 +454,6 @@ static void MocksForSampleScanCurrent(LifeTester_t const *const lifeTester)
 /*******************************************************************************
  * Unit tests
  ******************************************************************************/
-
-static LifeTester_t *mockLifeTester;
 
 // Define a test group for IV - all tests share common setup/teardown
 TEST_GROUP(IVTestGroup)
@@ -607,8 +608,8 @@ TEST(IVTestGroup, UpdateScanInSampleScanCurrentAdcMeasurementExpected)
     LifeTester_t lifeTesterExp = *mockLifeTester;
     // ...only measurement stuff
     lifeTesterExp.data.iScan = iMockAve;
-    lifeTesterExp.data.iScanSum = iMockSum;
-    lifeTesterExp.data.nReadsScan = nMeasurements;
+    lifeTesterExp.data.iSampleSum = iMockSum;
+    lifeTesterExp.data.nSamples = nMeasurements;
 
     for (int i = 0; i < nMeasurements; i++)
     {
@@ -619,8 +620,8 @@ TEST(IVTestGroup, UpdateScanInSampleScanCurrentAdcMeasurementExpected)
     }
 
     CHECK_EQUAL(iMockAve, mockLifeTester->data.iScan);
-    CHECK_EQUAL(iMockSum, mockLifeTester->data.iScanSum);
-    CHECK_EQUAL(nMeasurements, mockLifeTester->data.nReadsScan);
+    CHECK_EQUAL(iMockSum, mockLifeTester->data.iSampleSum);
+    CHECK_EQUAL(nMeasurements, mockLifeTester->data.nSamples);
     MEMCMP_EQUAL(&lifeTesterExp, mockLifeTester, sizeof(LifeTester_t));
     mock().checkExpectations();
 }
@@ -700,9 +701,9 @@ TEST(IVTestGroup, UpdateScanInAnalyseMeasurementNoDacReadingExpectReset)
     mockLifeTester->timer = tPrevious;
     mockLifeTester->nextState = StateAnalyseScanMeasurement;
     mockLifeTester->data.vScan = vMock;
-    mockLifeTester->data.nReadsScan = 0U;  // no adc readings - so can't calculate
+    mockLifeTester->data.nSamples = 0U;  // no adc readings - so can't calculate
     mockLifeTester->data.iScan = 243U;     // set some data to be reset
-    mockLifeTester->data.iScanSum = 2343U;
+    mockLifeTester->data.iSampleSum = 2343U;
 
     LifeTester_t lifeTesterExp = *mockLifeTester;
     lifeTesterExp.nextState = StateSetToScanVoltage;
@@ -734,9 +735,9 @@ TEST(IVTestGroup, UpdateScanInAnalyseMeasurementNoNewMPP)
     mockLifeTester->nextState = StateAnalyseScanMeasurement;
     mockLifeTester->data.vScan = vMock;
     mockLifeTester->data.vScanMpp = vMppExpected;
-    mockLifeTester->data.nReadsScan = 2U;
+    mockLifeTester->data.nSamples = 2U;
     mockLifeTester->data.iScan = iMock;     // set some data to be reset
-    mockLifeTester->data.iScanSum = iMockSum;
+    mockLifeTester->data.iSampleSum = iMockSum;
     mockLifeTester->data.iScanMpp = iMaxExpected;
     mockLifeTester->data.pScanMpp = pScanMppExpected;
     mockLifeTester->data.pScan = 0U;        // set to 0 to check update
@@ -775,9 +776,9 @@ TEST(IVTestGroup, UpdateScanInAnalyseMeasurementWithNewMPP)
     mockLifeTester->nextState = StateAnalyseScanMeasurement;
     mockLifeTester->data.vScan = vMock;
     mockLifeTester->data.vScanMpp = vMppOld;
-    mockLifeTester->data.nReadsScan = 2U;
+    mockLifeTester->data.nSamples = 2U;
     mockLifeTester->data.iScan = iNew;     // set some data to be reset
-    mockLifeTester->data.iScanSum = iNewSum;
+    mockLifeTester->data.iSampleSum = iNewSum;
     mockLifeTester->data.iScanMpp = iMaxOld;
     mockLifeTester->data.pScanMpp = iMaxOld * vMppOld;
     mockLifeTester->data.pScan = 0U;        // set to 0 to check update
@@ -796,20 +797,16 @@ TEST(IVTestGroup, UpdateScanInAnalyseMeasurementWithNewMPP)
 }
 
 /*
- Test that an error raised in POST prevents a scan from starting. Expect to 
+ Test that an error raised in initialise prevents a scan from starting. Expect to 
  transition to error state.
 */
-TEST(IVTestGroup, FailingPostExpectTransitionToErrorStateNotScan)
+TEST(IVTestGroup, FailingInitialiseExpectTransitionToErrorStateNotScan)
 {    
     mockTime = 9348U;
     mockLifeTester->nextState = StateInitialise;
 
-    // start in initialise state - data will be reset and should go to POST
-    IV_ScanUpdate(mockLifeTester);
-    POINTERS_EQUAL(StatePowerOnSelfTest, mockLifeTester->nextState);
-
     // Expect the dac to be set to short circuit (0V) and current read
-    MocksForFailPost(mockLifeTester); // will return current below threshold
+    MocksForFailInitilise(mockLifeTester); // will return current below threshold
     IV_ScanUpdate(mockLifeTester);
     POINTERS_EQUAL(StateError, mockLifeTester->nextState);
 }    
@@ -827,11 +824,8 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
     mockLifeTester->nextState = StateInitialise;
 
     // start in initialise state - data will be reset and should go to POST
-    IV_ScanUpdate(mockLifeTester);
-    POINTERS_EQUAL(StatePowerOnSelfTest, mockLifeTester->nextState);
-
     // Expect the dac to be set to short circuit (0V) and current read
-    MocksForPassPost(mockLifeTester);
+    MocksForPassInitialise(mockLifeTester);
     IV_ScanUpdate(mockLifeTester);
     POINTERS_EQUAL(StateSetToScanVoltage, mockLifeTester->nextState);
     CHECK_EQUAL(tPrevious, mockLifeTester->timer);
@@ -873,7 +867,7 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
         IV_ScanUpdate(mockLifeTester);
         vExpect += DV_SCAN;
 
-        printf("mock time = %u elapsed = %u\n", mockTime, mockTime - tPrevious);
+        // printf("mock time = %u elapsed = %u\n", mockTime, mockTime - tPrevious);
         mock().checkExpectations();
     }
     // Expect the result to be the calculated mpp.
@@ -897,11 +891,8 @@ TEST(IVTestGroup, RunIvScanBadDiodeNoMppReturned)
     mockLifeTester->nextState = StateInitialise;
 
     // start in initialise state - data will be reset and should go to POST
-    IV_ScanUpdate(mockLifeTester);
-    POINTERS_EQUAL(StatePowerOnSelfTest, mockLifeTester->nextState);
-
     // Expect the dac to be set to short circuit (0V) and current read
-    MocksForPassPost(mockLifeTester);
+    MocksForPassInitialise(mockLifeTester);
     IV_ScanUpdate(mockLifeTester);
     POINTERS_EQUAL(StateSetToScanVoltage, mockLifeTester->nextState);
     CHECK_EQUAL(tPrevious, mockLifeTester->timer);
@@ -943,7 +934,7 @@ TEST(IVTestGroup, RunIvScanBadDiodeNoMppReturned)
         IV_ScanUpdate(mockLifeTester);
         vExpect += DV_SCAN;
 
-        printf("mock time = %u elapsed = %u\n", mockTime, mockTime - tPrevious);
+        // printf("mock time = %u elapsed = %u\n", mockTime, mockTime - tPrevious);
         mock().checkExpectations();
     }
     
@@ -1080,8 +1071,8 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPoint)
 
     // expect the current and number of readings to be updated only
     LifeTester_t lifeTesterExpected = *mockLifeTester;
-    lifeTesterExpected.data.iThisSum = iMock;
-    lifeTesterExpected.data.nReadsThis++;
+    lifeTesterExpected.data.iSampleSum = iMock;
+    lifeTesterExpected.data.nSamples++;
     MEMCMP_EQUAL(&lifeTesterExpected, &lifeTesterActual, sizeof(LifeTester_t));
     mock().checkExpectations();
 }
@@ -1197,8 +1188,8 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForNextPoint)
 
     // expect the current and number of readings to be updated only
     LifeTester_t lifeTesterExpected = *mockLifeTester;
-    lifeTesterExpected.data.iNextSum = iMock;
-    lifeTesterExpected.data.nReadsNext++;
+    lifeTesterExpected.data.iSampleSum = iMock;
+    lifeTesterExpected.data.nSamples++;
     MEMCMP_EQUAL(&lifeTesterExpected, &lifeTesterActual, sizeof(LifeTester_t));
     mock().checkExpectations();
 }
@@ -1218,21 +1209,22 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
     const uint32_t vMock = 47U;                       // voltage at current op point
     
     const uint16_t nAdcSamples = 4U;
-    const uint16_t iThisSum = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
-    const uint16_t iNextSum = (MIN_CURRENT + 20U) * nAdcSamples;
+    const uint16_t iThis = MIN_CURRENT;     
+    const uint16_t iNext = iThis + 20U; // ensure that next point has more power
 
-    const uint32_t pThis = iThisSum / nAdcSamples * vMock;
-    const uint32_t pNext = iNextSum / nAdcSamples * (vMock + DV_MPPT);
-    CHECK(pNext > pThis);
+    const uint32_t pThis = iThis * vMock;
+    const uint32_t pNext = iNext * (vMock + DV_MPPT);
 
     mockLifeTester->data.vThis = vMock;
     mockLifeTester->data.vNext = vMock + DV_MPPT;
-    mockLifeTester->data.iThisSum = iThisSum;
-    mockLifeTester->data.iNextSum = iNextSum;
-    mockLifeTester->data.nReadsThis = nAdcSamples;
-    mockLifeTester->data.nReadsNext = nAdcSamples;
+    mockLifeTester->data.iThis = iThis;
+    mockLifeTester->data.iNext = iNext;
+    mockLifeTester->data.pThis = pThis;
+    mockLifeTester->data.pNext = pNext;
+    mockLifeTester->data.nSamples = nAdcSamples;
     mockLifeTester->nextState = StateAnalyseMeasurement;
 
+    CHECK(mockLifeTester->data.pNext > mockLifeTester->data.pThis);
     // Check time. millis should return time within sampling time window
     mock().expectOneCall("millis").andReturnValue(tMock);
     // Expect call to change led state - indicates increase in voltage
@@ -1269,21 +1261,22 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
     const uint32_t vMock = 47U;                       // voltage at current op point
     
     const uint16_t nAdcSamples = 4U;
-    const uint16_t iThisSum = (MIN_CURRENT + 20U) * nAdcSamples;
-    const uint16_t iNextSum = MIN_CURRENT * nAdcSamples;     // ensure that the next point has more power
+    const uint16_t iNext = MIN_CURRENT;     
+    const uint16_t iThis = iNext + 20U; // ensure that this point has more power
 
-    const uint32_t pCurrent = iThisSum / nAdcSamples * vMock;
-    const uint32_t pNext = iNextSum / nAdcSamples * (vMock + DV_MPPT);
-    CHECK(pNext < pCurrent);
+    const uint32_t pThis = iThis * vMock;
+    const uint32_t pNext = iNext * (vMock + DV_MPPT);
 
     mockLifeTester->data.vThis = vMock;
     mockLifeTester->data.vNext = vMock + DV_MPPT;
-    mockLifeTester->data.iThisSum = iThisSum;
-    mockLifeTester->data.iNextSum = iNextSum;
-    mockLifeTester->data.nReadsThis = nAdcSamples;
-    mockLifeTester->data.nReadsNext = nAdcSamples;
+    mockLifeTester->data.iThis = iThis;
+    mockLifeTester->data.iNext = iNext;
+    mockLifeTester->data.pThis = pThis;
+    mockLifeTester->data.pNext = pNext;
+    mockLifeTester->data.nSamples = nAdcSamples;
     mockLifeTester->nextState = StateAnalyseMeasurement;
 
+    CHECK(mockLifeTester->data.pNext < mockLifeTester->data.pThis);
     // Check time. millis should return time within sampling time window
     mock().expectOneCall("millis").andReturnValue(tMock);
     // Expect call to change led state - indicates decrease in voltage

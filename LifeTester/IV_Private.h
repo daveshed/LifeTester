@@ -18,7 +18,6 @@ STATIC void StateAnalyseMeasurement(LifeTester_t *const lifeTester);
 STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester);
 STATIC void StateError(LifeTester_t *const lifeTester);
 STATIC void StateInitialise(LifeTester_t *const lifeTester);
-STATIC void StatePowerOnSelfTest(LifeTester_t *const lifeTester);
 STATIC void StateSampleNextCurrent(LifeTester_t *const lifeTester);
 STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester);
 STATIC void StateSampleThisCurrent(LifeTester_t *const lifeTester);
