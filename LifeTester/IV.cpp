@@ -97,6 +97,46 @@ static void ResetForNextMeasurement(LifeTester_t *const lifeTester)
     lifeTester->nextState = StateWaitForTrackingDelay;
 }
 
+
+STATIC TimedEvent_t GetTimedEvent(LifeTester_t *const lifeTester)
+{
+    TimedEvent_t event;
+    const uint32_t settleTimeThisStart = TRACK_DELAY_TIME;
+    const uint32_t samplingThisStart = settleTimeThisStart + SETTLE_TIME;
+    const uint32_t settleTimeNextStart = samplingThisStart + SAMPLING_TIME;
+    const uint32_t samplingNextStart = settleTimeNextStart + SETTLE_TIME;
+    const uint32_t samplingNextFinish = samplingNextStart + SAMPLING_TIME;
+
+    const uint32_t tElapsed = millis() - lifeTester->timer;
+
+    if (tElapsed < settleTimeThisStart)
+    {
+        event = trackingDelay;
+    }
+    else if ((tElapsed >= settleTimeThisStart) && (tElapsed < samplingThisStart))
+    {
+        event = settleTimeThis;
+    }
+    else if ((tElapsed >= samplingThisStart) && (tElapsed < settleTimeNextStart))
+    {
+        event = samplingThis;
+    }
+    else if ((tElapsed >= settleTimeNextStart) && (tElapsed < samplingNextStart))
+    {
+        event = settleTimeNext;
+    }
+    else if ((tElapsed >= samplingNextStart) && (tElapsed < samplingNextFinish))
+    {
+        event = samplingNext;
+    }
+    else
+    {
+        event = done;
+    }
+    return event;
+
+}
+
 STATIC void StateInitialise(LifeTester_t *const lifeTester)
 {
     // reset all the data and errors
@@ -128,6 +168,18 @@ STATIC void StateInitialise(LifeTester_t *const lifeTester)
     }
 }
 
+STATIC void StateWaitForTrackingDelay(LifeTester_t *const lifeTester)
+{
+    if (GetTimedEvent(lifeTester) == trackingDelay)
+    {
+        // Don't do anything. Just wait for time to expire.
+    }
+    else
+    {
+        lifeTester->nextState = StateSetToThisVoltage;
+    }
+}
+
 STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
 {
     /* Only set the dac if it hasn't been set already */    
@@ -144,6 +196,37 @@ STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
     lifeTester->data.iSampleSum = 0U;
     lifeTester->data.nSamples = 0U;
     lifeTester->nextState = StateSampleScanCurrent;
+}
+
+/*
+ State is only responsible for setting the dac if not already set and preparing
+ variables for sampling coming next.
+*/
+STATIC void StateSetToThisVoltage(LifeTester_t *const lifeTester)
+{
+    if (!DacOutputSetToThisVoltage(lifeTester))
+    {
+        DacSetOutputToThisVoltage(lifeTester);
+    }
+
+    lifeTester->data.iThis = 0U;
+    lifeTester->data.iSampleSum = 0U;
+    lifeTester->data.nSamples = 0U;
+    lifeTester->nextState = StateSampleThisCurrent;
+}
+
+STATIC void StateSetToNextVoltage(LifeTester_t *const lifeTester)
+{
+    if (!DacOutputSetToNextVoltage(lifeTester))
+    {
+        lifeTester->data.vNext = lifeTester->data.vThis + DV_MPPT;
+        DacSetOutputToNextVoltage(lifeTester);
+    }
+
+    lifeTester->data.iThis = 0U;
+    lifeTester->data.iSampleSum = 0U;
+    lifeTester->data.nSamples = 0U;
+    lifeTester->nextState = StateSampleNextCurrent;
 }
 
 STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
@@ -178,6 +261,80 @@ STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
         // printf("adc not set. resetting\n");
         lifeTester->timer = millis();
         lifeTester->nextState = StateSetToScanVoltage;
+    }
+}
+
+STATIC void StateSampleThisCurrent(LifeTester_t *const lifeTester)
+{
+    LifeTesterData_t *const data = &lifeTester->data;
+
+    if (DacOutputSetToThisVoltage(lifeTester))
+    {
+        const TimedEvent_t event = GetTimedEvent(lifeTester);
+        
+        if (event == samplingThis)
+        {
+            data->iSampleSum += AdcReadLifeTesterCurrent(lifeTester);
+            data->nSamples++;
+        }
+        else if (event == settleTimeNext)
+        {
+            lifeTester->nextState = StateSetToNextVoltage;
+            // Average current
+            data->iThis = data->iSampleSum / data->nSamples;
+            // Power
+            data->pThis = data->vThis * data->iThis; 
+        }
+        else
+        {
+            /* Do nothing. Just go leave update. More time elapses and then 
+            when update is called, the next state will change.*/
+        }
+
+    }
+    else  // dac wasn't set. Restart the measurement
+    {
+        ResetForNextMeasurement(lifeTester);
+    }
+}
+
+STATIC void StateSampleNextCurrent(LifeTester_t *const lifeTester)
+{
+    LifeTesterData_t *const data = &lifeTester->data;
+    
+    if (DacOutputSetToNextVoltage(lifeTester))
+    {
+        const TimedEvent_t event = GetTimedEvent(lifeTester);
+        
+        if (event == samplingNext)
+        {
+            data->iSampleSum += AdcReadLifeTesterCurrent(lifeTester);
+            data->nSamples++;
+        }
+        else if (event == done)
+        {
+            if (data->nSamples > 0U)  // done and samples taken. go to next mode.
+            {
+                // set the mode
+                lifeTester->nextState = StateAnalyseTrackingMeasurement;
+                // Average the current
+                data->iNext = data->iSampleSum / data->nSamples;
+                // calculate power
+                data->pNext = data->vNext * data->iNext;
+            }
+            else  // no samples were taken so restart the measurement
+            {
+                ResetForNextMeasurement(lifeTester); 
+            }
+        }
+        else
+        {
+            // do nothing. carry on waiting for sampling window.
+        }
+    }
+    else // dac wasn't set. Restart the measurement
+    {
+        ResetForNextMeasurement(lifeTester);
     }
 }
 
@@ -251,216 +408,7 @@ STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
     }
 }
 
-
-/*
- Calls the state function stored in the lifetester object.
-*/
-static void StateMachineDispatcher(LifeTester_t *const lifeTester)
-{
-    lifeTester->nextState(lifeTester);
-}
-
-void IV_ScanUpdate(LifeTester_t *const lifeTester)
-{
-    StateMachineDispatcher(lifeTester);
-}
-
-static void ScanStep(LifeTester_t *const lifeTester, uint16_t dV)
-{
-    StateMachineDispatcher(lifeTester);
-}  
-#if 0
-void IV_ScanAndUpdate(LifeTester_t *const lifeTester,
-                      const uint16_t      startV,
-                      const uint16_t      finV,
-                      const uint16_t      dV)
-{
-    lifeTester->nextState = StateSetToScanVoltage;
-    // Only scan if we're not in an error state
-    if (lifeTester->error == ok)
-    {
-        // copy the initial voltage in case the new mpp can't be found
-        const uint32_t initV = lifeTester->data.vThis;
-        
-        pMax = 0U;
-        lifeTester->data.iScanSum = 0U;
-        lifeTester->timer = millis();
-        lifeTester->data.nReadsScan = 0U;
-
-        PrintScanHeader();
-
-        // Signal to user that IV is being scanned with led set to fast flash
-        lifeTester->led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
-
-        // Run IV scan - record initial and final powers for checking iv scan shape
-        lifeTester->data.vScan = startV;
-        uint32_t pInitial;
-        uint32_t pFinal;
-        
-        while((lifeTester->data.vScan <= finV) && (lifeTester->error == ok))
-        {
-            ScanStep(lifeTester, dV);
-            // record final and initial power too so we can check scan shape.
-            if (lifeTester->data.vScan == startV)
-            {
-                pInitial = lifeTester->data.iScan * lifeTester->data.vScan;
-            }
-            else if (lifeTester->data.vScan == finV)
-            {
-                pFinal = lifeTester->data.iScan * lifeTester->data.vScan;
-            }
-            else
-            {
-                // do nothing
-            }
-        }
-
-        // check that the scan is a hill shape
-        const bool scanShapeOk = (pInitial < pMax) && (pFinal < pMax);
-        lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
-        
-        // Check max is above required threshold for measurement to start
-        lifeTester->error =
-            (iMpp < THRESHOLD_CURRENT) ? currentThreshold : lifeTester->error;  
-
-        // Update v to max power point if there's no error otherwise set back to initial value.
-        lifeTester->data.vThis =
-            (lifeTester->error == ok) ? vMPP : initV;
-        // report max power point
-        PrintScanMpp(iMpp, vMPP, lifeTester->error);
-        // Now set Dac to MPP
-        DacSetOutputToThisVoltage(lifeTester);
-    }
-}
-#endif
-STATIC TimedEvent_t GetTimedEvent(LifeTester_t *const lifeTester)
-{
-    TimedEvent_t event;
-    const uint32_t settleTimeThisStart = TRACK_DELAY_TIME;
-    const uint32_t samplingThisStart = settleTimeThisStart + SETTLE_TIME;
-    const uint32_t settleTimeNextStart = samplingThisStart + SAMPLING_TIME;
-    const uint32_t samplingNextStart = settleTimeNextStart + SETTLE_TIME;
-    const uint32_t samplingNextFinish = samplingNextStart + SAMPLING_TIME;
-
-    const uint32_t tElapsed = millis() - lifeTester->timer;
-
-    if (tElapsed < settleTimeThisStart)
-    {
-        event = trackingDelay;
-    }
-    else if ((tElapsed >= settleTimeThisStart) && (tElapsed < samplingThisStart))
-    {
-        event = settleTimeThis;
-    }
-    else if ((tElapsed >= samplingThisStart) && (tElapsed < settleTimeNextStart))
-    {
-        event = samplingThis;
-    }
-    else if ((tElapsed >= settleTimeNextStart) && (tElapsed < samplingNextStart))
-    {
-        event = settleTimeNext;
-    }
-    else if ((tElapsed >= samplingNextStart) && (tElapsed < samplingNextFinish))
-    {
-        event = samplingNext;
-    }
-    else
-    {
-        event = done;
-    }
-    return event;
-
-}
-
-STATIC void StateWaitForTrackingDelay(LifeTester_t *const lifeTester)
-{
-    if (GetTimedEvent(lifeTester) == trackingDelay)
-    {
-        // Don't do anything. Just wait for time to expire.
-    }
-    else
-    {
-        lifeTester->nextState = StateSetToThisVoltage;
-    }
-}
-
-STATIC void StateSetToThisVoltage(LifeTester_t *const lifeTester)
-{
-    if (GetTimedEvent(lifeTester) == settleTimeThis)
-    {
-        DacSetOutputToThisVoltage(lifeTester);
-    }
-    else
-    {
-        lifeTester->nextState = StateSampleThisCurrent;
-    }
-}
-
-STATIC void StateSampleThisCurrent(LifeTester_t *const lifeTester)
-{
-    if (DacOutputSetToThisVoltage(lifeTester))
-    {
-        if (GetTimedEvent(lifeTester) == samplingThis)
-        {
-            lifeTester->data.iSampleSum += AdcReadLifeTesterCurrent(lifeTester);
-            lifeTester->data.nSamples++;
-        }
-        else
-        {
-            lifeTester->nextState = StateSetToNextVoltage;
-            // Average current
-            lifeTester->data.iThis =
-                lifeTester->data.iSampleSum / lifeTester->data.nSamples;
-            // Power
-            lifeTester->data.pThis = lifeTester->data.vThis * lifeTester->data.iThis; 
-        }
-
-    }
-    else  // dac wasn't set. Restart the measurement
-    {
-        ResetForNextMeasurement(lifeTester);
-    }
-}
-
-STATIC void StateSetToNextVoltage(LifeTester_t *const lifeTester)
-{
-    if (GetTimedEvent(lifeTester) == settleTimeNext)
-    {
-        lifeTester->data.vNext = lifeTester->data.vThis + DV_MPPT;
-        DacSetOutputToNextVoltage(lifeTester);
-    }
-    else
-    {
-        lifeTester->nextState = StateSampleNextCurrent;
-    }    
-}
-
-STATIC void StateSampleNextCurrent(LifeTester_t *const lifeTester)
-{
-    if (DacOutputSetToNextVoltage(lifeTester))
-    {
-        if (GetTimedEvent(lifeTester) == samplingNext)
-        {
-            lifeTester->data.iSampleSum += AdcReadLifeTesterCurrent(lifeTester);
-            lifeTester->data.nSamples++;
-        }
-        else
-        {
-            lifeTester->nextState = StateAnalyseMeasurement;
-            // Average the current
-            lifeTester->data.iNext =
-                lifeTester->data.iSampleSum / lifeTester->data.nSamples;
-            // calculate power
-            lifeTester->data.pNext = lifeTester->data.vNext * lifeTester->data.iNext;
-        }
-    }
-    else // dac wasn't set. Restart the measurement
-    {
-        ResetForNextMeasurement(lifeTester);
-    }
-}
-
-STATIC void StateAnalyseMeasurement(LifeTester_t *const lifeTester)
+STATIC void StateAnalyseTrackingMeasurement(LifeTester_t *const lifeTester)
 {
     if ((GetTimedEvent(lifeTester) == done)
         && (lifeTester->data.nSamples > 0U))  // Readings must have been taken
@@ -509,6 +457,14 @@ STATIC void StateError(LifeTester_t *const lifeTester)
     DacSetOutput(0U, lifeTester->io.dac);
 }
 
+/*
+ Calls the state function stored in the lifetester object.
+*/
+static void StateMachineDispatcher(LifeTester_t *const lifeTester)
+{
+    lifeTester->nextState(lifeTester);
+}
+
 void IV_MpptUpdate(LifeTester_t *const lifeTester)
 {
     if ((lifeTester->error != currentThreshold) && (lifeTester->data.nErrorReads < MAX_ERROR_READS))
@@ -521,4 +477,9 @@ void IV_MpptUpdate(LifeTester_t *const lifeTester)
         lifeTester->led.t(500,500);
         lifeTester->led.keepFlashing();
     }
+}
+
+void IV_ScanUpdate(LifeTester_t *const lifeTester)
+{
+    StateMachineDispatcher(lifeTester);
 }

@@ -14,7 +14,7 @@ typedef enum TimedEvent_e {
 } TimedEvent_t;
 
 STATIC TimedEvent_t GetTimedEvent(LifeTester_t *const lifeTester);
-STATIC void StateAnalyseMeasurement(LifeTester_t *const lifeTester);
+STATIC void StateAnalyseTrackingMeasurement(LifeTester_t *const lifeTester);
 STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester);
 STATIC void StateError(LifeTester_t *const lifeTester);
 STATIC void StateInitialise(LifeTester_t *const lifeTester);
