@@ -1,13 +1,13 @@
 #include "Arduino.h"
 #include "Config.h"
 #include "IoWrapper.h"
-#include "IV_Private.h"
 #include "LedFlash.h"
 #include "LifeTesterTypes.h"
-#include "IV.h"
 #include "Macros.h"
 #include "Print.h"
 #include <string.h> // memset
+#include "StateMachine.h"
+#include "StateMachine_Private.h"
 
 static void PrintError(errorCode_t error)
 {
@@ -59,28 +59,33 @@ static void PrintScanPoint(LifeTester_t const *const lifeTester)
 
 static void PrintScanHeader(void)
 {
-    DBG_PRINTLN("IV scan...");
+    DBG_PRINTLN("Scanning for MPP...");
     DBG_PRINTLN("V, I, P, error, channel");
 }
 
 static void PrintNewMpp(LifeTester_t const *const lifeTester)
 {
-        DBG_PRINT(lifeTester->data.vThis);
-        DBG_PRINT(", ");
-        DBG_PRINT(lifeTester->data.iThis);
-        DBG_PRINT(", ");
-        DBG_PRINT(lifeTester->data.pThis);
-        DBG_PRINT(", ");
-        DBG_PRINT(lifeTester->error);
-        DBG_PRINT(", ");
-        DBG_PRINT(analogRead(LIGHT_SENSOR_PIN));
-        DBG_PRINT(", ");
-        DBG_PRINT(TempReadDegC());
-        DBG_PRINT(", ");
-        DBG_PRINT(lifeTester->io.dac);
-        DBG_PRINTLN();
+    DBG_PRINT(lifeTester->data.vThis);
+    DBG_PRINT(", ");
+    DBG_PRINT(lifeTester->data.iThis);
+    DBG_PRINT(", ");
+    DBG_PRINT(lifeTester->data.pThis);
+    DBG_PRINT(", ");
+    DBG_PRINT(lifeTester->error);
+    DBG_PRINT(", ");
+    DBG_PRINT(analogRead(LIGHT_SENSOR_PIN));
+    DBG_PRINT(", ");
+    DBG_PRINT(TempReadDegC());
+    DBG_PRINT(", ");
+    DBG_PRINT(lifeTester->io.dac);
+    DBG_PRINTLN();
 }
 
+static void PrintMppHeader(void)
+{
+    DBG_PRINTLN("Tracking max power point...");
+    DBG_PRINTLN("DACx, ADCx, power, error, Light Sensor, T(C), channel");    
+}
 
 static void ResetTimer(LifeTester_t *const lifeTester)
 {
@@ -95,6 +100,40 @@ static void ResetForNextMeasurement(LifeTester_t *const lifeTester)
     ResetTimer(lifeTester);
     // Go back to initial state.
     lifeTester->nextState = StateWaitForTrackingDelay;
+}
+
+static void UpdateScanData(LifeTester_t *const lifeTester)
+{
+    LifeTesterData_t *const data = &lifeTester->data;
+    // Update max power and vMPP if we have found a maximum power point.
+    data->pScan = data->iScan * data->vScan;
+    if (data->pScan > data->pScanMpp)
+    {  
+        // printf("found a mpp!\n");
+        data->pScanMpp = data->iScan * data->vScan;
+        data->iScanMpp = data->iScan;
+        data->vScanMpp = data->vScan;
+    }  
+    // Store first and last powers to check scan shape. 
+    if (data->vScan == V_SCAN_MIN)
+    {
+        data->pScanInitial = data->iScan * data->vScan;
+    }
+    else if (data->vScan == V_SCAN_MAX)
+    {
+        data->pScanFinal = data->iScan * data->vScan;
+    }
+    else
+    {
+        // do nothing
+    }
+
+    PrintScanPoint(lifeTester);
+    // Reached the current limit - flag error which will stop scan
+    lifeTester->error =
+        (data->iScan >= MAX_CURRENT) ? currentLimit : ok;
+
+    data->vScan += DV_SCAN;  //move to the next point only if we've got this one ok.
 }
 
 
@@ -209,7 +248,6 @@ STATIC void StateSetToThisVoltage(LifeTester_t *const lifeTester)
         DacSetOutputToThisVoltage(lifeTester);
     }
 
-    lifeTester->data.iThis = 0U;
     lifeTester->data.iSampleSum = 0U;
     lifeTester->data.nSamples = 0U;
     lifeTester->nextState = StateSampleThisCurrent;
@@ -223,7 +261,6 @@ STATIC void StateSetToNextVoltage(LifeTester_t *const lifeTester)
         DacSetOutputToNextVoltage(lifeTester);
     }
 
-    lifeTester->data.iThis = 0U;
     lifeTester->data.iSampleSum = 0U;
     lifeTester->data.nSamples = 0U;
     lifeTester->nextState = StateSampleNextCurrent;
@@ -279,11 +316,18 @@ STATIC void StateSampleThisCurrent(LifeTester_t *const lifeTester)
         }
         else if (event == settleTimeNext)
         {
-            lifeTester->nextState = StateSetToNextVoltage;
-            // Average current
-            data->iThis = data->iSampleSum / data->nSamples;
-            // Power
-            data->pThis = data->vThis * data->iThis; 
+            if (data->nSamples > 0U)
+            {
+                lifeTester->nextState = StateSetToNextVoltage;
+                // Average current
+                data->iThis = data->iSampleSum / data->nSamples;
+                // Power
+                data->pThis = data->vThis * data->iThis; 
+            }
+            else
+            {
+                ResetForNextMeasurement(lifeTester);
+            }
         }
         else
         {
@@ -341,48 +385,19 @@ STATIC void StateSampleNextCurrent(LifeTester_t *const lifeTester)
 STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
-    const bool adcRead = (data->nSamples > 0U); 
 
-    if (adcRead)  // check that the adc has actually been read
+    if (data->nSamples > 0U)  // check that the adc has actually been read
     {
-        // printf("adc read.\n");
-        // Update max power and vMPP if we have found a maximum power point.
-        data->pScan = data->iScan * data->vScan;
-        if (data->pScan > data->pScanMpp)
-        {  
-            // printf("found a mpp!\n");
-            data->pScanMpp = data->iScan * data->vScan;
-            data->iScanMpp = data->iScan;
-            data->vScanMpp = data->vScan;
-        }  
-        // Store first and last powers to check scan shape. 
-        if (data->vScan == V_SCAN_MIN)
-        {
-            data->pScanInitial = data->iScan * data->vScan;
-        }
-        else if (data->vScan == V_SCAN_MAX)
-        {
-            data->pScanFinal = data->iScan * data->vScan;
-        }
-        else
-        {
-            // do nothing
-        }
-
-        PrintScanPoint(lifeTester);
-        // Reached the current limit - flag error which will stop scan
-        lifeTester->error =
-            (data->iScan >= MAX_CURRENT) ? currentLimit : ok;
-
-        data->vScan += DV_SCAN;  //move to the next point only if we've got this one ok.
+        UpdateScanData(lifeTester);   
     }
 
     /*Check whether the scan has finished or not. If so, check scan shape and 
     set tracking to the correct voltage. If not, then go to the next point.*/
     if (data->vScan <= V_SCAN_MAX)
     {
-        // restart measurement or go to next point
-        lifeTester->nextState = StateSetToScanVoltage;
+        // restart measurement or go to next point unless error
+        lifeTester->nextState =
+            (lifeTester->error == ok) ? StateSetToScanVoltage : StateError;
     } 
     else  // scan finished
     {
@@ -400,6 +415,7 @@ STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
         {
             data->vThis = data->vScanMpp;
             lifeTester->nextState = StateSetToThisVoltage;
+            PrintMppHeader();
         }
         else // error condition so go to error state
         {
@@ -425,11 +441,10 @@ STATIC void StateAnalyseTrackingMeasurement(LifeTester_t *const lifeTester)
             lifeTester->data.vThis -= DV_MPPT;
             lifeTester->led.stopAfter(1); //one flash
         }
-        
         //finished measurement now so do error detection
         if (lifeTester->data.iThis < MIN_CURRENT)
         {
-            lifeTester->error = lowCurrent;  //low power error
+            lifeTester->error = lowCurrent;  //low current error
             lifeTester->data.nErrorReads++;
         }
         else if (lifeTester->data.iThis >= MAX_CURRENT)
@@ -446,8 +461,16 @@ STATIC void StateAnalyseTrackingMeasurement(LifeTester_t *const lifeTester)
         PrintNewMpp(lifeTester);
 
     }
-    // Begin hill climbing algorithm again
-    ResetForNextMeasurement(lifeTester);
+
+    if (lifeTester->error == ok)
+    {
+        // Begin hill climbing algorithm again
+        ResetForNextMeasurement(lifeTester);
+    }
+    else
+    {
+        lifeTester->nextState = StateError;
+    }
 }
 
 STATIC void StateError(LifeTester_t *const lifeTester)
@@ -465,21 +488,12 @@ static void StateMachineDispatcher(LifeTester_t *const lifeTester)
     lifeTester->nextState(lifeTester);
 }
 
-void IV_MpptUpdate(LifeTester_t *const lifeTester)
-{
-    if ((lifeTester->error != currentThreshold) && (lifeTester->data.nErrorReads < MAX_ERROR_READS))
-    {
-        StateMachineDispatcher(lifeTester);
-    }
-
-    else //error condition - trigger LED
-    {
-        lifeTester->led.t(500,500);
-        lifeTester->led.keepFlashing();
-    }
-}
-
-void IV_ScanUpdate(LifeTester_t *const lifeTester)
+void StateMachine_Update(LifeTester_t *const lifeTester)
 {
     StateMachineDispatcher(lifeTester);
+}
+
+void StateMachine_Initialise(LifeTester_t *const lifeTester)
+{
+    lifeTester->nextState = StateInitialise;
 }
