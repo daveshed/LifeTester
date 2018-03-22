@@ -437,9 +437,34 @@ static void MocksForFailInitilise(LifeTester_t const *const lifeTester)
 
 static void MocksForSetDacToScanVoltage(LifeTester_t const *const lifeTester)
 {
-    mock().expectOneCall("DacSetOutput")
-        .withParameter("output", lifeTester->data.vScan)
-        .withParameter("channel", lifeTester->io.dac);
+    if (!DacOutputSetToScanVoltage(lifeTester))
+    {
+        mock().expectOneCall("DacSetOutput")
+            .withParameter("output", lifeTester->data.vScan)
+            .withParameter("channel", lifeTester->io.dac);
+    }
+    mock().expectOneCall("millis").andReturnValue(mockTime);   
+}
+
+static void MocksForSetDacToThisVoltage(LifeTester_t const *const lifeTester)
+{
+    if (!DacOutputSetToThisVoltage(lifeTester))
+    {
+        mock().expectOneCall("DacSetOutput")
+            .withParameter("output", lifeTester->data.vThis)
+            .withParameter("channel", lifeTester->io.dac);
+    }
+    mock().expectOneCall("millis").andReturnValue(mockTime);   
+}
+
+static void MocksForSetDacToNextVoltage(LifeTester_t const *const lifeTester)
+{
+    if (!DacOutputSetToNextVoltage(lifeTester))
+    {
+        mock().expectOneCall("DacSetOutput")
+            .withParameter("output", lifeTester->data.vNext)
+            .withParameter("channel", lifeTester->io.dac);
+    }
     mock().expectOneCall("millis").andReturnValue(mockTime);   
 }
 
@@ -504,7 +529,7 @@ TEST(IVTestGroup, UpdatingScanInSetDacStateSetsDacWhenNotSet)
 {
     const uint32_t tPrevious = 239348U;               // time last measurement was made 
     const uint32_t tElapsed = 10U;                    // time elapsed since
-                   mockTime = tPrevious + tElapsed;      // value to return from millis
+                   mockTime = tPrevious + tElapsed;   // value to return from millis
     const uint32_t vMock = 64U;                       // present scan voltage
 
     mockLifeTester->nextState = StateSetToScanVoltage;
@@ -538,7 +563,6 @@ TEST(IVTestGroup, UpdatingScanInSetDacStateSetsDacWhenNotSet)
 
     mock().checkExpectations();
 }
-
 /*
  Test that updating the state machine while in scanning mode does not set the dac
  again once already set. Timer should not be reset.
@@ -547,7 +571,7 @@ TEST(IVTestGroup, UpdatingScanInSetDacStateDoesNotSetDacWhenNotSet)
 {
     const uint32_t tPrevious = 239348U;               // time last measurement was made 
     const uint32_t tElapsed = 10U;                    // time elapsed since
-    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+                   mockTime = tPrevious + tElapsed;   // value to return from millis
     const uint32_t vMock = 64U;                       // present scan voltage
 
     mockLifeTester->nextState = StateSetToScanVoltage;
@@ -565,11 +589,12 @@ TEST(IVTestGroup, UpdatingScanInSetDacStateDoesNotSetDacWhenNotSet)
 
     // The dac should be set before the update is called
     CHECK(DacOutputSetToScanVoltage(mockLifeTester));    
+    MocksForSetDacToScanVoltage(mockLifeTester);
     StateMachine_Update(mockLifeTester);
     // mode expected to change
     POINTERS_EQUAL(StateSampleScanCurrent, mockLifeTester->nextState);    
     // no other data expected to change
-    MEMCMP_EQUAL(&lifeTesterExp, mockLifeTester, sizeof(LifeTester_t));
+    CHECK_EQUAL(mockTime, mockLifeTester->timer);
     // Dac should be set now.
     CHECK(DacOutputSetToScanVoltage(mockLifeTester));
 
@@ -843,11 +868,9 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
         // (1) Expect to set voltage during settle time if it isn't already
         POINTERS_EQUAL(StateSetToScanVoltage, mockLifeTester->nextState);
         // timer should be zeroed as soon as dac is set for the measurement
-        if (!DacOutputSetToScanVoltage(mockLifeTester))
-        {
-            MocksForSetDacToScanVoltage(mockLifeTester);
-            tPrevious = mockTime;
-        }
+        MocksForSetDacToScanVoltage(mockLifeTester);
+        // timer is reset every time the voltage is set.
+        tPrevious = mockTime;
         StateMachine_Update(mockLifeTester);
         CHECK(DacOutputSetToScanVoltage(mockLifeTester));
         CHECK_EQUAL(tPrevious, mockLifeTester->timer);
@@ -868,17 +891,22 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
         
         /*(3) Expect to do calculations and check the power point for new mpp
         Not expecting timer to be read here - only calculations*/
+        if (vExpect == V_SCAN_MAX)
+        {
+            /*expect timer to be updated at the end of the scan - reset into 
+            tracking delay.*/
+            mock().expectOneCall("millis").andReturnValue(mockTime);
+        }
         StateMachine_Update(mockLifeTester);
         vExpect += DV_SCAN;
 
         // printf("mock time = %u elapsed = %u\n", mockTime, mockTime - tPrevious);
-        mock().checkExpectations();
     }
     // Expect the result to be the calculated mpp.
     CHECK_EQUAL(mppCodeShockley, mockLifeTester->data.vScanMpp);
     CHECK_EQUAL(ok, mockLifeTester->error);    
-    // Should change mode to tracking with mpp
-    CHECK_EQUAL(StateSetToThisVoltage, mockLifeTester->nextState);
+    // Should change mode to tracking delay (first mpp track mode)
+    POINTERS_EQUAL(StateWaitForTrackingDelay, mockLifeTester->nextState);
     CHECK_EQUAL(mppCodeShockley, mockLifeTester->data.vThis);
     mock().checkExpectations();
 }
@@ -910,11 +938,9 @@ TEST(IVTestGroup, RunIvScanBadDiodeNoMppReturned)
         // (1) Expect to set voltage during settle time if it isn't already
         POINTERS_EQUAL(StateSetToScanVoltage, mockLifeTester->nextState);
         // timer should be zeroed as soon as dac is set for the measurement
-        if (!DacOutputSetToScanVoltage(mockLifeTester))
-        {
-            MocksForSetDacToScanVoltage(mockLifeTester);
-            tPrevious = mockTime;
-        }
+        MocksForSetDacToScanVoltage(mockLifeTester);
+        // timer is reset every time the voltage is set.
+        tPrevious = mockTime;
         StateMachine_Update(mockLifeTester);
         CHECK(DacOutputSetToScanVoltage(mockLifeTester));
         CHECK_EQUAL(tPrevious, mockLifeTester->timer);
@@ -943,7 +969,7 @@ TEST(IVTestGroup, RunIvScanBadDiodeNoMppReturned)
     }
     
     // Should change mode error state
-    CHECK_EQUAL(StateError, mockLifeTester->nextState);
+    POINTERS_EQUAL(StateError, mockLifeTester->nextState);
     CHECK_EQUAL(invalidScan, mockLifeTester->error)
     mock().checkExpectations();
 }
@@ -954,7 +980,6 @@ TEST(IVTestGroup, RunIvScanBadDiodeNoMppReturned)
 */
 TEST(IVTestGroup, UpdateMppDuringTrackDelayTime)
 {
-
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
     const uint32_t tElapsed = 10U;                    // time elapsed since
     const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
@@ -981,7 +1006,7 @@ TEST(IVTestGroup, UpdateMppDuringSettleTimeForThisPoint)
 {
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
     const uint32_t tElapsed = TRACK_DELAY_TIME + 10U; // time elapsed since
-    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+                   mockTime = tPrevious + tElapsed;   // value to return from millis
     const uint32_t vMock = 43U;
 
     mockLifeTester->data.vThis = vMock;
@@ -992,10 +1017,10 @@ TEST(IVTestGroup, UpdateMppDuringSettleTimeForThisPoint)
     CHECK(!DacOutputSetToThisVoltage(mockLifeTester));
 
     // Therefore expect dac to be set
-    mock().expectOneCall("DacSetOutput")
-        .withParameter("output", vMock)
-        .withParameter("channel", mockLifeTester->io.dac);
-
+    // mock().expectOneCall("DacSetOutput")
+    //     .withParameter("output", vMock)
+    //     .withParameter("channel", mockLifeTester->io.dac);
+    MocksForSetDacToThisVoltage(mockLifeTester);
     StateMachine_Update(mockLifeTester);
     CHECK(DacOutputSetToThisVoltage(mockLifeTester));
     POINTERS_EQUAL(StateSampleThisCurrent, mockLifeTester->nextState);
@@ -1010,9 +1035,8 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPoint)
 {
 
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
-    const uint32_t tElapsed = TRACK_DELAY_TIME
-                              + SETTLE_TIME +  10U;   // time elapsed since
-    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+    const uint32_t tElapsed =  SETTLE_TIME + 10U;     // time elapsed since
+                   mockTime = tPrevious + tElapsed;   // value to return from millis
     const uint32_t vMock = 47U;                       // voltage at current op point
     
     mockLifeTester->data.vThis = vMock;
@@ -1028,7 +1052,7 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPoint)
     mock().enable();
 
     // Check time. millis should return time within sampling time window
-    mock().expectOneCall("millis").andReturnValue(tMock);
+    mock().expectOneCall("millis").andReturnValue(mockTime);
     // Expect call to adc since we're in the current sampling window
     const uint16_t iMock = TestGetAdcCodeForDiode(vMock);
     mock().expectOneCall("AdcReadData")
@@ -1036,14 +1060,11 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPoint)
         .andReturnValue(iMock);
 
     // Call function under test
-    LifeTester_t lifeTesterActual = *mockLifeTester;
-    StateMachine_Update(&lifeTesterActual);
+    StateMachine_Update(mockLifeTester);
 
     // expect the current and number of readings to be updated only
-    LifeTester_t lifeTesterExpected = *mockLifeTester;
-    lifeTesterExpected.data.iSampleSum = iMock;
-    lifeTesterExpected.data.nSamples++;
-    MEMCMP_EQUAL(&lifeTesterExpected, &lifeTesterActual, sizeof(LifeTester_t));
+    CHECK_EQUAL(iMock, mockLifeTester->data.iSampleSum);
+    CHECK_EQUAL(1U, mockLifeTester->data.nSamples);
     mock().checkExpectations();
 }
 
@@ -1094,10 +1115,8 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPointDacNotSet)
 TEST(IVTestGroup, UpdateMppDuringSettleTimeForNextPoint)
 {
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
-    const uint32_t tElapsed = TRACK_DELAY_TIME
-                              + SETTLE_TIME
-                              + SAMPLING_TIME + 10U;  // time elapsed since
-    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+    const uint32_t tElapsed = SETTLE_TIME + 10U;
+                   mockTime = tPrevious + tElapsed;   // value to return from millis
     const uint32_t vMock = 43U;
 
     mockLifeTester->data.vThis = vMock;
@@ -1105,12 +1124,7 @@ TEST(IVTestGroup, UpdateMppDuringSettleTimeForNextPoint)
     mockLifeTester->timer = tPrevious;
     mockLifeTester->nextState = StateSetToNextVoltage;
 
-    // Expect dac to be set as it isn't already.
-    CHECK(!DacOutputSetToNextVoltage(mockLifeTester));
-    mock().expectOneCall("DacSetOutput")
-        .withParameter("output", vMock + DV_MPPT)
-        .withParameter("channel", mockLifeTester->io.dac);
-
+    MocksForSetDacToNextVoltage(mockLifeTester);
     StateMachine_Update(mockLifeTester);
     CHECK(DacOutputSetToNextVoltage(mockLifeTester));
     POINTERS_EQUAL(StateSampleNextCurrent, mockLifeTester->nextState);
@@ -1125,10 +1139,8 @@ TEST(IVTestGroup, UpdateMppDuringSettleTimeForNextPoint)
 TEST(IVTestGroup, UpdateMppDuringSamplingTimeForNextPoint)
 {
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
-    const uint32_t tElapsed = TRACK_DELAY_TIME        // set elapsed time to next sample window
-                              + (2 * SETTLE_TIME)
-                              + SAMPLING_TIME + 10U;  
-    uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+    const uint32_t tElapsed = SETTLE_TIME + 10U;      // set elapsed time to next sample window
+    uint32_t tMock = tPrevious + tElapsed;            // value to return from millis
     const uint32_t vMock = 47U;                       // voltage at current op point
 
     mockLifeTester->data.vNext = vMock + DV_MPPT;
@@ -1208,8 +1220,6 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsIncreaseVoltage)
     mockLifeTester->nextState = StateAnalyseTrackingMeasurement;
 
     CHECK(mockLifeTester->data.pNext > mockLifeTester->data.pThis);
-    // Check time. millis should return time within sampling time window
-    mock().expectOneCall("millis").andReturnValue(tMock);
     // Expect call to change led state - indicates increase in voltage
     mock().expectOneCall("Flasher::stopAfter")
         .withParameter("n", 2);
@@ -1261,7 +1271,6 @@ TEST(IVTestGroup, UpdateMppAfterMeasurementsDecreaseVoltage)
 
     CHECK(mockLifeTester->data.pNext < mockLifeTester->data.pThis);
     // Check time. millis should return time within sampling time window
-    mock().expectOneCall("millis").andReturnValue(tMock);
     // Expect call to change led state - indicates decrease in voltage
     mock().expectOneCall("Flasher::stopAfter")
         .withParameter("n", 1);
@@ -1289,16 +1298,17 @@ TEST(IVTestGroup, IndividualStateTransitionsFromTrackingDelayOnwards)
 {
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
     const uint32_t tElapsed = TRACK_DELAY_TIME + 1U;  // set elapsed time in settle time
-    uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+                   mockTime = tPrevious + tElapsed;      // value to return from millis
 
     const uint32_t vMock = 4U;
 
     mockLifeTester->timer = tPrevious;
     mockLifeTester->nextState = StateWaitForTrackingDelay;
     mockLifeTester->data.vThis = vMock;
+    mockLifeTester->data.vNext = vMock + DV_MPPT;
 
     // Time checked by update function
-    mock().expectOneCall("millis").andReturnValue(tMock);
+    mock().expectOneCall("millis").andReturnValue(mockTime);
     // Call function under test
     StateMachine_Update(mockLifeTester);
     // Expect change in state because time exceeds tracking delay
@@ -1307,19 +1317,16 @@ TEST(IVTestGroup, IndividualStateTransitionsFromTrackingDelayOnwards)
     be set once before transition to sampling mode*/
     CHECK(!DacOutputSetToThisVoltage(mockLifeTester));
     CHECK_EQUAL(ok, mockLifeTester->error);
-    mock().expectOneCall("DacSetOutput")
-        .withParameter("output", vMock)
-        .withParameter("channel", mockLifeTester->io.dac);
+    MocksForSetDacToThisVoltage(mockLifeTester);
     StateMachine_Update(mockLifeTester);
     CHECK(DacOutputSetToThisVoltage(mockLifeTester));
     POINTERS_EQUAL(StateSampleThisCurrent, mockLifeTester->nextState);
-
     /*Update again in the sampling window. Expect current to be measured but no
     transition should happen*/
-    tMock += SETTLE_TIME;
+    mockTime += SETTLE_TIME;
     CHECK(DacOutputSetToThisVoltage(mockLifeTester));
     CHECK_EQUAL(ok, mockLifeTester->error);
-    mock().expectOneCall("millis").andReturnValue(tMock);    
+    mock().expectOneCall("millis").andReturnValue(mockTime);    
     mock().expectOneCall("AdcReadData")
         .withParameter("channel", mockLifeTester->io.adc)
         .andReturnValue(3245U);
@@ -1327,24 +1334,22 @@ TEST(IVTestGroup, IndividualStateTransitionsFromTrackingDelayOnwards)
     POINTERS_EQUAL(StateSampleThisCurrent, mockLifeTester->nextState);
 
     /* Increment time into the second settle time. Expect transition. */
-    tMock += SAMPLING_TIME;
-    mock().expectOneCall("millis").andReturnValue(tMock);
+    mockTime += SAMPLING_TIME;
+    mock().expectOneCall("millis").andReturnValue(mockTime);
     StateMachine_Update(mockLifeTester);
     POINTERS_EQUAL(StateSetToNextVoltage, mockLifeTester->nextState);
 
     /* Expect the voltage to be set to the next point amd for state to change */
     CHECK(!DacOutputSetToNextVoltage(mockLifeTester));
     CHECK_EQUAL(ok, mockLifeTester->error);
-    mock().expectOneCall("DacSetOutput")
-        .withParameter("output", vMock + DV_MPPT)
-        .withParameter("channel", mockLifeTester->io.dac);
+    MocksForSetDacToNextVoltage(mockLifeTester);
     StateMachine_Update(mockLifeTester);
     CHECK(DacOutputSetToNextVoltage(mockLifeTester));
     POINTERS_EQUAL(StateSampleNextCurrent, mockLifeTester->nextState);
 
     /* Increment timer again into the next sampling window. */
-    tMock += SETTLE_TIME;
-    mock().expectOneCall("millis").andReturnValue(tMock);    
+    mockTime += SETTLE_TIME;
+    mock().expectOneCall("millis").andReturnValue(mockTime);    
     mock().expectOneCall("AdcReadData")
         .withParameter("channel", mockLifeTester->io.adc)
         .andReturnValue(3245U);
@@ -1353,23 +1358,20 @@ TEST(IVTestGroup, IndividualStateTransitionsFromTrackingDelayOnwards)
     POINTERS_EQUAL(StateSampleNextCurrent, mockLifeTester->nextState);
 
     /* Sampling done. Expect transition to measurement analysis */
-    tMock += SAMPLING_TIME;
-    mock().expectOneCall("millis").andReturnValue(tMock);
+    mockTime += SAMPLING_TIME;
+    mock().expectOneCall("millis").andReturnValue(mockTime);
     StateMachine_Update(mockLifeTester);
     CHECK_EQUAL(ok, mockLifeTester->error);
     POINTERS_EQUAL(StateAnalyseTrackingMeasurement, mockLifeTester->nextState);
 
     /* Updating again should restart the whole measurement process */
-    mock().expectOneCall("millis").andReturnValue(tMock);
     // two led flashes requested since power has increased
     mock().expectOneCall("Flasher::stopAfter")
         .withParameter("n", 2);
     // second call expected when timer is reset
-    mock().expectOneCall("millis").andReturnValue(tMock);
-
+    mock().expectOneCall("millis").andReturnValue(mockTime);
     StateMachine_Update(mockLifeTester);
     CHECK_EQUAL(ok, mockLifeTester->error);
     POINTERS_EQUAL(StateWaitForTrackingDelay, mockLifeTester->nextState);
-
     mock().checkExpectations();
 }
