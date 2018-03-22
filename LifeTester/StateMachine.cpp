@@ -488,12 +488,12 @@ static void StateMachineDispatcher(LifeTester_t *const lifeTester)
     lifeTester->nextState(lifeTester);
 }
 
-void StateMachine_Update(LifeTester_t *const lifeTester)
-{
-    StateMachineDispatcher(lifeTester);
-}
-
 void StateMachine_Initialise(LifeTester_t *const lifeTester)
 {
     lifeTester->nextState = StateInitialise;
+}
+
+void StateMachine_Update(LifeTester_t *const lifeTester)
+{
+    StateMachineDispatcher(lifeTester);
 }
