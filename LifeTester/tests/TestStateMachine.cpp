@@ -1064,17 +1064,92 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPoint)
 }
 
 /*
- Test for updating mpp during sampling time window. The adc should not be read.
- Instead the dac output should be checked and when found not to be correct, the 
- measurement should be reset.
+ Test for updating mpp before during sampling time window. Timer should be checked
+ The adc should not be read and state will stay the same ready for the next update.
+*/
+TEST(IVTestGroup, UpdateMppInSampleThisCurrentStateBeforeSampleTime)
+{
+    const uint32_t tPrevious = 239348U;               // last time mpp was updated 
+    const uint32_t tElapsed = SETTLE_TIME - 10U;      // time elapsed since
+                   mockTime = tPrevious + tElapsed;   // value to return from millis
+    const uint32_t vMock = 47U;                       // voltage at current op point
+    mockLifeTester->data.vThis = vMock;
+    mockLifeTester->timer = tPrevious;
+    mockLifeTester->nextState = StateSampleThisCurrent;
+    /*Ensure that the dac is set before updating. The state machine should 
+    realise this and change mode accordingly.*/
+    mock().disable();
+    DacSetOutputToThisVoltage(mockLifeTester);
+    CHECK(DacOutputSetToThisVoltage(mockLifeTester));
+    mock().enable();
+    CHECK_EQUAL(0U, mockLifeTester->data.nSamples);
+    CHECK_EQUAL(0U, mockLifeTester->data.iSampleSum);
+    CHECK_EQUAL(0U, mockLifeTester->data.iThis);
+    
+    /* Expect a call to millis. Function will check whether a measurement is due.
+    Do not expect any calls to read the adc. */
+    mock().expectOneCall("millis").andReturnValue(mockTime);
+    StateMachine_Update(mockLifeTester);
+    
+    // Measurements shouldn't change.
+    CHECK_EQUAL(0U, mockLifeTester->data.nSamples);
+    CHECK_EQUAL(0U, mockLifeTester->data.iSampleSum);
+    CHECK_EQUAL(0U, mockLifeTester->data.iThis);
+    // expect the timer and mode to stay the same
+    CHECK_EQUAL(tPrevious, mockLifeTester->timer);
+    POINTERS_EQUAL(StateSampleThisCurrent, mockLifeTester->nextState);
+    mock().checkExpectations();
+}
+
+/*
+ Test for updating mpp after sampling time window. Adc hasn't been sampled but
+ the dac has been set. Expect timer to be reset and to stay in sample this
+ current mode.
+*/
+TEST(IVTestGroup, UpdateMppInSampleThisCurrentAfterSampleWindowAdcNotRead)
+{
+    const uint32_t tPrevious = 239348U;               // last time mpp was updated 
+    const uint32_t tElapsed = SETTLE_TIME + SAMPLING_TIME + 10U;
+                   mockTime = tPrevious + tElapsed;   // value to return from millis
+    const uint32_t vMock = 47U;                       // voltage at current op point
+    mockLifeTester->data.vThis = vMock;
+    mockLifeTester->timer = tPrevious;
+    mockLifeTester->nextState = StateSampleThisCurrent;
+    /*Ensure that the dac is set before updating. The state machine should 
+    realise this and change mode accordingly.*/
+    mock().disable();
+    DacSetOutputToThisVoltage(mockLifeTester);
+    CHECK(DacOutputSetToThisVoltage(mockLifeTester));
+    mock().enable();
+    CHECK_EQUAL(0U, mockLifeTester->data.nSamples);
+    CHECK_EQUAL(0U, mockLifeTester->data.iSampleSum);
+    CHECK_EQUAL(0U, mockLifeTester->data.iThis);
+    
+    /* Expect a call to millis. Function will check whether a measurement is due.
+    Do not expect any calls to read the adc. */
+    mock().expectOneCall("millis").andReturnValue(mockTime);
+    StateMachine_Update(mockLifeTester);
+    
+    // Measurements shouldn't change.
+    CHECK_EQUAL(0U, mockLifeTester->data.nSamples);
+    CHECK_EQUAL(0U, mockLifeTester->data.iSampleSum);
+    CHECK_EQUAL(0U, mockLifeTester->data.iThis);
+    // expect the timer to be reset and mode to stay the same
+    CHECK_EQUAL(mockTime, mockLifeTester->timer);
+    POINTERS_EQUAL(StateSampleThisCurrent, mockLifeTester->nextState);
+    mock().checkExpectations();
+}
+
+/*
+ Test for updating mpp before sampling time window. The adc should not be read.
+ Expect millis to be called and for mode to stay the same.
 */
 TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPointDacNotSet)
 {
 
     const uint32_t tPrevious = 239348U;               // last time mpp was updated 
-    const uint32_t tElapsed = TRACK_DELAY_TIME
-                              + SETTLE_TIME +  10U;   // time elapsed since
-    const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
+    const uint32_t tElapsed = SETTLE_TIME + SAMPLING_TIME - 10U;
+                   mockTime = tPrevious + tElapsed;   // value to return from millis
     const uint32_t vMock = 47U;                       // voltage at current op point
     
     mockLifeTester->data.vThis = vMock;
@@ -1088,17 +1163,14 @@ TEST(IVTestGroup, UpdateMppDuringSamplingTimeForThisPointDacNotSet)
     CHECK(!DacOutputSetToThisVoltage(mockLifeTester));
     mock().enable();
 
-    // Check time. millis should return time within sampling time window
-    mock().expectOneCall("millis").andReturnValue(tMock);
+    // Check time - timer should be restarted. Expect call to millis.
+    mock().expectOneCall("millis").andReturnValue(mockTime);
     // Call function under test
-    LifeTester_t lifeTesterActual = *mockLifeTester;
-    StateMachine_Update(&lifeTesterActual);
+    StateMachine_Update(mockLifeTester);
 
     // expect the timer to be updated and mode to change
-    LifeTester_t lifeTesterExpected = *mockLifeTester;
-    lifeTesterExpected.timer = tMock;
-    lifeTesterExpected.nextState = StateWaitForTrackingDelay;
-    MEMCMP_EQUAL(&lifeTesterExpected, &lifeTesterActual, sizeof(LifeTester_t));
+    CHECK_EQUAL(mockTime, mockLifeTester->timer);
+    POINTERS_EQUAL(StateSampleThisCurrent, mockLifeTester->nextState);
     mock().checkExpectations();
 }
 

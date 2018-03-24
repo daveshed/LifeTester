@@ -261,47 +261,49 @@ STATIC void StateSampleThisCurrent(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
 
-    if (DacOutputSetToThisVoltage(lifeTester))
+    const uint32_t tPresent = millis();
+    const uint32_t tElapsed = tPresent - lifeTester->timer;
+    const bool     readAdc = (tElapsed >= SETTLE_TIME)
+                             && (tElapsed < (SETTLE_TIME + SAMPLING_TIME));
+    const bool     samplingDone = (tElapsed >= (SETTLE_TIME + SAMPLING_TIME));
+    const bool     adcRead = (data->nSamples > 0U);
+    const bool     dacSet = DacOutputSetToThisVoltage(lifeTester); 
+
+    if (!dacSet)
     {
-        const uint32_t tPresent = millis();
-        const uint32_t tElapsed = tPresent - lifeTester->timer;
-        
-        if (tElapsed >= SETTLE_TIME)
+        data->nSamples = 0U;
+        data->iSampleSum = 0U;
+        lifeTester->timer = tPresent;
+    }
+    else if (readAdc)
+    {
+        printf("Sampling this current\n");
+        data->iSampleSum += AdcReadLifeTesterCurrent(lifeTester);
+        data->nSamples++;
+    }
+    else if (samplingDone)
+    {
+        if (adcRead)
         {
-            if (tElapsed >= (SETTLE_TIME + SAMPLING_TIME))
-            {
-                if (data->nSamples > 0U)
-                {
-                    lifeTester->nextState = StateSetToNextVoltage;
-                    lifeTester->timer = tPresent;
-                    // Average current
-                    data->iThis = data->iSampleSum / data->nSamples;
-                    // Calculate Power
-                    data->pThis = data->vThis * data->iThis; 
-                }
-                else
-                {
-                    // no measurements taken so restart
-                    ResetForNextMeasurement(lifeTester);
-                }
-            }
-            else
-            {
-                printf("Sampling this current\n");
-                data->iSampleSum += AdcReadLifeTesterCurrent(lifeTester);
-                data->nSamples++;
-            }
+            lifeTester->nextState = StateSetToNextVoltage;
+            lifeTester->timer = tPresent;
+            // Average current
+            data->iThis = data->iSampleSum / data->nSamples;
+            // Calculate Power
+            data->pThis = data->vThis * data->iThis; 
         }
         else
         {
-            /* Do nothing. Just go leave update. More time elapses and then 
-            when update is called, the next state will change.*/
+            // no measurements taken so restart
+            data->nSamples = 0U;
+            data->iSampleSum = 0U;
+            lifeTester->timer = tPresent;
         }
-
     }
-    else  // dac wasn't set. Restart the measurement
+    else
     {
-        ResetForNextMeasurement(lifeTester);
+        /* Do nothing. Just leave update. More time elapses and then 
+        when update is called, the next state will change.*/
     }
 }
 
