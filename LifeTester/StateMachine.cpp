@@ -246,7 +246,6 @@ STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
                 lifeTester->data.iSampleSum += AdcReadLifeTesterCurrent(lifeTester);
                 lifeTester->data.nSamples++;
                 lifeTester->data.iScan = lifeTester->data.iSampleSum / lifeTester->data.nSamples;
-                
             }
         }
     }
