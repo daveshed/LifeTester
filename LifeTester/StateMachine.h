@@ -19,6 +19,8 @@
  */
 void StateMachine_Update(LifeTester_t *const lifeTester);
 
+void StateMachine_UpdateStep(LifeTester_t *const lifeTester);
+
 /*
  Initialises the lifetester by setting to the initialise state.
 */

@@ -24,3 +24,23 @@ STATIC void StateSetToNextVoltage(LifeTester_t *const lifeTester);
 STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester);
 STATIC void StateSetToThisVoltage(LifeTester_t *const lifeTester);
 STATIC void StateWaitForTrackingDelay(LifeTester_t *const lifeTester);
+
+STATIC void StateMachineTransitionToState(LifeTester_t *const lifeTester,
+                                          LifeTesterState_t targetState);
+
+STATIC void MeasureThisDataPointEntryFn(LifeTester_t *const lifeTester);
+STATIC void MeasureDataPointStepFn(LifeTester_t *const lifeTester);
+STATIC void MeasureThisDataPointExitFn(LifeTester_t *const lifeTester);
+
+// Private state definitions
+static const LifeTesterState_t StateMeasureThisDataPoint = {
+    .entry = MeasureThisDataPointEntryFn,
+    .step = MeasureDataPointStepFn,
+    .exit = MeasureThisDataPointExitFn
+};
+// not implemented yet
+static const LifeTesterState_t StateMeasureNextDataPoint = {
+    .entry = NULL,
+    .step = NULL,
+    .exit = NULL
+};

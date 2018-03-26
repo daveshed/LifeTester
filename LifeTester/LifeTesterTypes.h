@@ -27,22 +27,25 @@ typedef enum errorCode_e {
  comparison in mpp tracking.
 */
 typedef struct LifeTesterData_s {
-    uint32_t vThis;       // voltage of operating point (dac code)
-    uint32_t vNext;       // voltage of the neighbouring point
-    uint32_t vScan;       // voltage of point being scanned
-    uint32_t vScanMpp;    // max power point measured in scan
+    uint8_t vThis;       // voltage of operating point (dac code)
+    uint8_t vNext;       // voltage of the neighbouring point
+    uint8_t vScan;       // voltage of point being scanned
+    uint8_t *vActive;    // voltage for point currently being measured
+    uint8_t vScanMpp;    // max power point measured in scan
     
     uint32_t pThis;       // power at this point
     uint32_t pNext;       // power at neighbouring point
     uint32_t pScan;       // power at point being scanned
+    uint32_t *pActive;    // power for point currently being measured.
     uint32_t pScanInitial;// power associated with first point
     uint32_t pScanFinal;  // ...and the last one (for checking scan shape)
     uint32_t pScanMpp;    // max power measured from scan
 
-    uint32_t iThis;       // average current from current samples at this point
-    uint32_t iNext;
-    uint32_t iScan;
-    uint32_t iScanMpp;
+    uint16_t iThis;       // average current from current samples at this point
+    uint16_t iNext;
+    uint16_t iScan;
+    uint16_t *iActive;    // current for the point being measured
+    uint16_t iScanMpp;
     uint32_t iSampleSum;  // sum of all currents measured during sampling window
     
     uint16_t nSamples;    // counting number of readings taken by ADC during sampling window
@@ -63,6 +66,13 @@ typedef struct LifeTesterIo_s {
 struct LifeTester_s;
 typedef void StateFn_t(struct LifeTester_s *const);
 
+// State is contained in a set of function pointers
+typedef struct LifeTesterState_s {
+    StateFn_t *entry;
+    StateFn_t *step;
+    StateFn_t *exit;
+} LifeTesterState_t;
+
 /*
  Combined lifetester state and data type.
 */
@@ -70,9 +80,10 @@ struct LifeTester_s {
     LifeTesterIo_t    io;
     Flasher           led;
     LifeTesterData_t  data;
-    StateFn_t         *nextState;
+    StateFn_t         *state;
     uint32_t          timer;     //timer for tracking loop
     errorCode_t       error;          
+    LifeTesterState_t currentState;
 };
 typedef LifeTester_s LifeTester_t;
 
