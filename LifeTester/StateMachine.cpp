@@ -9,7 +9,7 @@
 #include "StateMachine.h"
 #include "StateMachine_Private.h"
 
-static void PrintError(errorCode_t error)
+static void PrintError(ErrorCode_t error)
 {
     switch(error)
     {
@@ -342,7 +342,7 @@ STATIC void StateSampleThisCurrent(LifeTester_t *const lifeTester)
     }
 }
 
-STATIC void MeasureDataPointStepFn(LifeTester_t *const lifeTester)
+STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
 
@@ -352,12 +352,13 @@ STATIC void MeasureDataPointStepFn(LifeTester_t *const lifeTester)
                              && (tElapsed < (SETTLE_TIME + SAMPLING_TIME));
     const bool     samplingDone = (tElapsed >= (SETTLE_TIME + SAMPLING_TIME));
     const bool     adcRead = (data->nSamples > 0U);
-    const bool     dacSet = (DacGetOutput(lifeTester) == *lifeTester->data.vActive); 
+    const bool     dacSet = (DacGetOutput(lifeTester) == *(lifeTester->data.vActive)); 
 
     if (!dacSet)
     {
+        printf("Dac not set\n");
         // Exit and reenter this function - calls dac set again.
-        StateMachineTransitionToState(lifeTester, StateMeasureThisDataPoint);
+        StateMachineTransitionOnEvent(lifeTester, DacNotSet);
     }
     else if (readAdc)
     {
@@ -369,11 +370,12 @@ STATIC void MeasureDataPointStepFn(LifeTester_t *const lifeTester)
     {
         if (adcRead)
         {
-            StateMachineTransitionToState(lifeTester, StateMeasureNextDataPoint);
             // Average current
             *data->iActive = data->iSampleSum / data->nSamples;
             // Calculate Power
-            *data->pActive = data->vThis * data->iThis; 
+            *data->pActive = *data->vActive * *data->iActive; 
+            // Transition at the end
+            StateMachineTransitionOnEvent(lifeTester, MeasurementDone);
         }
         else
         {
@@ -390,7 +392,7 @@ STATIC void MeasureDataPointStepFn(LifeTester_t *const lifeTester)
     }
 }
 
-STATIC void MeasureThisDataPointEntryFn(LifeTester_t *const lifeTester)
+STATIC void MeasureThisDataPointEntry(LifeTester_t *const lifeTester)
 {
     ActivateThisMeasurement(lifeTester);
     uint8_t vActive = *lifeTester->data.vActive;
@@ -405,9 +407,20 @@ STATIC void MeasureThisDataPointEntryFn(LifeTester_t *const lifeTester)
     lifeTester->timer = millis();
 }
 
-STATIC void MeasureThisDataPointExitFn(LifeTester_t *const lifeTester)
+STATIC void MeasureNextDataPointEntry(LifeTester_t *const lifeTester)
 {
-    // Nothing to do here - set pointer to null in definition.
+    lifeTester->data.vNext = lifeTester->data.vThis + DV_MPPT;
+    ActivateNextMeasurement(lifeTester);
+    uint8_t vActive = *lifeTester->data.vActive;
+    if (DacGetOutput(lifeTester) != vActive)
+    {
+        DacSetOutput(vActive, lifeTester->io.dac);
+    }
+
+    lifeTester->data.iSampleSum = 0U;
+    lifeTester->data.nSamples = 0U;
+    lifeTester->state = StateSampleThisCurrent;
+    lifeTester->timer = millis();
 }
 
 
@@ -582,6 +595,17 @@ STATIC void StateMachineTransitionToState(LifeTester_t *const lifeTester,
     }
     // Finally transition is done. Update copy of the current state.
     lifeTester->currentState = targetState;
+}
+
+static LifeTesterState_t GetTargetState(LifeTester_t *const lifeTester, Event_t e)
+{
+    return StateTransitionTable[lifeTester->currentState.idx][e];
+}
+
+static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
+                                          Event_t e)
+{
+    StateMachineTransitionToState(lifeTester, GetTargetState(lifeTester, e));
 }
 
 void StateMachine_Initialise(LifeTester_t *const lifeTester)

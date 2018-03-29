@@ -13,13 +13,13 @@ extern "C"
 /*
  Table of error types in the lifetester system.
 */
-typedef enum errorCode_e {
+typedef enum ErrorCode_e {
     ok,               // everything ok
     lowCurrent,       // low current error
     currentLimit,     // reached current limit during scan
     currentThreshold, // currrent threshold required for measurement not reached
     invalidScan       // scan is the wrong shape
-} errorCode_t;
+} ErrorCode_t;
 
 /*
  Measurements that the lifetester may take on a given channel. Note that this
@@ -66,11 +66,32 @@ typedef struct LifeTesterIo_s {
 struct LifeTester_s;
 typedef void StateFn_t(struct LifeTester_s *const);
 
+typedef enum Event_e {
+    None,
+    DacNotSet,
+    MeasurementDone,
+    ScanningDone,
+    ErrorEvent,
+    MaxNumEvents
+} Event_t;
+
+typedef enum StateIdx_e {
+    NoState,
+    Initialising,
+    TrackingThis,
+    TrackingNext,
+    Scanning,
+    ErrorState,
+    MaxNumStates,
+} StateIdx_t;
+
 // State is contained in a set of function pointers
 typedef struct LifeTesterState_s {
-    StateFn_t *entry;
-    StateFn_t *step;
-    StateFn_t *exit;
+    StateFn_t   *entry;
+    StateFn_t   *step;
+    StateFn_t   *exit;
+    StateIdx_t  idx;
+    char        label[30];  // name for debugging
 } LifeTesterState_t;
 
 /*
@@ -82,7 +103,7 @@ struct LifeTester_s {
     LifeTesterData_t  data;
     StateFn_t         *state;
     uint32_t          timer;     //timer for tracking loop
-    errorCode_t       error;          
+    ErrorCode_t       error;          
     LifeTesterState_t currentState;
 };
 typedef LifeTester_s LifeTester_t;
