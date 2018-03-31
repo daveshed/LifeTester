@@ -22,6 +22,11 @@ void DacInit(void)
     MCP4802_Init(DAC_CS_PIN);
 }
 
+void DacSetOutputToActiveVoltage(LifeTester_t const *const lifeTester)
+{
+    DacSetOutput(*lifeTester->data.vActive, lifeTester->io.dac);
+}
+
 void DacSetOutputToThisVoltage(LifeTester_t const *const lifeTester)
 {
     DacSetOutput(lifeTester->data.vThis, lifeTester->io.dac);
@@ -55,6 +60,11 @@ uint8_t DacGetOutput(LifeTester_t const *const lifeTester)
 {
     const chSelect_t ch = lifeTester->io.dac;
     return dacOutput[ch];
+}
+
+bool DacOutputSetToActiveVoltage(LifeTester_t const *const lifeTester)
+{
+    return (DacGetOutput(lifeTester) == *(lifeTester->data.vActive));
 }
 
 bool DacOutputSetToThisVoltage(LifeTester_t const *const lifeTester)

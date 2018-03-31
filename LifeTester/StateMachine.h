@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include "LifeTesterTypes.h"
 
+void StateMachine_Reset(LifeTester_t *const lifeTester);
+
 /*
  Function to find MPP by scanning over voltages. Updates v to the MPP. 
  also pass in DAC and LifeTester objects.

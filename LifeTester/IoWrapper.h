@@ -12,11 +12,13 @@ extern "C"
 #include <stdbool.h>
 
 void DacInit(void);
+void DacSetOutputToActiveVoltage(LifeTester_t const *const lifeTester);
 void DacSetOutputToThisVoltage(LifeTester_t const *const lifeTester);
 void DacSetOutputToNextVoltage(LifeTester_t const *const lifeTester);
 void DacSetOutputToScanVoltage(LifeTester_t const *const lifeTester);
 void DacSetOutput(uint8_t output, chSelect_t ch);
 uint8_t DacGetOutput(LifeTester_t const *const lifeTester);
+bool DacOutputSetToActiveVoltage(LifeTester_t const *const lifeTester);
 bool DacOutputSetToThisVoltage(LifeTester_t const *const lifeTester);
 bool DacOutputSetToNextVoltage(LifeTester_t const *const lifeTester);
 bool DacOutputSetToScanVoltage(LifeTester_t const *const lifeTester);

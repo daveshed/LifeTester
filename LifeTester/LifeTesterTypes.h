@@ -12,13 +12,15 @@ extern "C"
 
 /*
  Table of error types in the lifetester system.
+ TODO - change currentLimit to saturated.
 */
 typedef enum ErrorCode_e {
     ok,               // everything ok
     lowCurrent,       // low current error
     currentLimit,     // reached current limit during scan
     currentThreshold, // currrent threshold required for measurement not reached
-    invalidScan       // scan is the wrong shape
+    invalidScan,      // scan is the wrong shape
+    DacSetFailed      // couldn't set dac
 } ErrorCode_t;
 
 /*
@@ -58,6 +60,16 @@ typedef struct LifeTesterIo_s {
     const uint8_t    adc;
 } LifeTesterIo_t;
 
+typedef enum Event_e {
+    None,
+    DacNotSet,
+    MeasurementDone,
+    ScanningDone,
+    ResetEvent,  // not implemented yet
+    ErrorEvent,
+    MaxNumEvents
+} Event_t;
+
 /*
  Signature of lifetester state functions. They take a pointer to the lifetester
  object but don't return anything. In this object will be data corresponding to
@@ -65,15 +77,7 @@ typedef struct LifeTesterIo_s {
 */
 struct LifeTester_s;
 typedef void StateFn_t(struct LifeTester_s *const);
-
-typedef enum Event_e {
-    None,
-    DacNotSet,
-    MeasurementDone,
-    ScanningDone,
-    ErrorEvent,
-    MaxNumEvents
-} Event_t;
+typedef void StateTranFn_t(struct LifeTester_s *const, Event_t);
 
 typedef enum StateIdx_e {
     NoState,
@@ -87,11 +91,12 @@ typedef enum StateIdx_e {
 
 // State is contained in a set of function pointers
 typedef struct LifeTesterState_s {
-    StateFn_t   *entry;
-    StateFn_t   *step;
-    StateFn_t   *exit;
-    StateIdx_t  idx;
-    char        label[30];  // name for debugging
+    StateFn_t       *entry;
+    StateFn_t       *step;
+    StateFn_t       *exit;
+    StateTranFn_t   *tran;
+    StateIdx_t      idx;
+    char            label[30];  // name for debugging
 } LifeTesterState_t;
 
 /*

@@ -32,7 +32,7 @@ extern "C" {
 
 // error handling
 #define MAX_ERROR_READS   20u  //number of allowed bad readings before error state
-#define MAX_CURRENT       65535u
+#define MAX_CURRENT       (0xFFFFU)
 #define MIN_CURRENT       500u // minimum current allowed during mpp update
 #define THRESHOLD_CURRENT 2000u//required threshold ADCreading in MPPscan for test to start
 
@@ -41,6 +41,8 @@ extern "C" {
 #define SCAN_LED_OFF_TIME     (500U)
 #define ERROR_LED_ON_TIME     (500U)
 #define ERROR_LED_OFF_TIME    (500U)
+#define INIT_LED_ON_TIME      (100U)
+#define INIT_LED_OFF_TIME     (200U)
 
 #endif
 #ifdef _cplusplus
