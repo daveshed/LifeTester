@@ -82,21 +82,27 @@ typedef void StateTranFn_t(struct LifeTester_s *const, Event_t);
 typedef enum StateIdx_e {
     NoState,
     Initialising,
-    TrackingThis,
-    TrackingNext,
+    Tracking,
+    This,
+    Next,
     Scanning,
     ErrorState,
-    MaxNumStates,
+    MaxNumStates
 } StateIdx_t;
 
 // State is contained in a set of function pointers
-typedef struct LifeTesterState_s {
+typedef struct State_s {
     StateFn_t       *entry;
     StateFn_t       *step;
     StateFn_t       *exit;
     StateTranFn_t   *tran;
     StateIdx_t      idx;
     char            label[30];  // name for debugging
+} State_t;
+
+typedef struct LifeTesterState_s {
+    State_t current;
+    State_t parent;
 } LifeTesterState_t;
 
 /*
@@ -106,10 +112,9 @@ struct LifeTester_s {
     LifeTesterIo_t    io;
     Flasher           led;
     LifeTesterData_t  data;
-    StateFn_t         *state;
     uint32_t          timer;     //timer for tracking loop
     ErrorCode_t       error;          
-    LifeTesterState_t currentState;
+    LifeTesterState_t state;
 };
 typedef LifeTester_s LifeTester_t;
 

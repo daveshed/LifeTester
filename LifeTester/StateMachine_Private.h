@@ -43,8 +43,26 @@ STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
 STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e);
 
-// Private state definitions
-static const LifeTesterState_t StateNone = {
+// Parent states
+static const State_t StateScanningMode = {
+    .entry = NULL,
+    .step = NULL,
+    .exit = NULL,
+    .tran = NULL,
+    .idx = Scanning,
+    "ScanningMode"
+};
+
+static const State_t StateTrackingMode = {
+    .entry = NULL,
+    .step = NULL,
+    .exit = NULL,
+    .tran = NULL,
+    .idx = Tracking,
+    "TrackingMode"
+};
+
+static const State_t StateNone = {
     .entry = NULL,
     .step = NULL,
     .exit = NULL,
@@ -53,51 +71,67 @@ static const LifeTesterState_t StateNone = {
     "StateNone"
 };
 
+// Child states
 static const LifeTesterState_t StateInitialiseDevice = {
-    .entry = InitialiseEntry,
-    .step = InitialiseStep,
-    .exit = NULL,
-    .tran = InitialiseTran,
-    .idx = Initialising,
-    "StateInitialiseDevice"
+    {
+        .entry = InitialiseEntry,
+        .step = InitialiseStep,
+        .exit = NULL,
+        .tran = InitialiseTran,
+        .idx = Initialising,
+        "StateInitialiseDevice"
+    },
+    NULL  // parent
 };
 
 static const LifeTesterState_t StateMeasureThisDataPoint = {
-    .entry = MeasureDataPointEntry,
-    .step = MeasureDataPointStep,
-    .exit = MeasureThisDataPointExit,
-    .tran = MeasureThisDataPointTran,
-    .idx = TrackingThis,
-    "StateMeasureThisDataPoint"
+    {
+        .entry = MeasureDataPointEntry,
+        .step = MeasureDataPointStep,
+        .exit = MeasureThisDataPointExit,
+        .tran = MeasureThisDataPointTran,
+        .idx = This,
+        "StateMeasureThisDataPoint"
+    },
+    StateTrackingMode  // parent
 };
 
 static const LifeTesterState_t StateMeasureNextDataPoint = {
-    .entry = MeasureDataPointEntry,
-    .step = MeasureDataPointStep,
-    .exit = AnalyseTrackingDataExit,
-    .tran = MeasureNextDataPointTran,
-    .idx = TrackingNext,
-    "StateMeasureNextDataPoint"
+    {
+        .entry = MeasureDataPointEntry,
+        .step = MeasureDataPointStep,
+        .exit = AnalyseTrackingDataExit,
+        .tran = MeasureNextDataPointTran,
+        .idx = Next,
+        "StateMeasureNextDataPoint"
+    },
+    StateTrackingMode  // parent
 };
 
 static const LifeTesterState_t StateMeasureScanDataPoint = {
-    .entry = MeasureDataPointEntry,
-    .step = MeasureDataPointStep,
-    .exit = MeasureScanDataPointExit,
-    .tran = MeasureScanDataPointTran,
-    .idx = Scanning,
-    "StateMeasureScanDataPoint"
+    {
+        .entry = MeasureDataPointEntry,
+        .step = MeasureDataPointStep,
+        .exit = MeasureScanDataPointExit,
+        .tran = MeasureScanDataPointTran,
+        .idx = Scanning,
+        "StateMeasureScanDataPoint"
+    },
+    StateScanningMode  // parent
 };
 
 static const LifeTesterState_t StateErrorFoo = {
-    .entry = NULL,
-    .step = NULL,
-    .exit = NULL,
-    .tran = NULL,
-    .idx = ErrorState,
-    "StateErrorFoo"
+    {
+        .entry = NULL,
+        .step = NULL,
+        .exit = NULL,
+        .tran = NULL,
+        .idx = ErrorState,
+        "StateErrorFoo"
+    },
+    NULL  // parent state
 };
-
+#if 0
 // used for getting the next state from the current state and event
 static const LifeTesterState_t StateTransitionTable[MaxNumStates][MaxNumEvents] = 
 {
@@ -153,3 +187,4 @@ static const LifeTesterState_t StateTransitionTable[MaxNumStates][MaxNumEvents] 
         StateNone                   // ErrorEvent
     }
 };
+#endif

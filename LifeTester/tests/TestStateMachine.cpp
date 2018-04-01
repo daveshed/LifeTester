@@ -512,7 +512,6 @@ TEST_GROUP(IVTestGroup)
             {chASelect, 0U},    // io
             Flasher(LED_A_PIN), // led
             {0},                // data
-            NULL,               // state function
             0U,                 // timer
             ok                  // error
         };
@@ -522,8 +521,6 @@ TEST_GROUP(IVTestGroup)
         memcpy(&lifeTesterForTest, &lifetesterSetup, sizeof(LifeTester_t));
         // Access with a pointer from tests
         mockLifeTester = &lifeTesterForTest;
-        // Initialise the state member with the none placeholder
-        mockLifeTester->currentState = StateNone;
         mockTime = 0U;
         mockCurrent = 0U;
         mock().enable();
@@ -557,19 +554,13 @@ TEST(IVTestGroup, UpdatingInitialiseStateDuringPostDelayTime)
     CHECK_EQUAL(mockTime, mockLifeTester->timer);
     const uint8_t expectedData[sizeof(LifeTesterData_t)] = {0U};
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    MEMCMP_EQUAL(
-        &StateInitialiseDevice,
-        &mockLifeTester->currentState,
-        sizeof(LifeTesterState_t));
+    CHECK_EQUAL(Initialising, mockLifeTester->state.current.idx);
     // timer will be checked again in step function.
     MocksForGetTime();
     StateMachine_UpdateStep(mockLifeTester);
     // expect the state and data not to change
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    MEMCMP_EQUAL(
-        &StateInitialiseDevice,
-        &mockLifeTester->currentState,
-        sizeof(LifeTesterState_t));
+    CHECK_EQUAL(Initialising, mockLifeTester->state.current.idx) 
     mock().checkExpectations();
 }
 
@@ -592,10 +583,7 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadOk)
     CHECK_EQUAL(tInit, mockLifeTester->timer);
     const uint8_t expectedData[sizeof(LifeTesterData_t)] = {0U};
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    MEMCMP_EQUAL(
-        &StateInitialiseDevice,
-        &mockLifeTester->currentState,
-        sizeof(LifeTesterState_t));
+    CHECK_EQUAL(Initialising, mockLifeTester->state.current.idx);
     mockTime += tElapsed;
     // timer checked to see if measurement is due
     MocksForGetTime();
@@ -608,10 +596,7 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadOk)
     StateMachine_UpdateStep(mockLifeTester);
     // expect the mode to change and for scan activated
     CHECK(ScanMeasurementActive(mockLifeTester));
-    MEMCMP_EQUAL(
-        &StateMeasureScanDataPoint,
-        &mockLifeTester->currentState,
-        sizeof(LifeTesterState_t));
+    CHECK_EQUAL(Scanning, mockLifeTester->state.current.idx) 
     CHECK_EQUAL(ok, mockLifeTester->error);
     mock().checkExpectations();
 }
@@ -636,10 +621,7 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadLowCurrent)
     CHECK_EQUAL(tInit, mockLifeTester->timer);
     const uint8_t expectedData[sizeof(LifeTesterData_t)] = {0U};
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    MEMCMP_EQUAL(
-        &StateInitialiseDevice,
-        &mockLifeTester->currentState,
-        sizeof(LifeTesterState_t));
+    CHECK_EQUAL(Initialising, mockLifeTester->state.current.idx);
     // timer will be checked again in step function.
     mockTime += tElapsed;
     MocksForGetTime();
@@ -647,10 +629,7 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadLowCurrent)
     StateMachine_UpdateStep(mockLifeTester);
     // expect the mode to change but not data
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    MEMCMP_EQUAL(
-        &StateErrorFoo,
-        &mockLifeTester->currentState,
-        sizeof(LifeTesterState_t));
+    CHECK_EQUAL(ErrorState, mockLifeTester->state.current.idx);
     CHECK_EQUAL(currentThreshold, mockLifeTester->error);
     mock().checkExpectations();
 }
@@ -675,10 +654,7 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadSaturated)
     CHECK_EQUAL(tInit, mockLifeTester->timer);
     const uint8_t expectedData[sizeof(LifeTesterData_t)] = {0U};
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    MEMCMP_EQUAL(
-        &StateInitialiseDevice,
-        &mockLifeTester->currentState,
-        sizeof(LifeTesterState_t));
+    CHECK_EQUAL(Initialising, mockLifeTester->state.current.idx);
     // timer will be checked again in step function.
     mockTime += tElapsed;
     MocksForGetTime();
@@ -686,10 +662,7 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadSaturated)
     StateMachine_UpdateStep(mockLifeTester);
     // expect the mode to change but not data
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    MEMCMP_EQUAL(
-        &StateErrorFoo,
-        &mockLifeTester->currentState,
-        sizeof(LifeTesterState_t));
+    CHECK_EQUAL(ErrorState, mockLifeTester->state.current.idx);
     CHECK_EQUAL(currentLimit, mockLifeTester->error);
     mock().checkExpectations();
 }
@@ -753,7 +726,7 @@ TEST(IVTestGroup, UpdatingScanInSampleScanCurrentAdcMeasurementExpected)
     }
     CHECK_EQUAL(iMockSum, mockLifeTester->data.iSampleSum);
     CHECK_EQUAL(nMeasurements, mockLifeTester->data.nSamples);
-    CHECK_EQUAL(Scanning, mockLifeTester->currentState.idx);
+    CHECK_EQUAL(Scanning, mockLifeTester->state.current.idx);
     // sampling finished. Check average is calculated
     mockTime += SAMPLING_TIME;
     MocksForGetTime();                                         // check time
@@ -764,7 +737,7 @@ TEST(IVTestGroup, UpdatingScanInSampleScanCurrentAdcMeasurementExpected)
     const uint32_t pExpected = vMock * iMockAve;
     CHECK_EQUAL(mockTime, mockLifeTester->timer);
     CHECK_EQUAL(pExpected, mockLifeTester->data.pScan);
-    CHECK_EQUAL(Scanning, mockLifeTester->currentState.idx);
+    CHECK_EQUAL(Scanning, mockLifeTester->state.current.idx);
     CHECK_EQUAL(vMock + DV_SCAN, mockLifeTester->data.vScan);
     mock().checkExpectations();
 }
@@ -784,6 +757,7 @@ TEST(IVTestGroup, UpdatingScanNoAdcSamplesTimerShouldReset)
     mock().checkExpectations();
 }
 
+#if 0
 /*
  Test for running through an iv scan without errors. Expect to return the mpp 
  of a shockley diode. Start in the initialise state. System goes through POST
@@ -811,6 +785,9 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
         MocksForGetTime();
         StateMachine_UpdateStep(mockLifeTester);
     }
+    // should change from scanning->tracking mode
+    CHECK_EQUAL(TrackingThis, mockLifeTester->state.current.idx);
+    CHECK_EQUAL(mppCodeShockley, mockLifeTester->data.vThis);
 #if 0
         // (1) Expect to set voltage during settle time if it isn't already
         POINTERS_EQUAL(StateSetToScanVoltage, mockLifeTester->state);
@@ -858,7 +835,6 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
 #endif
     mock().checkExpectations();
 }
-#if 0
 
 /*
  Test for running through an iv scan without errors. Mock device connected is an
