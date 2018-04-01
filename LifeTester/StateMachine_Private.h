@@ -32,7 +32,7 @@ STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester);
 // Exit functions
 STATIC void AnalyseTrackingDataExit(LifeTester_t *const lifeTester);
 STATIC void MeasureScanDataPointExit(LifeTester_t *const lifeTester);
-
+STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester);
 // Transition functions
 STATIC void InitialiseTran(LifeTester_t *const lifeTester,
                            Event_t e);
@@ -65,7 +65,7 @@ static const LifeTesterState_t StateInitialiseDevice = {
 static const LifeTesterState_t StateMeasureThisDataPoint = {
     .entry = MeasureDataPointEntry,
     .step = MeasureDataPointStep,
-    .exit = NULL,
+    .exit = MeasureThisDataPointExit,
     .tran = MeasureThisDataPointTran,
     .idx = TrackingThis,
     "StateMeasureThisDataPoint"
