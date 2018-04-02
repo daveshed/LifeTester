@@ -470,6 +470,27 @@ static void MocksForGetTime(void)
         andReturnValue(mockTime);
 }
 
+static void MocksForInitLedSetup(void)
+{
+    mock().expectOneCall("Flasher::t")
+        .withParameter("onNew", INIT_LED_ON_TIME)
+        .withParameter("offNew", INIT_LED_OFF_TIME);
+    mock().expectOneCall("Flasher::keepFlashing");
+}
+
+static void MocksForScanLedSetup(void)
+{
+    mock().expectOneCall("Flasher::t")
+        .withParameter("onNew", SCAN_LED_ON_TIME)
+        .withParameter("offNew", SCAN_LED_OFF_TIME);
+    mock().expectOneCall("Flasher::keepFlashing");
+}
+
+static void MockForLedUpdate(void)
+{
+    mock().expectOneCall("Flasher::update");
+}
+
 static void SetupForScanningMode(LifeTester_t *const lifeTester)
 {
     // note that mocks are needed to pass data to source
@@ -480,17 +501,17 @@ static void SetupForScanningMode(LifeTester_t *const lifeTester)
                    mockCurrent = THRESHOLD_CURRENT + 1U; 
     MocksForGetTime();
     MocksForInitDac(mockLifeTester);
-    mock().expectOneCall("Flasher::t")
-        .withParameter("onNew", INIT_LED_ON_TIME)
-        .withParameter("offNew", INIT_LED_OFF_TIME);
+    MocksForInitLedSetup();
     StateMachine_Reset(mockLifeTester);
     mockTime += tElapsed;
+    MockForLedUpdate();
     MocksForGetTime();
     MocksForSampleCurrent(mockLifeTester);
+    // mode change expected here
     MocksForSetDacToScanVoltage(mockLifeTester);
     MocksForGetTime();
+    MocksForScanLedSetup();
     StateMachine_UpdateStep(mockLifeTester);
-    mock().checkExpectations();
 }
 
 /*******************************************************************************
@@ -513,7 +534,8 @@ TEST_GROUP(IVTestGroup)
             Flasher(LED_A_PIN), // led
             {0},                // data
             0U,                 // timer
-            ok                  // error
+            ok,                 // error
+            StateNone
         };
         // Copy to a static variable for tests to work on
         static LifeTester_t lifeTesterForTest = lifetesterSetup;
@@ -547,20 +569,26 @@ TEST(IVTestGroup, UpdatingInitialiseStateDuringPostDelayTime)
     mockTime = 2436U;
     MocksForGetTime();
     MocksForInitDac(mockLifeTester);
-    mock().expectOneCall("Flasher::t")
-        .withParameter("onNew", INIT_LED_ON_TIME)
-        .withParameter("offNew", INIT_LED_OFF_TIME);
+    MocksForInitLedSetup();
     StateMachine_Reset(mockLifeTester);
     CHECK_EQUAL(mockTime, mockLifeTester->timer);
     const uint8_t expectedData[sizeof(LifeTesterData_t)] = {0U};
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    CHECK_EQUAL(Initialising, mockLifeTester->state.current.idx);
+    MEMCMP_EQUAL(
+        &StateInitialiseDevice,
+        &mockLifeTester->state,
+        sizeof(LifeTesterState_t));
     // timer will be checked again in step function.
+    MockForLedUpdate();
     MocksForGetTime();
     StateMachine_UpdateStep(mockLifeTester);
     // expect the state and data not to change
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    CHECK_EQUAL(Initialising, mockLifeTester->state.current.idx) 
+    MEMCMP_EQUAL(
+        &StateInitialiseDevice,
+        &mockLifeTester->state,
+        sizeof(LifeTesterState_t));
+    CHECK_EQUAL(0U, DacGetOutput(mockLifeTester));
     mock().checkExpectations();
 }
 
@@ -576,14 +604,17 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadOk)
                    mockCurrent = THRESHOLD_CURRENT; 
     MocksForGetTime();
     MocksForInitDac(mockLifeTester);
-    mock().expectOneCall("Flasher::t")
-        .withParameter("onNew", INIT_LED_ON_TIME)
-        .withParameter("offNew", INIT_LED_OFF_TIME);
+    MocksForInitLedSetup();
     StateMachine_Reset(mockLifeTester);
     CHECK_EQUAL(tInit, mockLifeTester->timer);
     const uint8_t expectedData[sizeof(LifeTesterData_t)] = {0U};
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    CHECK_EQUAL(Initialising, mockLifeTester->state.current.idx);
+    MEMCMP_EQUAL(
+        &StateInitialiseDevice,
+        &mockLifeTester->state,
+        sizeof(LifeTesterState_t));
+    MocksForScanLedSetup();
+    MockForLedUpdate();
     mockTime += tElapsed;
     // timer checked to see if measurement is due
     MocksForGetTime();
@@ -596,7 +627,10 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadOk)
     StateMachine_UpdateStep(mockLifeTester);
     // expect the mode to change and for scan activated
     CHECK(ScanMeasurementActive(mockLifeTester));
-    CHECK_EQUAL(Scanning, mockLifeTester->state.current.idx) 
+    MEMCMP_EQUAL(
+        &StateMeasureScanDataPoint,
+        &mockLifeTester->state,
+        sizeof(LifeTesterState_t));
     CHECK_EQUAL(ok, mockLifeTester->error);
     mock().checkExpectations();
 }
@@ -614,22 +648,27 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadLowCurrent)
                    mockCurrent = THRESHOLD_CURRENT - 1U; 
     MocksForGetTime();
     MocksForInitDac(mockLifeTester);
-    mock().expectOneCall("Flasher::t")
-        .withParameter("onNew", INIT_LED_ON_TIME)
-        .withParameter("offNew", INIT_LED_OFF_TIME);
+    MocksForInitLedSetup();
     StateMachine_Reset(mockLifeTester);
     CHECK_EQUAL(tInit, mockLifeTester->timer);
     const uint8_t expectedData[sizeof(LifeTesterData_t)] = {0U};
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    CHECK_EQUAL(Initialising, mockLifeTester->state.current.idx);
+    MEMCMP_EQUAL(
+        &StateInitialiseDevice,
+        &mockLifeTester->state,
+        sizeof(LifeTesterState_t));
     // timer will be checked again in step function.
     mockTime += tElapsed;
+    MockForLedUpdate();
     MocksForGetTime();
     MocksForSampleCurrent(mockLifeTester);
     StateMachine_UpdateStep(mockLifeTester);
     // expect the mode to change but not data
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    CHECK_EQUAL(ErrorState, mockLifeTester->state.current.idx);
+    MEMCMP_EQUAL(
+        &StateError,
+        &mockLifeTester->state,
+        sizeof(LifeTesterState_t));
     CHECK_EQUAL(currentThreshold, mockLifeTester->error);
     mock().checkExpectations();
 }
@@ -647,27 +686,33 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadSaturated)
                    mockCurrent = MAX_CURRENT; 
     MocksForGetTime();
     MocksForInitDac(mockLifeTester);
-    mock().expectOneCall("Flasher::t")
-        .withParameter("onNew", INIT_LED_ON_TIME)
-        .withParameter("offNew", INIT_LED_OFF_TIME);
+    MocksForInitLedSetup();
     StateMachine_Reset(mockLifeTester);
     CHECK_EQUAL(tInit, mockLifeTester->timer);
     const uint8_t expectedData[sizeof(LifeTesterData_t)] = {0U};
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    CHECK_EQUAL(Initialising, mockLifeTester->state.current.idx);
+    MEMCMP_EQUAL(
+        &StateInitialiseDevice,
+        &mockLifeTester->state,
+        sizeof(LifeTesterState_t));    
     // timer will be checked again in step function.
     mockTime += tElapsed;
+    MockForLedUpdate();
     MocksForGetTime();
     MocksForSampleCurrent(mockLifeTester);
     StateMachine_UpdateStep(mockLifeTester);
     // expect the mode to change but not data
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    CHECK_EQUAL(ErrorState, mockLifeTester->state.current.idx);
+    MEMCMP_EQUAL(
+        &StateError,
+        &mockLifeTester->state,
+        sizeof(LifeTesterState_t));    
     CHECK_EQUAL(currentLimit, mockLifeTester->error);
     mock().checkExpectations();
 }
 
-// TODO: test for dac not set.
+/*TODO: test for dac not set - mocks don't allow this at present. Need to signal
+that the dac is broken so that setting does not actually change the dac output.*/
 
 /*******************************************************************************
 * TESTS FOR UPDATING IN SCANNING MODE
@@ -684,10 +729,11 @@ TEST(IVTestGroup, UpdatingInScanModeBeforeSamplingWindowDoesNothing)
     CHECK(tElapsed < SETTLE_TIME);
     const LifeTesterData_t dataBefore = mockLifeTester->data;
     MocksForGetTime();
+    MockForLedUpdate();
     StateMachine_UpdateStep(mockLifeTester);
     const LifeTesterData_t dataAfter = mockLifeTester->data;
     // data shouldn't have changed.
-    MEMCMP_EQUAL(&dataBefore, &dataAfter, sizeof(LifeTesterData_t));
+    MEMCMP_EQUAL(&dataBefore, &dataAfter, sizeof(LifeTesterData_t));    
     mock().checkExpectations();
 }
 
@@ -698,8 +744,7 @@ TEST(IVTestGroup, UpdatingInScanModeBeforeSamplingWindowDoesNothing)
 */
 TEST(IVTestGroup, UpdatingScanInSampleScanCurrentAdcMeasurementExpected)
 {
-    SetupForScanningMode(mockLifeTester);
-    
+    SetupForScanningMode(mockLifeTester);    
     // queue up some current measurements
     const uint32_t nMeasurements = 3U;
     const uint32_t iMock[]       = {3487U, 2435U, 3488U};
@@ -719,6 +764,7 @@ TEST(IVTestGroup, UpdatingScanInSampleScanCurrentAdcMeasurementExpected)
         const bool     sampling = (tElapsed >= SETTLE_TIME)
                                    && (tElapsed < (SETTLE_TIME + SAMPLING_TIME));
         CHECK(sampling);
+        MockForLedUpdate();
         MocksForGetTime();
         mockCurrent = iMock[i];
         MocksForSampleCurrent(mockLifeTester);
@@ -726,9 +772,13 @@ TEST(IVTestGroup, UpdatingScanInSampleScanCurrentAdcMeasurementExpected)
     }
     CHECK_EQUAL(iMockSum, mockLifeTester->data.iSampleSum);
     CHECK_EQUAL(nMeasurements, mockLifeTester->data.nSamples);
-    CHECK_EQUAL(Scanning, mockLifeTester->state.current.idx);
+    MEMCMP_EQUAL(
+        &StateMeasureScanDataPoint,
+        &mockLifeTester->state,
+        sizeof(LifeTesterState_t));
     // sampling finished. Check average is calculated
     mockTime += SAMPLING_TIME;
+    MockForLedUpdate();
     MocksForGetTime();                                         // check time
     MocksForSetDacToVoltage(mockLifeTester, (vMock + DV_SCAN));// set dac next point
     MocksForGetTime();                                         // timer reset 
@@ -737,7 +787,10 @@ TEST(IVTestGroup, UpdatingScanInSampleScanCurrentAdcMeasurementExpected)
     const uint32_t pExpected = vMock * iMockAve;
     CHECK_EQUAL(mockTime, mockLifeTester->timer);
     CHECK_EQUAL(pExpected, mockLifeTester->data.pScan);
-    CHECK_EQUAL(Scanning, mockLifeTester->state.current.idx);
+    MEMCMP_EQUAL(
+        &StateMeasureScanDataPoint,
+        &mockLifeTester->state,
+        sizeof(LifeTesterState_t));
     CHECK_EQUAL(vMock + DV_SCAN, mockLifeTester->data.vScan);
     mock().checkExpectations();
 }
@@ -751,12 +804,12 @@ TEST(IVTestGroup, UpdatingScanNoAdcSamplesTimerShouldReset)
 {
     SetupForScanningMode(mockLifeTester);
     mockTime += (SETTLE_TIME + SAMPLING_TIME);
+    mock().expectOneCall("Flasher::update");
     MocksForGetTime();
     StateMachine_UpdateStep(mockLifeTester); 
     CHECK_EQUAL(mockTime, mockLifeTester->timer);
     mock().checkExpectations();
 }
-
 #if 0
 /*
  Test for running through an iv scan without errors. Expect to return the mpp 
@@ -786,7 +839,7 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
         StateMachine_UpdateStep(mockLifeTester);
     }
     // should change from scanning->tracking mode
-    CHECK_EQUAL(TrackingThis, mockLifeTester->state.current.idx);
+    CHECK_EQUAL(TrackingThis, mockLifeTester->state->child.idx);
     CHECK_EQUAL(mppCodeShockley, mockLifeTester->data.vThis);
 #if 0
         // (1) Expect to set voltage during settle time if it isn't already

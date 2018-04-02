@@ -1,33 +1,24 @@
 #include "StateMachine.h"
 #include "Macros.h"
 
-// old state declarations
-STATIC void StateAnalyseTrackingMeasurement(LifeTester_t *const lifeTester);
-STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester);
-STATIC void StateError(LifeTester_t *const lifeTester);
-STATIC void StateSampleNextCurrent(LifeTester_t *const lifeTester);
-STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester);
-STATIC void StateSampleThisCurrent(LifeTester_t *const lifeTester);
-STATIC void StateSetToNextVoltage(LifeTester_t *const lifeTester);
-STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester);
-STATIC void StateSetToThisVoltage(LifeTester_t *const lifeTester);
-STATIC void StateWaitForTrackingDelay(LifeTester_t *const lifeTester);
-
 // Helpers
 STATIC void ActivateThisMeasurement(LifeTester_t *const lifeTester);
 STATIC void ActivateNextMeasurement(LifeTester_t *const lifeTester);
 STATIC void ActivateScanMeasurement(LifeTester_t *const lifeTester);
 STATIC void StateMachineTransitionToState(LifeTester_t *const lifeTester,
-                                          LifeTesterState_t targetState);
+                                          LifeTesterState_t const *targetState);
 static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
                                           Event_t e);
 // Entry functions 
 STATIC void InitialiseEntry(LifeTester_t *const lifeTester);
+STATIC void ScanningModeEntry(LifeTester_t *const lifeTester);
 STATIC void MeasureDataPointEntry(LifeTester_t *const lifeTester);
+STATIC void StateErrorEntry(LifeTester_t *const lifeTester);
 
 // Step Functions
 STATIC void InitialiseStep(LifeTester_t *const lifeTester);
 STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester);
+STATIC void ScanningModeStep(LifeTester_t *const lifeTester);
 
 // Exit functions
 STATIC void AnalyseTrackingDataExit(LifeTester_t *const lifeTester);
@@ -43,148 +34,13 @@ STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
 STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e);
 
-// Parent states
-static const State_t StateScanningMode = {
-    .entry = NULL,
-    .step = NULL,
-    .exit = NULL,
-    .tran = NULL,
-    .idx = Scanning,
-    "ScanningMode"
-};
-
-static const State_t StateTrackingMode = {
-    .entry = NULL,
-    .step = NULL,
-    .exit = NULL,
-    .tran = NULL,
-    .idx = Tracking,
-    "TrackingMode"
-};
-
-static const State_t StateNone = {
-    .entry = NULL,
-    .step = NULL,
-    .exit = NULL,
-    .tran = NULL,
-    .idx = NoState,
-    "StateNone"
-};
-
-// Child states
-static const LifeTesterState_t StateInitialiseDevice = {
-    {
-        .entry = InitialiseEntry,
-        .step = InitialiseStep,
-        .exit = NULL,
-        .tran = InitialiseTran,
-        .idx = Initialising,
-        "StateInitialiseDevice"
-    },
-    NULL  // parent
-};
-
-static const LifeTesterState_t StateMeasureThisDataPoint = {
-    {
-        .entry = MeasureDataPointEntry,
-        .step = MeasureDataPointStep,
-        .exit = MeasureThisDataPointExit,
-        .tran = MeasureThisDataPointTran,
-        .idx = This,
-        "StateMeasureThisDataPoint"
-    },
-    StateTrackingMode  // parent
-};
-
-static const LifeTesterState_t StateMeasureNextDataPoint = {
-    {
-        .entry = MeasureDataPointEntry,
-        .step = MeasureDataPointStep,
-        .exit = AnalyseTrackingDataExit,
-        .tran = MeasureNextDataPointTran,
-        .idx = Next,
-        "StateMeasureNextDataPoint"
-    },
-    StateTrackingMode  // parent
-};
-
-static const LifeTesterState_t StateMeasureScanDataPoint = {
-    {
-        .entry = MeasureDataPointEntry,
-        .step = MeasureDataPointStep,
-        .exit = MeasureScanDataPointExit,
-        .tran = MeasureScanDataPointTran,
-        .idx = Scanning,
-        "StateMeasureScanDataPoint"
-    },
-    StateScanningMode  // parent
-};
-
-static const LifeTesterState_t StateErrorFoo = {
-    {
-        .entry = NULL,
-        .step = NULL,
-        .exit = NULL,
-        .tran = NULL,
-        .idx = ErrorState,
-        "StateErrorFoo"
-    },
-    NULL  // parent state
-};
-#if 0
-// used for getting the next state from the current state and event
-static const LifeTesterState_t StateTransitionTable[MaxNumStates][MaxNumEvents] = 
-{
-    //NoState -> stay in your current state ie. no transition
-    //Transitioning to the same state will rerun entry function 
-
-    // Current State = NoState
-    {              // Event
-        StateNone, // None
-        StateNone, // DacNotSet
-        StateNone, // MeasurementDone
-        StateNone, // ScanningDone
-        StateNone  // ErrorEvent
-    },
-    // Current State = Initialising
-    {              // Event
-        StateNone,                  // None
-        StateNone,                  // DacNotSet
-        StateMeasureScanDataPoint,  // MeasurementDone
-        StateNone,                  // ScanningDone
-        StateErrorFoo               // ErrorEvent
-    },
-    // Current State = TrackingThis
-    {                               // Event
-        StateNone,                  // None
-        StateMeasureThisDataPoint,  // DacNotSet - rerun entry function
-        StateMeasureNextDataPoint,  // MeasurementDone
-        StateNone,                  // ScanningDone
-        StateErrorFoo               // ErrorEvent
-    },
-    // Current State = TrackingNext
-    {                               // Event
-        StateNone,                  // None
-        StateMeasureNextDataPoint,  // DacNotSet - rerun entry function
-        StateMeasureThisDataPoint,  // MeasurementDone
-        StateNone,                  // ScanningDone
-        StateErrorFoo               // ErrorEvent
-    },
-    // Current State = Scanning
-    {                               // Event
-        StateNone,                  // None
-        StateMeasureScanDataPoint,  // DacNotSet - rerun entry function
-        StateMeasureScanDataPoint,  // MeasurementDone
-        StateMeasureThisDataPoint,  // ScanningDone
-        StateErrorFoo               // ErrorEvent
-    },
-    // Current State = ErrorState
-    {                               // Event
-        StateNone,                  // None
-        StateNone,                  // DacNotSet
-        StateNone,                  // MeasurementDone
-        StateNone,                  // ScanningDone
-        StateNone                   // ErrorEvent
-    }
-};
+#ifdef UNIT_TEST  // give states external linkage for access from tests
+extern const LifeTesterState_t StateNone;
+extern const LifeTesterState_t StateScanningMode;
+extern const LifeTesterState_t StateTrackingMode;
+extern const LifeTesterState_t StateInitialiseDevice;
+extern const LifeTesterState_t StateMeasureThisDataPoint;
+extern const LifeTesterState_t StateMeasureNextDataPoint;
+extern const LifeTesterState_t StateMeasureScanDataPoint;
+extern const LifeTesterState_t StateError;
 #endif

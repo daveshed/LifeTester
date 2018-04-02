@@ -61,10 +61,10 @@ typedef struct LifeTesterIo_s {
 } LifeTesterIo_t;
 
 typedef enum Event_e {
-    None,
-    DacNotSet,
-    MeasurementDone,
-    ScanningDone,
+    NoneEvent,
+    DacNotSetEvent,
+    MeasurementDoneEvent,
+    ScanningDoneEvent,
     ResetEvent,  // not implemented yet
     ErrorEvent,
     MaxNumEvents
@@ -79,30 +79,19 @@ struct LifeTester_s;
 typedef void StateFn_t(struct LifeTester_s *const);
 typedef void StateTranFn_t(struct LifeTester_s *const, Event_t);
 
-typedef enum StateIdx_e {
-    NoState,
-    Initialising,
-    Tracking,
-    This,
-    Next,
-    Scanning,
-    ErrorState,
-    MaxNumStates
-} StateIdx_t;
-
 // State is contained in a set of function pointers
 typedef struct State_s {
-    StateFn_t       *entry;
+    StateFn_t       *entry; // TODO: declare as const
     StateFn_t       *step;
     StateFn_t       *exit;
     StateTranFn_t   *tran;
-    StateIdx_t      idx;
     char            label[30];  // name for debugging
 } State_t;
 
+// Heirarchical state - looks like linked list
 typedef struct LifeTesterState_s {
-    State_t current;
-    State_t parent;
+    State_t           fn;
+    LifeTesterState_s const* parent;
 } LifeTesterState_t;
 
 /*

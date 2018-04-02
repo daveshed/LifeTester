@@ -9,6 +9,102 @@
 #include "StateMachine.h"
 #include "StateMachine_Private.h"
 
+/*******************************************************************************
+* PRIVATE STATE DEFINITIONS
+*******************************************************************************/
+// initialisation
+STATIC const LifeTesterState_t StateNone = {
+    {
+        NULL,  // entry function
+        NULL,  // step function
+        NULL,  // exit function
+        NULL,  // transition function
+        "StateNone" // label
+    },    // current state
+    NULL  // parent state pointer
+};
+
+// Parent states that capture more specific states
+STATIC const LifeTesterState_t StateScanningMode = {
+    {
+        ScanningModeEntry, // entry function (print message, led params)
+        ScanningModeStep,  // step function (update LED)
+        NULL,              // exit function
+        NULL,              // transition function
+        "StateScanningMode" // label
+    },                     // current state
+    NULL                   // parent state pointer
+};
+
+STATIC const LifeTesterState_t StateTrackingMode = {
+    {
+        NULL,          // entry function (print message, led params)
+        NULL,          // step function (update LED)
+        NULL,          // exit function
+        NULL,          // transition function
+        "StateTrackingMode" // label
+    },                 // current state
+    NULL               // parent state pointer
+};
+
+// Leaf states
+STATIC const LifeTesterState_t StateInitialiseDevice = {
+    {
+        InitialiseEntry,  // entry function (print message, led params)
+        InitialiseStep,   // step function (update LED)
+        NULL,             // exit function
+        InitialiseTran,   // transition function
+        "StateInitialise" // label
+    },         // current state
+    NULL       // parent state pointer
+};
+
+STATIC const LifeTesterState_t StateMeasureThisDataPoint = {
+    {
+        MeasureDataPointEntry,    // entry function
+        MeasureDataPointStep,     // step function
+        MeasureThisDataPointExit, // exit function
+        MeasureThisDataPointTran, // transition function
+        "StateMeasureThisPoint"   // label
+    },                    // current state
+    &StateTrackingMode    // parent state pointer
+};
+
+STATIC const LifeTesterState_t StateMeasureNextDataPoint = {
+    {
+        MeasureDataPointEntry,    // entry function
+        MeasureDataPointStep,     // step function
+        NULL,                     // exit function
+        MeasureNextDataPointTran, // transition function
+        "StateMeasureNextPoint"   // label
+    },                    // current state
+    &StateTrackingMode    // parent state pointer
+};
+
+STATIC const LifeTesterState_t StateMeasureScanDataPoint = {
+    {
+        MeasureDataPointEntry,    // entry function
+        MeasureDataPointStep,     // step function
+        MeasureScanDataPointExit, // exit function
+        MeasureScanDataPointTran, // transition function
+        "StateMeasureScanPoint"   // label
+    },                    // current state
+    &StateScanningMode    // parent state pointer
+};
+
+STATIC const LifeTesterState_t StateError = {
+    {
+        NULL,                     // entry function
+        NULL,                     // step function
+        NULL,                     // exit function
+        NULL,                     // transition function
+        "StateError"              // label
+    },                   // current state
+    NULL,                // parent state pointer
+};
+/*******************************************************************************
+* HELPER FUNCTIONS
+*******************************************************************************/
 static void PrintError(ErrorCode_t error)
 {
     switch(error)
@@ -176,16 +272,19 @@ STATIC void InitialiseEntry(LifeTester_t *const lifeTester)
     lifeTester->error = ok;
     // Ensure that the dac can be set or else raise an error
     DacSetOutput(0U, lifeTester->io.dac);
-    if (!(DacGetOutput(lifeTester) == 0U))
+    // TODO - move to step fn. Simpler to keep transitions to child step fn only
+    if (!(DacGetOutput(lifeTester) == 0U)) 
     {
         StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
     }
     // Signal that lifetester is being initialised.
     lifeTester->led.t(INIT_LED_ON_TIME, INIT_LED_OFF_TIME);
+    lifeTester->led.keepFlashing();
 }
 
 STATIC void InitialiseStep(LifeTester_t *const lifeTester)
 {
+    lifeTester->led.update();    
     // TODO: Auto gain. Need a new state for this.
     // Check short-circuit current is above required threshold for measurements
     const uint32_t tPresent   = millis();
@@ -212,7 +311,7 @@ STATIC void InitialiseStep(LifeTester_t *const lifeTester)
         else
         {
             lifeTester->error = ok;
-            StateMachineTransitionOnEvent(lifeTester, MeasurementDone);
+            StateMachineTransitionOnEvent(lifeTester, MeasurementDoneEvent);
         }
     }
 }
@@ -220,156 +319,37 @@ STATIC void InitialiseStep(LifeTester_t *const lifeTester)
 STATIC void InitialiseTran(LifeTester_t *const lifeTester,
                            Event_t e)
 {
-    if (e == MeasurementDone)
+    if (e == MeasurementDoneEvent)
     {
         ActivateScanMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, StateMeasureScanDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateMeasureScanDataPoint);
     }
     else if (e == ErrorEvent)
     {
-        StateMachineTransitionToState(lifeTester, StateErrorFoo);
+        StateMachineTransitionToState(lifeTester, &StateError);
 
     }
     else
     {
-        StateMachineTransitionToState(lifeTester, StateInitialiseDevice);
+        StateMachineTransitionToState(lifeTester, &StateInitialiseDevice);
     }
 }
 
 /*******************************************************************************
 * FUNCTIONS FOR SCANNING STATE
 *******************************************************************************/
-#if 0
-STATIC void StateWaitForTrackingDelay(LifeTester_t *const lifeTester)
-{
-    const uint32_t tElapsed = millis() - lifeTester->timer;
-    if (tElapsed > TRACK_DELAY_TIME)
-    {
-        lifeTester->state = StateSetToThisVoltage;
-    }
-}
-STATIC void StateSetToScanVoltage(LifeTester_t *const lifeTester)
-{
-    /* Only set the dac if it hasn't been set already */    
-    if (!DacOutputSetToScanVoltage(lifeTester))
-    {
-        DacSetOutputToScanVoltage(lifeTester);
-    }
 
-    // transition to next mode and setup data
-    lifeTester->data.iSampleSum = 0U;
-    lifeTester->data.nSamples = 0U;
-    lifeTester->state = StateSampleScanCurrent;
-    lifeTester->timer = millis();
+STATIC void ScanningModeEntry(LifeTester_t *const lifeTester)
+{
+    PrintScanHeader();
+    lifeTester->led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
+    lifeTester->led.keepFlashing();
 }
 
-/*
- State is only responsible for setting the dac if not already set and preparing
- variables for sampling coming next.
-*/
-STATIC void StateSetToThisVoltage(LifeTester_t *const lifeTester)
+STATIC void ScanningModeStep(LifeTester_t *const lifeTester)
 {
-    if (!DacOutputSetToThisVoltage(lifeTester))
-    {
-        DacSetOutputToThisVoltage(lifeTester);
-    }
-
-    lifeTester->data.iSampleSum = 0U;
-    lifeTester->data.nSamples = 0U;
-    lifeTester->state = StateSampleThisCurrent;
-    lifeTester->timer = millis();
+    lifeTester->led.update();
 }
-
-STATIC void StateSetToNextVoltage(LifeTester_t *const lifeTester)
-{
-    if (!DacOutputSetToNextVoltage(lifeTester))
-    {
-        lifeTester->data.vNext = lifeTester->data.vThis + DV_MPPT;
-        DacSetOutputToNextVoltage(lifeTester);
-    }
-
-    lifeTester->data.iSampleSum = 0U;
-    lifeTester->data.nSamples = 0U;
-    lifeTester->state = StateSampleNextCurrent;
-    lifeTester->timer = millis();
-}
-
-STATIC void StateSampleScanCurrent(LifeTester_t *const lifeTester)
-{
-    // The dac must be set to the correct voltage otherwise restart the measurement
-    if (DacOutputSetToScanVoltage(lifeTester))
-    {
-        const uint32_t tElapsed = millis() - lifeTester->timer;
-        if (tElapsed >= SETTLE_TIME)
-        {
-            if (tElapsed >= (SETTLE_TIME + SAMPLING_TIME))
-            {
-                lifeTester->state = StateAnalyseScanMeasurement;
-            }
-            else
-            {
-                lifeTester->data.iSampleSum += AdcReadLifeTesterCurrent(lifeTester);
-                lifeTester->data.nSamples++;
-                lifeTester->data.iScan = lifeTester->data.iSampleSum / lifeTester->data.nSamples;
-            }
-        }
-    }
-    else  // dac wasn't set. Restart the measurement
-    {
-        lifeTester->timer = millis();
-        lifeTester->state = StateSetToScanVoltage;
-    }
-}
-
-STATIC void StateSampleThisCurrent(LifeTester_t *const lifeTester)
-{
-    LifeTesterData_t *const data = &lifeTester->data;
-
-    const uint32_t tPresent = millis();
-    const uint32_t tElapsed = tPresent - lifeTester->timer;
-    const bool     readAdc = (tElapsed >= SETTLE_TIME)
-                             && (tElapsed < (SETTLE_TIME + SAMPLING_TIME));
-    const bool     samplingDone = (tElapsed >= (SETTLE_TIME + SAMPLING_TIME));
-    const bool     adcRead = (data->nSamples > 0U);
-    const bool     dacSet = DacOutputSetToThisVoltage(lifeTester); 
-
-    if (!dacSet)
-    {
-        data->nSamples = 0U;
-        data->iSampleSum = 0U;
-        lifeTester->timer = tPresent;
-    }
-    else if (readAdc)
-    {
-        data->iSampleSum += AdcReadLifeTesterCurrent(lifeTester);
-        data->nSamples++;
-    }
-    else if (samplingDone)
-    {
-        if (adcRead)
-        {
-            lifeTester->state = StateSetToNextVoltage;
-            lifeTester->timer = tPresent;
-            // Average current
-            data->iThis = data->iSampleSum / data->nSamples;
-            // Calculate Power
-            data->pThis = data->vThis * data->iThis; 
-        }
-        else
-        {
-            // no measurements taken so restart
-            data->nSamples = 0U;
-            data->iSampleSum = 0U;
-            lifeTester->timer = tPresent;
-        }
-    }
-    else
-    {
-        /* Do nothing. Just leave update. More time elapses and then 
-        when update is called, the next state will change.*/
-    }
-}
-#endif
 
 STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester)
 {
@@ -395,7 +375,7 @@ STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester)
             *data->iActive = data->iSampleSum / data->nSamples;
             *data->pActive = *data->vActive * *data->iActive; 
             // Readings are averaged in the transition function for now.
-            StateMachineTransitionOnEvent(lifeTester, MeasurementDone);
+            StateMachineTransitionOnEvent(lifeTester, MeasurementDoneEvent);
         }
         else
         {
@@ -438,61 +418,61 @@ STATIC void MeasureDataPointEntry(LifeTester_t *const lifeTester)
 STATIC void MeasureThisDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e)
 {
-    if (e == MeasurementDone)
+    if (e == MeasurementDoneEvent)
     {
         // 'This' measurement done so go back to 'next'.
         ActivateNextMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, StateMeasureNextDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateMeasureNextDataPoint);
     }
     else if (e == ErrorEvent)
     {
-        StateMachineTransitionToState(lifeTester, StateErrorFoo);
+        StateMachineTransitionToState(lifeTester, &StateError);
     }
     else
     {
         // 'This' measurement failed so go back to into 'this' via entry.
         ActivateThisMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, StateMeasureThisDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateMeasureThisDataPoint);
     }
 }
 
 STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e)
 {
-    if (e == MeasurementDone)
+    if (e == MeasurementDoneEvent)
     {
         // 'Next' measurement done so go back to 'this'.
         ActivateThisMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, StateMeasureThisDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateMeasureThisDataPoint);
     }
     else if (e == ErrorEvent)
     {
-        StateMachineTransitionToState(lifeTester, StateErrorFoo);
+        StateMachineTransitionToState(lifeTester, &StateError);
     }
     else
     {
         // 'Next' measurement failed so go back to into 'next' via entry.
         ActivateNextMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, StateMeasureNextDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateMeasureNextDataPoint);
     }
 }
 
 STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e)
 {
-    if (e == ScanningDone)
+    if (e == ScanningDoneEvent)
     {
         ActivateThisMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, StateMeasureThisDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateMeasureThisDataPoint);
     }
     else if (e == ErrorEvent)
     {
-        StateMachineTransitionToState(lifeTester, StateErrorFoo);
+        StateMachineTransitionToState(lifeTester, &StateError);
     }
     else
     {
         ActivateScanMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, StateMeasureScanDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateMeasureScanDataPoint);
     }
 }
 #if 0
@@ -699,7 +679,7 @@ STATIC void MeasureScanDataPointExit(LifeTester_t *const lifeTester)
         {
             data->vThis = data->vScanMpp;
             PrintMppHeader();
-            StateMachineTransitionOnEvent(lifeTester, ScanningDone);
+            StateMachineTransitionOnEvent(lifeTester, ScanningDoneEvent);
         }
         else // error condition so go to error state
         {
@@ -728,54 +708,83 @@ STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester)
     }
 }
 
-STATIC void StateError(LifeTester_t *const lifeTester)
+STATIC void StateErrorEntry(LifeTester_t *const lifeTester)
 {
     lifeTester->led.t(ERROR_LED_ON_TIME,ERROR_LED_OFF_TIME);
-    lifeTester->led.keepFlashing();    
+    lifeTester->led.keepFlashing();
     DacSetOutput(0U, lifeTester->io.dac);
 }
-#if 0
-/*
- Calls the state function stored in the lifetester object.
-*/
-static void StateMachineDispatcher(LifeTester_t *const lifeTester)
+
+static void ExitCurrentChildState(LifeTester_t *const lifeTester)
 {
-    lifeTester->state(lifeTester);
+    StateFn_t *exitFn = lifeTester->state.fn.exit;
+    if (exitFn != NULL)
+    {
+        exitFn(lifeTester);
+    }
 }
-#endif
+
+static void ExitCurrentParentState(LifeTester_t *const lifeTester)
+{
+    if (lifeTester->state.parent != NULL)
+    {
+        StateFn_t *exitFn = lifeTester->state.parent->fn.exit;
+        if (exitFn != NULL)
+        {
+            exitFn(lifeTester);
+        }        
+    }
+}
+
+static void EnterTargetChildState(LifeTester_t *const lifeTester,
+                                  LifeTesterState_t const* const targetState)
+{
+    StateFn_t *entryFn = targetState->fn.entry;
+    if (entryFn != NULL)
+    {
+        entryFn(lifeTester);
+    }
+}
+
+static void EnterTargetParentState(LifeTester_t *const lifeTester,
+                                   LifeTesterState_t const* const targetState)
+{
+    if (targetState->parent != NULL)
+    {
+        StateFn_t *entryFn = targetState->parent->fn.entry;
+        if (entryFn != NULL)
+        {
+            entryFn(lifeTester);
+        }
+    }
+}
+
 /*
  Carries out state machine transition by calling the exit function for the 
  current state and entry function for the next.
 */
 STATIC void StateMachineTransitionToState(LifeTester_t *const lifeTester,
-                                          LifeTesterState_t targetState)
+                                          LifeTesterState_t const *const targetState)
 {
-    // TODO: fix this - entry and exit for parent states need to be called
-    State_t *const state1 = &lifeTester->state.current;
-    State_t *const state2 = &targetState.current;
-    // Call exit function for current state
-    if (state1->exit != NULL)
+    LifeTesterState_t *const state = &lifeTester->state;
+    ExitCurrentChildState(lifeTester);
+    /*Are the parent states different. If so, then we need to exit/enter parents.
+    Compare parent state pointers. */
+    if (state->parent != targetState->parent)
     {
-        state1->exit(lifeTester);
+        ExitCurrentParentState(lifeTester);
+        EnterTargetParentState(lifeTester, targetState);
     }
-    // Call entry function for the target state
-    if (state2->entry != NULL)
-    {
-        state2->entry(lifeTester);
-    }
-    // Finally transition is done. Update copy of the current state.
-    lifeTester->state = targetState;
+    EnterTargetChildState(lifeTester, targetState);
+    // Finally transition is done. Copy the target state into lifetester state.
+    memcpy(state, targetState, sizeof(LifeTesterState_t));
 }
-#if 0
-static LifeTesterState_t GetTargetState(LifeTester_t *const lifeTester, Event_t e)
-{
-    return StateTransitionTable[lifeTester->currentState.idx][e];
-}
-#endif
+
+// TODO: what about the transition function of parent?
 static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
                                           Event_t e)
 {
-    StateTranFn_t *TransitionFn = lifeTester->state.current.tran;
+    StateTranFn_t *TransitionFn = lifeTester->state.fn.tran;
     if (TransitionFn != NULL)
     {
         TransitionFn(lifeTester, e);
@@ -784,19 +793,36 @@ static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
 
 void StateMachine_Reset(LifeTester_t *const lifeTester)
 {
-    StateMachineTransitionToState(lifeTester, StateInitialiseDevice);
+    lifeTester->state = StateNone;
+    StateMachineTransitionToState(lifeTester, &StateInitialiseDevice);
 }
-#if 0
-void StateMachine_Update(LifeTester_t *const lifeTester)
+
+static void RunChildStepFn(LifeTester_t *const lifeTester)
 {
-    StateMachineDispatcher(lifeTester);
-}
-#endif
-void StateMachine_UpdateStep(LifeTester_t *const lifeTester)
-{
-    StateFn_t *StepFn = lifeTester->state.current.step;
+    StateFn_t *StepFn = lifeTester->state.fn.step;
     if (StepFn != NULL)
     {
         StepFn(lifeTester);
     }
+}
+
+static void RunParentStepFn(LifeTester_t *const lifeTester)
+{
+    LifeTesterState_t const* parent = lifeTester->state.parent;
+    if (parent != NULL)
+    {
+        StateFn_t *StepFn = parent->fn.step;
+        if (StepFn != NULL)  // TODO: should be a macro
+        {
+            StepFn(lifeTester);
+        }
+    }
+}
+
+void StateMachine_UpdateStep(LifeTester_t *const lifeTester)
+{
+    /*at present, transitions only happen in child step fns so both lines will
+    be run.*/
+    RunParentStepFn(lifeTester);
+    RunChildStepFn(lifeTester);
 }
