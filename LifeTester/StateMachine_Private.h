@@ -12,6 +12,7 @@ static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
 // Entry functions 
 STATIC void InitialiseEntry(LifeTester_t *const lifeTester);
 STATIC void ScanningModeEntry(LifeTester_t *const lifeTester);
+STATIC void TrackingModeEntry(LifeTester_t *const lifeTester);
 STATIC void MeasureDataPointEntry(LifeTester_t *const lifeTester);
 STATIC void StateErrorEntry(LifeTester_t *const lifeTester);
 
@@ -33,6 +34,9 @@ STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e);
 STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e);
+STATIC void ScanningModeTran(LifeTester_t *const lifeTester,
+                             Event_t e);
+
 
 #ifdef UNIT_TEST  // give states external linkage for access from tests
 extern const LifeTesterState_t StateNone;

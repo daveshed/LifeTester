@@ -15,13 +15,13 @@
 // initialisation
 STATIC const LifeTesterState_t StateNone = {
     {
-        NULL,  // entry function
-        NULL,  // step function
-        NULL,  // exit function
-        NULL,  // transition function
-        "StateNone" // label
-    },    // current state
-    NULL  // parent state pointer
+        NULL,   // entry function
+        NULL,   // step function
+        NULL,   // exit function
+        NULL    // transition function
+    },          // current state
+    NULL,       // parent state pointer
+    "StateNone" // label
 };
 
 // Parent states that capture more specific states
@@ -30,21 +30,21 @@ STATIC const LifeTesterState_t StateScanningMode = {
         ScanningModeEntry, // entry function (print message, led params)
         ScanningModeStep,  // step function (update LED)
         NULL,              // exit function
-        NULL,              // transition function
-        "StateScanningMode" // label
+        ScanningModeTran   // transition function
     },                     // current state
-    NULL                   // parent state pointer
+    NULL,                  // parent state pointer
+    "StateScanningMode"    // label
 };
 
 STATIC const LifeTesterState_t StateTrackingMode = {
     {
-        NULL,          // entry function (print message, led params)
-        NULL,          // step function (update LED)
-        NULL,          // exit function
-        NULL,          // transition function
-        "StateTrackingMode" // label
-    },                 // current state
-    NULL               // parent state pointer
+        TrackingModeEntry, // entry function (print message, led params)
+        NULL,              // step function (update LED)
+        NULL,              // exit function
+        NULL               // transition function
+    },                     // current state
+    NULL,                  // parent state pointer
+    "StateTrackingMode"    // label
 };
 
 // Leaf states
@@ -53,10 +53,10 @@ STATIC const LifeTesterState_t StateInitialiseDevice = {
         InitialiseEntry,  // entry function (print message, led params)
         InitialiseStep,   // step function (update LED)
         NULL,             // exit function
-        InitialiseTran,   // transition function
-        "StateInitialise" // label
-    },         // current state
-    NULL       // parent state pointer
+        InitialiseTran    // transition function
+    },                    // current state
+    NULL,                 // parent state pointer
+    "StateInitialise"     // label
 };
 
 STATIC const LifeTesterState_t StateMeasureThisDataPoint = {
@@ -64,10 +64,10 @@ STATIC const LifeTesterState_t StateMeasureThisDataPoint = {
         MeasureDataPointEntry,    // entry function
         MeasureDataPointStep,     // step function
         MeasureThisDataPointExit, // exit function
-        MeasureThisDataPointTran, // transition function
-        "StateMeasureThisPoint"   // label
-    },                    // current state
-    &StateTrackingMode    // parent state pointer
+        MeasureThisDataPointTran  // transition function
+    },                            // current state
+    &StateTrackingMode,           // parent state pointer
+    "StateMeasureThisDataPoint"   // label
 };
 
 STATIC const LifeTesterState_t StateMeasureNextDataPoint = {
@@ -75,10 +75,10 @@ STATIC const LifeTesterState_t StateMeasureNextDataPoint = {
         MeasureDataPointEntry,    // entry function
         MeasureDataPointStep,     // step function
         NULL,                     // exit function
-        MeasureNextDataPointTran, // transition function
-        "StateMeasureNextPoint"   // label
-    },                    // current state
-    &StateTrackingMode    // parent state pointer
+        MeasureNextDataPointTran  // transition function
+    },                            // current state
+    &StateTrackingMode,           // parent state pointer
+    "StateMeasureNextDataPoint"   // label
 };
 
 STATIC const LifeTesterState_t StateMeasureScanDataPoint = {
@@ -86,10 +86,10 @@ STATIC const LifeTesterState_t StateMeasureScanDataPoint = {
         MeasureDataPointEntry,    // entry function
         MeasureDataPointStep,     // step function
         MeasureScanDataPointExit, // exit function
-        MeasureScanDataPointTran, // transition function
-        "StateMeasureScanPoint"   // label
-    },                    // current state
-    &StateScanningMode    // parent state pointer
+        MeasureScanDataPointTran  // transition function
+    },                            // current state
+    &StateScanningMode,           // parent state pointer
+    "StateMeasureScanDataPoint"   // label
 };
 
 STATIC const LifeTesterState_t StateError = {
@@ -97,10 +97,10 @@ STATIC const LifeTesterState_t StateError = {
         NULL,                     // entry function
         NULL,                     // step function
         NULL,                     // exit function
-        NULL,                     // transition function
-        "StateError"              // label
-    },                   // current state
-    NULL,                // parent state pointer
+        NULL                      // transition function
+    },                            // current state
+    NULL,                         // parent state pointer
+    "StateError"                  // label
 };
 /*******************************************************************************
 * HELPER FUNCTIONS
@@ -322,7 +322,7 @@ STATIC void InitialiseTran(LifeTester_t *const lifeTester,
     if (e == MeasurementDoneEvent)
     {
         ActivateScanMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, &StateMeasureScanDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateScanningMode);
     }
     else if (e == ErrorEvent)
     {
@@ -344,11 +344,7 @@ STATIC void ScanningModeEntry(LifeTester_t *const lifeTester)
     PrintScanHeader();
     lifeTester->led.t(SCAN_LED_ON_TIME, SCAN_LED_OFF_TIME);
     lifeTester->led.keepFlashing();
-}
-
-STATIC void ScanningModeStep(LifeTester_t *const lifeTester)
-{
-    lifeTester->led.update();
+    lifeTester->data.vScan = 0U;
 }
 
 STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester)
@@ -460,10 +456,34 @@ STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
 STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e)
 {
-    if (e == ScanningDoneEvent)
+    if (e == MeasurementDoneEvent) 
+    {
+        // transition child->parent. Exit function will get called.
+        StateMachineTransitionToState(lifeTester, &StateScanningMode);
+    }
+    if (e == ErrorEvent)
+    {
+        StateMachineTransitionToState(lifeTester, &StateError);
+    }
+    else
+    {
+        /*Don't do anything. Transition function exits and execution returns to
+        calling environment (step function)*/        
+    }
+}
+
+STATIC void ScanningModeTran(LifeTester_t *const lifeTester,
+                             Event_t e){
+
+    if (e == MeasurementStartEvent)
+    {
+        ActivateScanMeasurement(lifeTester);
+        StateMachineTransitionToState(lifeTester, &StateMeasureScanDataPoint);
+    }
+    else if (e == ScanningDoneEvent)  // scanning finished go to tracking.
     {
         ActivateThisMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, &StateMeasureThisDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateTrackingMode);
     }
     else if (e == ErrorEvent)
     {
@@ -471,8 +491,8 @@ STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
     }
     else
     {
-        ActivateScanMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, &StateMeasureScanDataPoint);
+        /*Don't do anything. Transition function exits and execution returns to
+        calling environment (step function)*/
     }
 }
 #if 0
@@ -657,13 +677,16 @@ STATIC void AnalyseTrackingDataExit(LifeTester_t *const lifeTester)
 
 STATIC void MeasureScanDataPointExit(LifeTester_t *const lifeTester)
 {
+    UpdateScanData(lifeTester);
+    lifeTester->data.vScan += DV_SCAN;
+}
+
+STATIC void ScanningModeStep(LifeTester_t *const lifeTester)
+{
+    lifeTester->led.update();
+
     LifeTesterData_t *const data = &lifeTester->data;
-    if (data->vScan < V_SCAN_MAX)  // keep scanning
-    {
-        UpdateScanData(lifeTester);
-        lifeTester->data.vScan += DV_SCAN;
-    }
-    else // scan is done
+    if (data->vScan > V_SCAN_MAX)  // scanning done
     {
         // check that the scan is a hill shape
         const bool scanShapeOk = (data->pScanInitial < data->pScanMpp)
@@ -678,7 +701,6 @@ STATIC void MeasureScanDataPointExit(LifeTester_t *const lifeTester)
         if (lifeTester->error == ok)
         {
             data->vThis = data->vScanMpp;
-            PrintMppHeader();
             StateMachineTransitionOnEvent(lifeTester, ScanningDoneEvent);
         }
         else // error condition so go to error state
@@ -686,6 +708,14 @@ STATIC void MeasureScanDataPointExit(LifeTester_t *const lifeTester)
             StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
         }
     }
+    else
+    {
+        StateMachineTransitionOnEvent(lifeTester, MeasurementStartEvent);
+    }
+}
+STATIC void TrackingModeEntry(LifeTester_t *const lifeTester)
+{
+    PrintMppHeader();
 }
 
 STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester)
@@ -710,6 +740,7 @@ STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester)
 
 STATIC void StateErrorEntry(LifeTester_t *const lifeTester)
 {
+    printf("error state\n");
     lifeTester->led.t(ERROR_LED_ON_TIME,ERROR_LED_OFF_TIME);
     lifeTester->led.keepFlashing();
     DacSetOutput(0U, lifeTester->io.dac);
@@ -717,7 +748,7 @@ STATIC void StateErrorEntry(LifeTester_t *const lifeTester)
 
 static void ExitCurrentChildState(LifeTester_t *const lifeTester)
 {
-    StateFn_t *exitFn = lifeTester->state.fn.exit;
+    StateFn_t *exitFn = lifeTester->state->fn.exit;
     if (exitFn != NULL)
     {
         exitFn(lifeTester);
@@ -726,9 +757,9 @@ static void ExitCurrentChildState(LifeTester_t *const lifeTester)
 
 static void ExitCurrentParentState(LifeTester_t *const lifeTester)
 {
-    if (lifeTester->state.parent != NULL)
+    if (lifeTester->state->parent != NULL)
     {
-        StateFn_t *exitFn = lifeTester->state.parent->fn.exit;
+        StateFn_t *exitFn = lifeTester->state->parent->fn.exit;
         if (exitFn != NULL)
         {
             exitFn(lifeTester);
@@ -766,25 +797,45 @@ static void EnterTargetParentState(LifeTester_t *const lifeTester,
 STATIC void StateMachineTransitionToState(LifeTester_t *const lifeTester,
                                           LifeTesterState_t const *const targetState)
 {
-    LifeTesterState_t *const state = &lifeTester->state;
-    ExitCurrentChildState(lifeTester);
-    /*Are the parent states different. If so, then we need to exit/enter parents.
-    Compare parent state pointers. */
-    if (state->parent != targetState->parent)
+    LifeTesterState_t const* state = lifeTester->state;
+    
+    if (targetState == state)
     {
+        // Do nothing. Already there
+    }
+    else if (targetState == state->parent)
+    {
+        // only need to exit current state to parent - don't run parent entry
+        ExitCurrentChildState(lifeTester);
+    }
+    else if (targetState->parent == state)
+    {
+        EnterTargetChildState(lifeTester, targetState);
+    }
+    else if (targetState->parent == state->parent)
+    {
+        // Only need to transition out/in one level
+        ExitCurrentChildState(lifeTester);
+        EnterTargetChildState(lifeTester, targetState);
+    }
+    else
+    {
+        // Need to fully exit state and reenter target
+        ExitCurrentChildState(lifeTester);
         ExitCurrentParentState(lifeTester);
         EnterTargetParentState(lifeTester, targetState);
+        EnterTargetChildState(lifeTester, targetState);
     }
-    EnterTargetChildState(lifeTester, targetState);
     // Finally transition is done. Copy the target state into lifetester state.
-    memcpy(state, targetState, sizeof(LifeTesterState_t));
+    // memcpy(state, targetState, sizeof(LifeTesterState_t));
+    lifeTester->state = targetState;
 }
 
 // TODO: what about the transition function of parent?
 static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
                                           Event_t e)
 {
-    StateTranFn_t *TransitionFn = lifeTester->state.fn.tran;
+    StateTranFn_t *TransitionFn = lifeTester->state->fn.tran;
     if (TransitionFn != NULL)
     {
         TransitionFn(lifeTester, e);
@@ -793,13 +844,13 @@ static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
 
 void StateMachine_Reset(LifeTester_t *const lifeTester)
 {
-    lifeTester->state = StateNone;
+    lifeTester->state = &StateNone;
     StateMachineTransitionToState(lifeTester, &StateInitialiseDevice);
 }
 
 static void RunChildStepFn(LifeTester_t *const lifeTester)
 {
-    StateFn_t *StepFn = lifeTester->state.fn.step;
+    StateFn_t *StepFn = lifeTester->state->fn.step;
     if (StepFn != NULL)
     {
         StepFn(lifeTester);
@@ -808,7 +859,7 @@ static void RunChildStepFn(LifeTester_t *const lifeTester)
 
 static void RunParentStepFn(LifeTester_t *const lifeTester)
 {
-    LifeTesterState_t const* parent = lifeTester->state.parent;
+    LifeTesterState_t const* parent = lifeTester->state->parent;
     if (parent != NULL)
     {
         StateFn_t *StepFn = parent->fn.step;
@@ -821,8 +872,10 @@ static void RunParentStepFn(LifeTester_t *const lifeTester)
 
 void StateMachine_UpdateStep(LifeTester_t *const lifeTester)
 {
-    /*at present, transitions only happen in child step fns so both lines will
-    be run.*/
+    /*Call step functions in this order so that a transition from a NULL parent
+    state will only call one step function and one transition. Where as a tran-
+    sition from a child state will only call the step fucntion of its parent.
+    simpler to debug.*/
     RunParentStepFn(lifeTester);
     RunChildStepFn(lifeTester);
 }

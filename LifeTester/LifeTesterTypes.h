@@ -63,6 +63,7 @@ typedef struct LifeTesterIo_s {
 typedef enum Event_e {
     NoneEvent,
     DacNotSetEvent,
+    MeasurementStartEvent,
     MeasurementDoneEvent,
     ScanningDoneEvent,
     ResetEvent,  // not implemented yet
@@ -85,13 +86,13 @@ typedef struct State_s {
     StateFn_t       *step;
     StateFn_t       *exit;
     StateTranFn_t   *tran;
-    char            label[30];  // name for debugging
 } State_t;
 
 // Heirarchical state - looks like linked list
 typedef struct LifeTesterState_s {
     State_t           fn;
     LifeTesterState_s const* parent;
+    char              label[30];  // name for debugging
 } LifeTesterState_t;
 
 /*
@@ -103,7 +104,7 @@ struct LifeTester_s {
     LifeTesterData_t  data;
     uint32_t          timer;     //timer for tracking loop
     ErrorCode_t       error;          
-    LifeTesterState_t state;
+    LifeTesterState_t const* state;
 };
 typedef LifeTester_s LifeTester_t;
 
