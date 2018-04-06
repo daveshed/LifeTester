@@ -14,12 +14,13 @@ STATIC void InitialiseEntry(LifeTester_t *const lifeTester);
 STATIC void ScanningModeEntry(LifeTester_t *const lifeTester);
 STATIC void TrackingModeEntry(LifeTester_t *const lifeTester);
 STATIC void MeasureDataPointEntry(LifeTester_t *const lifeTester);
-STATIC void StateErrorEntry(LifeTester_t *const lifeTester);
+STATIC void ErrorEntry(LifeTester_t *const lifeTester);
 
 // Step Functions
 STATIC void InitialiseStep(LifeTester_t *const lifeTester);
 STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester);
 STATIC void ScanningModeStep(LifeTester_t *const lifeTester);
+STATIC void ErrorStep(LifeTester_t *const lifeTester);
 
 // Exit functions
 STATIC void AnalyseTrackingDataExit(LifeTester_t *const lifeTester);

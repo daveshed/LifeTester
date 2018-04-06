@@ -9,6 +9,8 @@
 #include "StateMachine.h"
 #include "StateMachine_Private.h"
 
+#define RUN_STATE_FN(FN, X)     if(FN != NULL){FN(X);}
+
 /*******************************************************************************
 * PRIVATE STATE DEFINITIONS
 *******************************************************************************/
@@ -94,8 +96,8 @@ STATIC const LifeTesterState_t StateMeasureScanDataPoint = {
 
 STATIC const LifeTesterState_t StateError = {
     {
-        NULL,                     // entry function
-        NULL,                     // step function
+        ErrorEntry,               // entry function
+        ErrorStep,                // step function
         NULL,                     // exit function
         NULL                      // transition function
     },                            // current state
@@ -738,7 +740,7 @@ STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester)
     }
 }
 
-STATIC void StateErrorEntry(LifeTester_t *const lifeTester)
+STATIC void ErrorEntry(LifeTester_t *const lifeTester)
 {
     printf("error state\n");
     lifeTester->led.t(ERROR_LED_ON_TIME,ERROR_LED_OFF_TIME);
@@ -746,35 +748,31 @@ STATIC void StateErrorEntry(LifeTester_t *const lifeTester)
     DacSetOutput(0U, lifeTester->io.dac);
 }
 
+STATIC void ErrorStep(LifeTester_t *const lifeTester)
+{
+    lifeTester->led.update();
+}
+
 static void ExitCurrentChildState(LifeTester_t *const lifeTester)
 {
-    StateFn_t *exitFn = lifeTester->state->fn.exit;
-    if (exitFn != NULL)
-    {
-        exitFn(lifeTester);
-    }
+    StateFn_t *exit = lifeTester->state->fn.exit;
+    RUN_STATE_FN(exit, lifeTester);
 }
 
 static void ExitCurrentParentState(LifeTester_t *const lifeTester)
 {
     if (lifeTester->state->parent != NULL)
     {
-        StateFn_t *exitFn = lifeTester->state->parent->fn.exit;
-        if (exitFn != NULL)
-        {
-            exitFn(lifeTester);
-        }        
+        StateFn_t *exit = lifeTester->state->parent->fn.exit;
+        RUN_STATE_FN(exit, lifeTester);
     }
 }
 
 static void EnterTargetChildState(LifeTester_t *const lifeTester,
                                   LifeTesterState_t const* const targetState)
 {
-    StateFn_t *entryFn = targetState->fn.entry;
-    if (entryFn != NULL)
-    {
-        entryFn(lifeTester);
-    }
+    StateFn_t *entry = targetState->fn.entry;
+    RUN_STATE_FN(entry, lifeTester);
 }
 
 static void EnterTargetParentState(LifeTester_t *const lifeTester,
@@ -782,11 +780,8 @@ static void EnterTargetParentState(LifeTester_t *const lifeTester,
 {
     if (targetState->parent != NULL)
     {
-        StateFn_t *entryFn = targetState->parent->fn.entry;
-        if (entryFn != NULL)
-        {
-            entryFn(lifeTester);
-        }
+        StateFn_t *entry = targetState->parent->fn.entry;
+        RUN_STATE_FN(entry, lifeTester);
     }
 }
 
@@ -850,11 +845,8 @@ void StateMachine_Reset(LifeTester_t *const lifeTester)
 
 static void RunChildStepFn(LifeTester_t *const lifeTester)
 {
-    StateFn_t *StepFn = lifeTester->state->fn.step;
-    if (StepFn != NULL)
-    {
-        StepFn(lifeTester);
-    }
+    StateFn_t *step = lifeTester->state->fn.step;
+    RUN_STATE_FN(step, lifeTester);
 }
 
 static void RunParentStepFn(LifeTester_t *const lifeTester)
@@ -862,11 +854,8 @@ static void RunParentStepFn(LifeTester_t *const lifeTester)
     LifeTesterState_t const* parent = lifeTester->state->parent;
     if (parent != NULL)
     {
-        StateFn_t *StepFn = parent->fn.step;
-        if (StepFn != NULL)  // TODO: should be a macro
-        {
-            StepFn(lifeTester);
-        }
+        StateFn_t *step = parent->fn.step;
+        RUN_STATE_FN(step, lifeTester);
     }
 }
 
