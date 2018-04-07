@@ -969,6 +969,10 @@ TEST(IVTestGroup, RunIvScanBadDiodeNoMppReturned)
 /*******************************************************************************
 * TESTS FOR UPDATING IN TRACKING MODE
 ********************************************************************************/
+/*
+ Complete tracking measurement cycle - power at next is higher so expect the 
+ drive voltage to increase.
+*/
 TEST(IVTestGroup, CompleteTrackingMeasurementCycleNextMorePowerIncreaseV)
 {
     // Setup for tracking mode.
@@ -1035,9 +1039,119 @@ TEST(IVTestGroup, CompleteTrackingMeasurementCycleNextMorePowerIncreaseV)
     CHECK_EQUAL(pNext, mockLifeTester->data.pNext);
     CHECK_EQUAL(false, mockLifeTester->data.thisDone);
     CHECK_EQUAL(false, mockLifeTester->data.nextDone);
+    CHECK_EQUAL(0U, mockLifeTester->data.nErrorReads);
+    CHECK_EQUAL(ok, mockLifeTester->error);
+}
+
+/*
+ Complete tracking measurement cycle - power at this is higher so expect the 
+ drive voltage to decrease.
+*/
+TEST(IVTestGroup, CompleteTrackingMeasurementCycleThisMorePowerDecreaseV)
+{
+    // Setup for tracking mode.
+    const uint8_t  vThis = 42U;
+    const uint8_t  vNext = vThis + DV_MPPT;
+    const uint16_t iThis = 45353;
+    const uint16_t iNext = 34623;
+    const uint32_t pThis = iThis * vThis;
+    const uint32_t pNext = iNext * vNext;
+    mockLifeTester->data.vThis = vThis;
+    mockLifeTester->data.vNext = vNext;
+    mockLifeTester->state = &StateTrackingMode;
+    mockTime = 34524U;
+    MocksForTrackingModeStep();
+    MocksForMeasureThisPointEntry(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateMeasureThisDataPoint, mockLifeTester->state);
+    CHECK_EQUAL(mockTime, mockLifeTester->timer);
+    CHECK_EQUAL(vThis, DacGetOutput(mockLifeTester));
+    CHECK_EQUAL(false, mockLifeTester->data.thisDone);
+    CHECK_EQUAL(false, mockLifeTester->data.nextDone);
+    // Settling time done so measurement expected
+    mockTime += SETTLE_TIME;
+    MocksForTrackingModeStep();
+    mockCurrent = iThis;
+    MocksForMeasureDataReadAdc(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateMeasureThisDataPoint, mockLifeTester->state);
+    // Sampling done so transition back to tracking mode parent
+    mockTime += SAMPLING_TIME;
+    MocksForTrackingModeStep();
+    MocksForMeasureDataNoAdcRead();
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateTrackingMode, mockLifeTester->state);
+    // This point measured so expect transition to Next
+    MocksForTrackingModeStep();
+    MocksForMeasureNextPointEntry(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateMeasureNextDataPoint, mockLifeTester->state);
+    CHECK_EQUAL(mockTime, mockLifeTester->timer);
+    CHECK_EQUAL(vNext, DacGetOutput(mockLifeTester));
+    // Settling time done so measurement expected
+    mockTime += SETTLE_TIME;
+    MocksForTrackingModeStep();
+    mockCurrent = iNext;
+    MocksForMeasureDataReadAdc(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateMeasureNextDataPoint, mockLifeTester->state);
+    // Sampling done so transition back to tracking mode parent
+    mockTime += SAMPLING_TIME;
+    MocksForTrackingModeStep();
+    MocksForMeasureDataNoAdcRead();
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateTrackingMode, mockLifeTester->state);
+    CHECK_EQUAL(true, mockLifeTester->data.thisDone);
+    CHECK_EQUAL(true, mockLifeTester->data.nextDone);
+    // Cycle has finished. Expect Led and working voltage to be updated
+    MocksForTrackingModeStep();
+    MocksForFlashLedOnce();
+    StateMachine_UpdateStep(mockLifeTester);
+    CHECK_EQUAL(vThis - DV_MPPT, mockLifeTester->data.vThis);
+    CHECK_EQUAL(vNext - DV_MPPT, mockLifeTester->data.vNext);
+    CHECK_EQUAL(pThis, mockLifeTester->data.pThis);
+    CHECK_EQUAL(pNext, mockLifeTester->data.pNext);
+    CHECK_EQUAL(false, mockLifeTester->data.thisDone);
+    CHECK_EQUAL(false, mockLifeTester->data.nextDone);
+    CHECK_EQUAL(0U, mockLifeTester->data.nErrorReads);
+    CHECK_EQUAL(ok, mockLifeTester->error);
+}
+
+/*
+ A low current is read in tracking mode and added to the counter.
+*/
+TEST(IVTestGroup, LowCurrentDetectedIncrementsErrorReadingsCounter)
+{
+    // Setup for tracking mode.
+    const uint8_t  vThis = 42U;
+    const uint8_t  vNext = vThis + DV_MPPT;
+    mockLifeTester->data.vThis = vThis;
+    mockLifeTester->data.vNext = vNext;
+    mockLifeTester->state = &StateTrackingMode;
+    mockTime = 34524U;
+    MocksForTrackingModeStep();
+    MocksForMeasureThisPointEntry(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    CHECK_EQUAL(0U, mockLifeTester->data.nErrorReads);
+    // Settling time done so measurement expected
+    mockTime += SETTLE_TIME;
+    MocksForTrackingModeStep();
+    mockCurrent = MIN_CURRENT - 1U;
+    MocksForMeasureDataReadAdc(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateMeasureThisDataPoint, mockLifeTester->state);
+    // Sampling done so transition back to tracking mode parent
+    mockTime += SAMPLING_TIME;
+    MocksForTrackingModeStep();
+    MocksForMeasureDataNoAdcRead();
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateTrackingMode, mockLifeTester->state);
+    CHECK(MIN_CURRENT > mockLifeTester->data.iThis);
+    CHECK_EQUAL(1U, mockLifeTester->data.nErrorReads);
+    CHECK_EQUAL(lowCurrent, mockLifeTester->error);
+
 }
 #if 0
-
 /*
  Test for updating mpp during track delay. Expect nothing to happen here. Delay time
  inserted to ensure that we aren't trying to update mpp too often.

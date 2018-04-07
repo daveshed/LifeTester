@@ -583,6 +583,7 @@ STATIC void MeasureThisDataPointTran(LifeTester_t *const lifeTester,
 STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester)
 {
     lifeTester->data.thisDone = true;
+    UpdateErrorReadings(lifeTester);
 }
 
 STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
@@ -605,6 +606,27 @@ STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
 STATIC void MeasureNextDataPointExit(LifeTester_t *const lifeTester)
 {
     lifeTester->data.nextDone = true;
+    UpdateErrorReadings(lifeTester);
+}
+
+static void UpdateErrorReadings(LifeTester_t *const lifeTester)
+{
+    LifeTesterData_t *const data = &lifeTester->data;
+    if (*data->iActive < MIN_CURRENT)
+    {
+        lifeTester->error = lowCurrent;
+        data->nErrorReads++;
+    }
+    else if (*data->iActive >= MAX_CURRENT)
+    {
+        lifeTester->error = currentLimit;
+        data->nErrorReads++;
+    }
+    else
+    {
+        lifeTester->error = ok;
+        data->nErrorReads = 0U;
+    }
 }
 
 /*
@@ -616,23 +638,6 @@ STATIC void MeasureNextDataPointExit(LifeTester_t *const lifeTester)
 STATIC void UpdateTrackingData(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
-#if 0
-    if (data->iScan < MIN_CURRENT)
-    {
-        lifeTester->error = lowCurrent;
-        data->nErrorReads++;
-    }
-    else if (data->iScan >= MAX_CURRENT)
-    {
-        lifeTester->error = currentLimit;
-        data->nErrorReads++;
-    }
-    else
-    {
-        lifeTester->error = ok;
-        data->nErrorReads = 0U;
-    }
-#endif
     /*if power is higher at the next point, we must be going uphill so move
     forwards one point for next loop*/
     if (data->pNext > data->pThis)
@@ -649,143 +654,6 @@ STATIC void UpdateTrackingData(LifeTester_t *const lifeTester)
     }
     PrintNewMpp(lifeTester);
 }
-
-#if 0
-STATIC void StateSampleNextCurrent(LifeTester_t *const lifeTester)
-{
-    LifeTesterData_t *const data = &lifeTester->data;
-
-    const uint32_t tPresent = millis();
-    const uint32_t tElapsed = tPresent - lifeTester->timer;
-    const bool     readAdc = (tElapsed >= SETTLE_TIME)
-                             && (tElapsed < (SETTLE_TIME + SAMPLING_TIME));
-    const bool     samplingDone = (tElapsed >= (SETTLE_TIME + SAMPLING_TIME));
-    const bool     adcRead = (data->nSamples > 0U);
-    const bool     dacSet = DacOutputSetToNextVoltage(lifeTester); 
-
-    if (!dacSet)
-    {
-        data->nSamples = 0U;
-        data->iSampleSum = 0U;
-        lifeTester->timer = tPresent;
-    }
-    else if (readAdc)
-    {
-        data->iSampleSum += AdcReadLifeTesterCurrent(lifeTester);
-        data->nSamples++;
-    }
-    else if (samplingDone)
-    {
-        if (adcRead)
-        {
-            lifeTester->state = StateAnalyseTrackingMeasurement;
-            lifeTester->timer = tPresent;
-            // Average current
-            data->iNext = data->iSampleSum / data->nSamples;
-            // Calculate Power
-            data->pNext = data->vNext * data->iNext; 
-        }
-        else
-        {
-            // no measurements taken so restart
-            data->nSamples = 0U;
-            data->iSampleSum = 0U;
-            lifeTester->timer = tPresent;
-        }
-    }
-    else
-    {
-        /* Do nothing. Just leave update. More time elapses and then 
-        when update is called, the next state will change.*/
-    }
-}
-STATIC void StateAnalyseScanMeasurement(LifeTester_t *const lifeTester)
-{
-    LifeTesterData_t *const data = &lifeTester->data;
-
-    if (data->nSamples > 0U)  // check that the adc has actually been read
-    {
-        UpdateScanData(lifeTester);   
-    }
-
-    /*Check whether the scan has finished or not. If so, check scan shape and 
-    set tracking to the correct voltage. If not, then go to the next point.*/
-    if (data->vScan <= V_SCAN_MAX)
-    {
-        // restart measurement or go to next point unless error
-        lifeTester->state =
-            (lifeTester->error == ok) ? StateSetToScanVoltage : StateError;
-    } 
-    else  // scan finished
-    {
-        // check that the scan is a hill shape
-        const bool scanShapeOk = (data->pScanInitial < data->pScanMpp)
-                                 && (data->pScanFinal < data->pScanMpp);
-        lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
-        
-        // report max power point
-        PrintScanMpp(lifeTester);
-
-        // Update v to max power point if there's no error otherwise set back to initial value.
-        // Scanning is done so go to tracking
-        if (lifeTester->error == ok)
-        {
-            data->vThis = data->vScanMpp;
-            lifeTester->state = StateWaitForTrackingDelay;
-            lifeTester->timer = millis();
-            PrintMppHeader();
-        }
-        else // error condition so go to error state
-        {
-            lifeTester->state = StateError;
-        }
-    }
-}
-
-STATIC void StateAnalyseTrackingMeasurement(LifeTester_t *const lifeTester)
-{
-    if (lifeTester->data.nSamples > 0U)  // Readings must have been taken
-    {
-        if ((lifeTester->data.iThis < MIN_CURRENT)
-            || (lifeTester->data.iNext < MIN_CURRENT))
-        {
-            lifeTester->error = lowCurrent;
-            lifeTester->data.nErrorReads++;
-        }
-        else if ((lifeTester->data.iThis >= MAX_CURRENT)
-                 || (lifeTester->data.iNext >= MAX_CURRENT))
-        {
-            lifeTester->error = currentLimit;
-            lifeTester->data.nErrorReads++;
-        }
-        else //no error here so reset error status and counter and calculate
-        {
-            lifeTester->error = ok;
-            lifeTester->data.nErrorReads = 0U;
-            /*if power is higher at the next point, we must be going uphill so move
-            forwards one point for next loop*/
-            if (lifeTester->data.pNext > lifeTester->data.pThis)
-            {
-                lifeTester->data.vThis += DV_MPPT;
-                lifeTester->led.stopAfter(2); //two flashes
-            }
-            else // otherwise go the other way...
-            {
-                lifeTester->data.vThis -= DV_MPPT;
-                lifeTester->led.stopAfter(1); //one flash
-            }
-            ResetForNextMeasurement(lifeTester);
-        }
-        PrintNewMpp(lifeTester);
-    }
-    /*Transition to error state only if there have been lots of error readings
-    in succession*/
-    if (lifeTester->data.nErrorReads > MAX_ERROR_READS)
-    {
-        lifeTester->state = StateError;
-    }
-}
-#endif
 
 /*******************************************************************************
 * FUNCTIONS FOR ERROR STATE

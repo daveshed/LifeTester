@@ -9,7 +9,8 @@ STATIC void StateMachineTransitionToState(LifeTester_t *const lifeTester,
                                           LifeTesterState_t const *targetState);
 static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
                                           Event_t e);
-STATIC void UpdateTrackingData(LifeTester_t *const lifeTester);
+static void UpdateTrackingData(LifeTester_t *const lifeTester);
+static void UpdateErrorReadings(LifeTester_t *const lifeTester);
 
 // Entry functions 
 STATIC void InitialiseEntry(LifeTester_t *const lifeTester);
