@@ -31,7 +31,7 @@ STATIC const LifeTesterState_t StateScanningMode = {
     {
         ScanningModeEntry, // entry function (print message, led params)
         ScanningModeStep,  // step function (update LED)
-        NULL,              // exit function
+        ScanningModeExit,  // exit function
         ScanningModeTran   // transition function
     },                     // current state
     NULL,                  // parent state pointer
@@ -41,7 +41,7 @@ STATIC const LifeTesterState_t StateScanningMode = {
 STATIC const LifeTesterState_t StateTrackingMode = {
     {
         TrackingModeEntry, // entry function (print message, led params)
-        NULL,              // step function (update LED)
+        TrackingModeStep,  // step function (update LED)
         NULL,              // exit function
         NULL               // transition function
     },                     // current state
@@ -349,6 +349,121 @@ STATIC void ScanningModeEntry(LifeTester_t *const lifeTester)
     lifeTester->data.vScan = 0U;
 }
 
+STATIC void ScanningModeTran(LifeTester_t *const lifeTester,
+                             Event_t e){
+
+    if (e == MeasurementStartEvent)
+    {
+        ActivateScanMeasurement(lifeTester);
+        StateMachineTransitionToState(lifeTester, &StateMeasureScanDataPoint);
+    }
+    else if (e == ScanningDoneEvent)  // scanning finished go to tracking.
+    {
+        ActivateThisMeasurement(lifeTester);
+        StateMachineTransitionToState(lifeTester, &StateTrackingMode);
+    }
+    else if (e == ErrorEvent)
+    {
+        StateMachineTransitionToState(lifeTester, &StateError);
+    }
+    else
+    {
+        /*Don't do anything. Transition function exits and execution returns to
+        calling environment (step function)*/
+    }
+}
+
+STATIC void ScanningModeStep(LifeTester_t *const lifeTester)
+{
+    lifeTester->led.update();
+
+    LifeTesterData_t *const data = &lifeTester->data;
+    if (data->vScan > V_SCAN_MAX)  // scanning done
+    {
+        // check that the scan is a hill shape
+        const bool scanShapeOk = (data->pScanInitial < data->pScanMpp)
+                                  && (data->pScanFinal < data->pScanMpp);
+        lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
+        
+        // report max power point
+        PrintScanMpp(lifeTester);
+
+        // Update v to max power point if there's no error otherwise set back to initial value.
+        // Scanning is done so go to tracking
+        if (lifeTester->error == ok)
+        {
+            data->vThis = data->vScanMpp;
+            StateMachineTransitionOnEvent(lifeTester, ScanningDoneEvent);
+        }
+        else // error condition so go to error state
+        {
+            StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
+        }
+    }
+    else
+    {
+        StateMachineTransitionOnEvent(lifeTester, MeasurementStartEvent);
+    }
+}
+
+STATIC void ScanningModeExit(LifeTester_t *const lifeTester)
+{
+    lifeTester->led.off();
+}
+STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
+                                     Event_t e)
+{
+    if (e == MeasurementDoneEvent) 
+    {
+        // transition child->parent. Exit function will get called.
+        StateMachineTransitionToState(lifeTester, &StateScanningMode);
+    }
+    if (e == ErrorEvent)
+    {
+        StateMachineTransitionToState(lifeTester, &StateError);
+    }
+    else
+    {
+        /*Don't do anything. Transition function exits and execution returns to
+        calling environment (step function)*/        
+    }
+}
+
+STATIC void MeasureScanDataPointExit(LifeTester_t *const lifeTester)
+{
+    UpdateScanData(lifeTester);
+    lifeTester->data.vScan += DV_SCAN;
+}
+
+/*******************************************************************************
+* FUNCTIONS FOR MEASUREMENT (GENERIC)
+********************************************************************************/
+
+STATIC void MeasureDataPointEntry(LifeTester_t *const lifeTester)
+{
+    /*Transition to error state only if there have been lots of error readings
+    in succession*/
+    if (lifeTester->data.nErrorReads > MAX_ERROR_READS)
+    {
+        StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
+    }
+
+    // Scan, This or Next is activated in the transition function
+    DacSetOutputToActiveVoltage(lifeTester);
+    if (!DacOutputSetToActiveVoltage(lifeTester))
+    {
+        lifeTester->error = DacSetFailed;
+        StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
+    }
+    else
+    {
+        lifeTester->data.iSampleSum = 0U;
+        lifeTester->data.nSamples = 0U;
+        lifeTester->timer = millis();
+    }
+}
+
+
 STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
@@ -389,29 +504,9 @@ STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester)
     }
 }
 
-STATIC void MeasureDataPointEntry(LifeTester_t *const lifeTester)
-{
-    /*Transition to error state only if there have been lots of error readings
-    in succession*/
-    if (lifeTester->data.nErrorReads > MAX_ERROR_READS)
-    {
-        StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
-    }
-
-    // Scan, This or Next is activated in the transition function
-    DacSetOutputToActiveVoltage(lifeTester);
-    if (!DacOutputSetToActiveVoltage(lifeTester))
-    {
-        lifeTester->error = DacSetFailed;
-        StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
-    }
-    else
-    {
-        lifeTester->data.iSampleSum = 0U;
-        lifeTester->data.nSamples = 0U;
-        lifeTester->timer = millis();
-    }
-}
+/*******************************************************************************
+* FUNCTIONS FOR TRACKING MODE
+********************************************************************************/
 
 STATIC void MeasureThisDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e)
@@ -455,48 +550,7 @@ STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
     }
 }
 
-STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
-                                     Event_t e)
-{
-    if (e == MeasurementDoneEvent) 
-    {
-        // transition child->parent. Exit function will get called.
-        StateMachineTransitionToState(lifeTester, &StateScanningMode);
-    }
-    if (e == ErrorEvent)
-    {
-        StateMachineTransitionToState(lifeTester, &StateError);
-    }
-    else
-    {
-        /*Don't do anything. Transition function exits and execution returns to
-        calling environment (step function)*/        
-    }
-}
 
-STATIC void ScanningModeTran(LifeTester_t *const lifeTester,
-                             Event_t e){
-
-    if (e == MeasurementStartEvent)
-    {
-        ActivateScanMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, &StateMeasureScanDataPoint);
-    }
-    else if (e == ScanningDoneEvent)  // scanning finished go to tracking.
-    {
-        ActivateThisMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, &StateTrackingMode);
-    }
-    else if (e == ErrorEvent)
-    {
-        StateMachineTransitionToState(lifeTester, &StateError);
-    }
-    else
-    {
-        /*Don't do anything. Transition function exits and execution returns to
-        calling environment (step function)*/
-    }
-}
 #if 0
 STATIC void StateSampleNextCurrent(LifeTester_t *const lifeTester)
 {
@@ -677,47 +731,28 @@ STATIC void AnalyseTrackingDataExit(LifeTester_t *const lifeTester)
     PrintNewMpp(lifeTester);
 }
 
-STATIC void MeasureScanDataPointExit(LifeTester_t *const lifeTester)
-{
-    UpdateScanData(lifeTester);
-    lifeTester->data.vScan += DV_SCAN;
-}
-
-STATIC void ScanningModeStep(LifeTester_t *const lifeTester)
-{
-    lifeTester->led.update();
-
-    LifeTesterData_t *const data = &lifeTester->data;
-    if (data->vScan > V_SCAN_MAX)  // scanning done
-    {
-        // check that the scan is a hill shape
-        const bool scanShapeOk = (data->pScanInitial < data->pScanMpp)
-                                  && (data->pScanFinal < data->pScanMpp);
-        lifeTester->error = (!scanShapeOk) ? invalidScan : lifeTester->error;  
-        
-        // report max power point
-        PrintScanMpp(lifeTester);
-
-        // Update v to max power point if there's no error otherwise set back to initial value.
-        // Scanning is done so go to tracking
-        if (lifeTester->error == ok)
-        {
-            data->vThis = data->vScanMpp;
-            StateMachineTransitionOnEvent(lifeTester, ScanningDoneEvent);
-        }
-        else // error condition so go to error state
-        {
-            StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
-        }
-    }
-    else
-    {
-        StateMachineTransitionOnEvent(lifeTester, MeasurementStartEvent);
-    }
-}
 STATIC void TrackingModeEntry(LifeTester_t *const lifeTester)
 {
     PrintMppHeader();
+}
+
+STATIC void TrackingModeStep(LifeTester_t *const lifeTester)
+{
+    lifeTester->led.update();
+    if (!lifeTester->data.thisDone)
+    {
+        // measure this data point
+    }
+    else if (!lifeTester->data.nextDone)
+    {
+        // measure next data point
+    }
+    else // measurements are done.
+    {
+        lifeTester->data.thisDone = false;
+        lifeTester->data.nextDone = false;
+        // recalculate working mpp and restart measurements
+    }
 }
 
 STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester)

@@ -490,6 +490,10 @@ static void MockForLedUpdate(void)
     mock().expectOneCall("Flasher::update");
 }
 
+static void MockForLedOff(void)
+{
+    mock().expectOneCall("Flasher::off");
+}
 
 static void MocksForMeasureScanPointEntry(LifeTester_t const *const lifeTester) 
 {    
@@ -497,14 +501,19 @@ static void MocksForMeasureScanPointEntry(LifeTester_t const *const lifeTester)
     MocksForGetTime();
 }
 
+static void MocksForScanModeEntry()
+{
+    MocksForScanLedSetup();
+}
+
 static void MocksForScanModeStep(void)
 {
     MockForLedUpdate();
 }
 
-static void MocksForScanModeEntry()
+static void MocksForScanModeExit(void)
 {
-    MocksForScanLedSetup();
+    MockForLedOff();
 }
 
 static void MocksForMeasureDataReadAdc(LifeTester_t const *const lifeTester)
@@ -538,7 +547,6 @@ static void MocksForInitialiseStep(void)
     MocksForGetTime();
     MockForLedUpdate();
 }
-
 
 static void MocksForErrorLedSetup(void)
 {
@@ -875,6 +883,7 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
     POINTERS_EQUAL(&StateScanningMode, mockLifeTester->state);
     // should change from scanning->tracking mode
     MocksForScanModeStep();
+    MocksForScanModeExit();
     StateMachine_UpdateStep(mockLifeTester);
     CHECK_EQUAL(mppCodeShockley, mockLifeTester->data.vThis);
     mock().checkExpectations();
@@ -916,6 +925,7 @@ TEST(IVTestGroup, RunIvScanBadDiodeNoMppReturned)
     POINTERS_EQUAL(&StateScanningMode, mockLifeTester->state);
     // should change from scanning->error mode
     MocksForScanModeStep();
+    MocksForScanModeExit();
     MocksForErrorEntry(mockLifeTester);
     StateMachine_UpdateStep(mockLifeTester);
     CHECK_EQUAL(0U, mockLifeTester->data.vThis);
@@ -924,69 +934,6 @@ TEST(IVTestGroup, RunIvScanBadDiodeNoMppReturned)
     mock().checkExpectations();
 }
 #if 0
-
-/*
- Test for running through an iv scan without errors. Mock device connected is an
- open circuit - power shape is not hill shaped. Expect error to be returned.
-*/
-TEST(IVTestGroup, RunIvScanBadDiodeNoMppReturned)
-{    
-    mockTime = 9348U;          // time last measurement was made 
-    const uint32_t dt = 50U;
-    uint32_t tPrevious = mockTime;
-    mockLifeTester->state = StateInitialise;
-
-    // start in initialise state - data will be reset and should go to POST
-    // Expect the dac to be set to short circuit (0V) and current read
-    MocksForPassInitialise(mockLifeTester);
-    StateMachine_Update(mockLifeTester);
-    POINTERS_EQUAL(StateSetToScanVoltage, mockLifeTester->state);
-    CHECK_EQUAL(tPrevious, mockLifeTester->timer);
-    
-    uint32_t vExpect = V_SCAN_MIN;
-    // increment time a little
-    mockTime += dt;
-    // keep executing scan loop until finished.
-    while (vExpect <= V_SCAN_MAX)
-    {
-        // (1) Expect to set voltage during settle time if it isn't already
-        POINTERS_EQUAL(StateSetToScanVoltage, mockLifeTester->state);
-        // timer should be zeroed as soon as dac is set for the measurement
-        MocksForSetDacToScanVoltage(mockLifeTester);
-        // timer is reset every time the voltage is set.
-        tPrevious = mockTime;
-        StateMachine_Update(mockLifeTester);
-        CHECK(DacOutputSetToScanVoltage(mockLifeTester));
-        CHECK_EQUAL(tPrevious, mockLifeTester->timer);
-
-        // (2) Expect to sample current during measurement time window
-        POINTERS_EQUAL(StateSampleScanCurrent, mockLifeTester->state);
-        mockTime += SETTLE_TIME;
-        // Mock returns shockley diode current from lookup table
-        mockCurrent = TestGetAdcCodeConstantCurrent(mockLifeTester->data.vScan);
-        MocksForSampleCurrent(mockLifeTester);
-        StateMachine_Update(mockLifeTester);
-
-        // Sampling time expired. Expect to transition to analyse measurement.
-        mockTime += SAMPLING_TIME;
-        mock().expectOneCall("millis").andReturnValue(mockTime);
-        StateMachine_Update(mockLifeTester);
-        POINTERS_EQUAL(StateAnalyseScanMeasurement, mockLifeTester->state);
-        
-        /*(3) Expect to do calculations and check the power point for new mpp
-        Not expecting timer to be read here - only calculations*/
-        StateMachine_Update(mockLifeTester);
-        vExpect += DV_SCAN;
-
-        // printf("mock time = %u elapsed = %u\n", mockTime, mockTime - tPrevious);
-        mock().checkExpectations();
-    }
-    
-    // Should change mode error state
-    POINTERS_EQUAL(StateError, mockLifeTester->state);
-    CHECK_EQUAL(invalidScan, mockLifeTester->error)
-    mock().checkExpectations();
-}
 
 /*
  Test for updating mpp during track delay. Expect nothing to happen here. Delay time

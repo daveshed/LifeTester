@@ -52,6 +52,9 @@ typedef struct LifeTesterData_s {
     
     uint16_t nSamples;    // counting number of readings taken by ADC during sampling window
     uint16_t nErrorReads; // number of readings outside allowed limits
+
+    bool     thisDone;    // status of measurements
+    bool     nextDone;
 } LifeTesterData_t;
 
 // holds the channel info for the DAC and ADC
