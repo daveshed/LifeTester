@@ -1150,90 +1150,37 @@ TEST(IVTestGroup, CompleteTrackingMeasurementCycleThisMorePowerDecreaseV)
 */
 TEST(IVTestGroup, LowCurrentDetectedIncrementsErrorReadingsCounter)
 {
-    // Setup for tracking mode.
-    const uint8_t  vThis = 42U;
-    const uint8_t  vNext = vThis + DV_MPPT;
-    mockLifeTester->data.vThis = vThis;
-    mockLifeTester->data.vNext = vNext;
-    mockLifeTester->state = &StateTrackingMode;
-    mockTime = 34524U;
-    // Begin with tracking delay step
-    MocksForTrackingModeStep();
-    MocksForTrackingDelayEntry();
-    StateMachine_UpdateStep(mockLifeTester);
-    POINTERS_EQUAL(&StateTrackingDelay, mockLifeTester->state);
-    CHECK_EQUAL(mockTime, mockLifeTester->timer);
-    mockTime += TRACK_DELAY_TIME;
-    MocksForTrackingModeStep();
-    MocksForTrackingDelayStep();
-    StateMachine_UpdateStep(mockLifeTester);
-    POINTERS_EQUAL(&StateTrackingMode, mockLifeTester->state);
-    // Transition to measure this point
-    MocksForTrackingModeStep();
-    MocksForMeasureThisPointEntry(mockLifeTester);
-    StateMachine_UpdateStep(mockLifeTester);
-    CHECK_EQUAL(0U, mockLifeTester->data.nErrorReads);
-    // Settling time done so measurement expected
-    mockTime += SETTLE_TIME;
-    MocksForTrackingModeStep();
-    mockCurrent = MIN_CURRENT - 1U;
-    MocksForMeasureDataReadAdc(mockLifeTester);
-    StateMachine_UpdateStep(mockLifeTester);
-    POINTERS_EQUAL(&StateMeasureThisDataPoint, mockLifeTester->state);
-    // Sampling done so transition back to tracking mode parent
-    mockTime += SAMPLING_TIME;
+    mockLifeTester->data.delayDone = true;
+    mockLifeTester->data.iSampleSum = MIN_CURRENT - 1U;
+    mockLifeTester->data.nSamples = 1U;
+    mockLifeTester->data.nErrorReads = 0U;
+    mockLifeTester->state = &StateMeasureThisDataPoint;
+    const uint32_t tInit = 34524U;
+    mockTime = tInit + SETTLE_TIME + SAMPLING_TIME;
+    ActivateThisMeasurement(mockLifeTester);
     MocksForTrackingModeStep();
     MocksForMeasureDataNoAdcRead();
     StateMachine_UpdateStep(mockLifeTester);
     POINTERS_EQUAL(&StateTrackingMode, mockLifeTester->state);
-    CHECK(MIN_CURRENT > mockLifeTester->data.iThis);
     CHECK_EQUAL(1U, mockLifeTester->data.nErrorReads);
     CHECK_EQUAL(lowCurrent, mockLifeTester->error);
     mock().checkExpectations();
 }
 
-/*
- Saturated current is read in tracking mode and added to the counter.
-*/
 TEST(IVTestGroup, SaturatedCurrentDetectedIncrementsErrorReadingsCounter)
 {
-    // Setup for tracking mode.
-    const uint8_t  vThis = 42U;
-    const uint8_t  vNext = vThis + DV_MPPT;
-    mockLifeTester->data.vThis = vThis;
-    mockLifeTester->data.vNext = vNext;
-    mockLifeTester->state = &StateTrackingMode;
-    mockTime = 34524U;
-    // Begin with tracking delay step
-    MocksForTrackingModeStep();
-    MocksForTrackingDelayEntry();
-    StateMachine_UpdateStep(mockLifeTester);
-    POINTERS_EQUAL(&StateTrackingDelay, mockLifeTester->state);
-    CHECK_EQUAL(mockTime, mockLifeTester->timer);
-    mockTime += TRACK_DELAY_TIME;
-    MocksForTrackingModeStep();
-    MocksForTrackingDelayStep();
-    StateMachine_UpdateStep(mockLifeTester);
-    POINTERS_EQUAL(&StateTrackingMode, mockLifeTester->state);
-    // Transition to measure this point
-    MocksForTrackingModeStep();
-    MocksForMeasureThisPointEntry(mockLifeTester);
-    StateMachine_UpdateStep(mockLifeTester);
-    CHECK_EQUAL(0U, mockLifeTester->data.nErrorReads);
-    // Settling time done so measurement expected
-    mockTime += SETTLE_TIME;
-    MocksForTrackingModeStep();
-    mockCurrent = MAX_CURRENT;
-    MocksForMeasureDataReadAdc(mockLifeTester);
-    StateMachine_UpdateStep(mockLifeTester);
-    POINTERS_EQUAL(&StateMeasureThisDataPoint, mockLifeTester->state);
-    // Sampling done so transition back to tracking mode parent
-    mockTime += SAMPLING_TIME;
+    mockLifeTester->data.delayDone = true;
+    mockLifeTester->data.iSampleSum = MAX_CURRENT;
+    mockLifeTester->data.nSamples = 1U;
+    mockLifeTester->data.nErrorReads = 0U;
+    mockLifeTester->state = &StateMeasureThisDataPoint;
+    const uint32_t tInit = 34524U;
+    mockTime = tInit + SETTLE_TIME + SAMPLING_TIME;
+    ActivateThisMeasurement(mockLifeTester);
     MocksForTrackingModeStep();
     MocksForMeasureDataNoAdcRead();
     StateMachine_UpdateStep(mockLifeTester);
     POINTERS_EQUAL(&StateTrackingMode, mockLifeTester->state);
-    CHECK_EQUAL(MAX_CURRENT, mockLifeTester->data.iThis);
     CHECK_EQUAL(1U, mockLifeTester->data.nErrorReads);
     CHECK_EQUAL(currentLimit, mockLifeTester->error);
     mock().checkExpectations();
@@ -1245,39 +1192,14 @@ TEST(IVTestGroup, SaturatedCurrentDetectedIncrementsErrorReadingsCounter)
 */
 TEST(IVTestGroup, NormalCurrentReadingResetsErrorReadingsCounter)
 {
-    // Setup for tracking mode.
-    const uint8_t  vThis = 42U;
-    const uint8_t  vNext = vThis + DV_MPPT;
-    mockLifeTester->data.vThis = vThis;
-    mockLifeTester->data.vNext = vNext;
+    mockLifeTester->data.delayDone = true;
+    mockLifeTester->data.iSampleSum = MIN_CURRENT + 1U;
+    mockLifeTester->data.nSamples = 1U;
     mockLifeTester->data.nErrorReads = 1U;
-    mockLifeTester->state = &StateTrackingMode;
-    mockTime = 34524U;
-    // Begin with tracking delay step
-    MocksForTrackingModeStep();
-    MocksForTrackingDelayEntry();
-    StateMachine_UpdateStep(mockLifeTester);
-    POINTERS_EQUAL(&StateTrackingDelay, mockLifeTester->state);
-    CHECK_EQUAL(mockTime, mockLifeTester->timer);
-    mockTime += TRACK_DELAY_TIME;
-    MocksForTrackingModeStep();
-    MocksForTrackingDelayStep();
-    StateMachine_UpdateStep(mockLifeTester);
-    POINTERS_EQUAL(&StateTrackingMode, mockLifeTester->state);
-    // Transition to measure this point
-    MocksForTrackingModeStep();
-    MocksForMeasureThisPointEntry(mockLifeTester);
-    StateMachine_UpdateStep(mockLifeTester);
-    CHECK_EQUAL(1U, mockLifeTester->data.nErrorReads);
-    // Settling time done so measurement expected
-    mockTime += SETTLE_TIME;
-    MocksForTrackingModeStep();
-    mockCurrent = MAX_CURRENT - 1U;
-    MocksForMeasureDataReadAdc(mockLifeTester);
-    StateMachine_UpdateStep(mockLifeTester);
-    POINTERS_EQUAL(&StateMeasureThisDataPoint, mockLifeTester->state);
-    // Sampling done so transition back to tracking mode parent
-    mockTime += SAMPLING_TIME;
+    mockLifeTester->state = &StateMeasureThisDataPoint;
+    const uint32_t tInit = 34524U;
+    mockTime = tInit + SETTLE_TIME + SAMPLING_TIME;
+    ActivateThisMeasurement(mockLifeTester);
     MocksForTrackingModeStep();
     MocksForMeasureDataNoAdcRead();
     StateMachine_UpdateStep(mockLifeTester);

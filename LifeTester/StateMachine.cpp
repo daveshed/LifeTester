@@ -205,7 +205,7 @@ static void ResetTimer(LifeTester_t *const lifeTester)
  Prepares lifetester state machine to measure this point by setting pointers 
  to the variables for this point.
 */
-static void ActivateThisMeasurement(LifeTester_t *const lifeTester)
+STATIC void ActivateThisMeasurement(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
     data->vActive = &data->vThis;
@@ -217,7 +217,7 @@ static void ActivateThisMeasurement(LifeTester_t *const lifeTester)
  Prepares lifetester state machine to measure next point by setting pointers 
  to the variables for this point.
 */
-static void ActivateNextMeasurement(LifeTester_t *const lifeTester)
+STATIC void ActivateNextMeasurement(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
     data->vActive = &data->vNext;
@@ -229,7 +229,7 @@ static void ActivateNextMeasurement(LifeTester_t *const lifeTester)
  Prepares lifetester state machine to measure next point by setting pointers 
  to the variables for this point.
 */
-static void ActivateScanMeasurement(LifeTester_t *const lifeTester)
+STATIC void ActivateScanMeasurement(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
     data->vActive = &data->vScan;
