@@ -522,8 +522,12 @@ STATIC void TrackingModeEntry(LifeTester_t *const lifeTester)
 STATIC void TrackingModeStep(LifeTester_t *const lifeTester)
 {
     lifeTester->led.update();
-    // check if any measurements are needed
-    if (!lifeTester->data.thisDone || !lifeTester->data.nextDone)
+
+    if (lifeTester->data.nErrorReads > MAX_ERROR_READS)
+    {
+        StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
+    }
+    else if (!lifeTester->data.thisDone || !lifeTester->data.nextDone)
     {
         StateMachineTransitionOnEvent(lifeTester, MeasurementStartEvent);
     }
@@ -556,6 +560,14 @@ STATIC void TrackingModeTran(LifeTester_t *const lifeTester,
         {
             // nothing to measure - returns to caller
         }
+    }
+    else if (e == ErrorEvent)
+    {
+        StateMachineTransitionToState(lifeTester, &StateError);
+    }
+    else
+    {
+        
     }
 }
 

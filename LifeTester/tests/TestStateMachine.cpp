@@ -1151,6 +1151,92 @@ TEST(IVTestGroup, LowCurrentDetectedIncrementsErrorReadingsCounter)
     CHECK_EQUAL(lowCurrent, mockLifeTester->error);
 
 }
+
+/*
+ Saturated current is read in tracking mode and added to the counter.
+*/
+TEST(IVTestGroup, SaturatedCurrentDetectedIncrementsErrorReadingsCounter)
+{
+    // Setup for tracking mode.
+    const uint8_t  vThis = 42U;
+    const uint8_t  vNext = vThis + DV_MPPT;
+    mockLifeTester->data.vThis = vThis;
+    mockLifeTester->data.vNext = vNext;
+    mockLifeTester->state = &StateTrackingMode;
+    mockTime = 34524U;
+    MocksForTrackingModeStep();
+    MocksForMeasureThisPointEntry(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    CHECK_EQUAL(0U, mockLifeTester->data.nErrorReads);
+    // Settling time done so measurement expected
+    mockTime += SETTLE_TIME;
+    MocksForTrackingModeStep();
+    mockCurrent = MAX_CURRENT;
+    MocksForMeasureDataReadAdc(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateMeasureThisDataPoint, mockLifeTester->state);
+    // Sampling done so transition back to tracking mode parent
+    mockTime += SAMPLING_TIME;
+    MocksForTrackingModeStep();
+    MocksForMeasureDataNoAdcRead();
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateTrackingMode, mockLifeTester->state);
+    CHECK_EQUAL(MAX_CURRENT, mockLifeTester->data.iThis);
+    CHECK_EQUAL(1U, mockLifeTester->data.nErrorReads);
+    CHECK_EQUAL(currentLimit, mockLifeTester->error);
+
+}
+
+/*
+ Updating state machine in tracking mode with a good current reading resets the 
+ bad reading counter.
+*/
+TEST(IVTestGroup, NormalCurrentReadingResetsErrorReadingsCounter)
+{
+    // Setup for tracking mode.
+    const uint8_t  vThis = 42U;
+    const uint8_t  vNext = vThis + DV_MPPT;
+    mockLifeTester->data.vThis = vThis;
+    mockLifeTester->data.vNext = vNext;
+    mockLifeTester->data.nErrorReads = 1U;
+    mockLifeTester->state = &StateTrackingMode;
+    mockTime = 34524U;
+    MocksForTrackingModeStep();
+    MocksForMeasureThisPointEntry(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    CHECK_EQUAL(1U, mockLifeTester->data.nErrorReads);
+    // Settling time done so measurement expected
+    mockTime += SETTLE_TIME;
+    MocksForTrackingModeStep();
+    mockCurrent = MAX_CURRENT - 1U;
+    MocksForMeasureDataReadAdc(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateMeasureThisDataPoint, mockLifeTester->state);
+    // Sampling done so transition back to tracking mode parent
+    mockTime += SAMPLING_TIME;
+    MocksForTrackingModeStep();
+    MocksForMeasureDataNoAdcRead();
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateTrackingMode, mockLifeTester->state);
+    CHECK_EQUAL(0U, mockLifeTester->data.nErrorReads);
+    CHECK_EQUAL(ok, mockLifeTester->error);
+}
+
+/*
+ Updating state machine in tracking mode with a good current reading resets the 
+ bad reading counter.
+*/
+TEST(IVTestGroup, TrackingModeTooManyBadReadingsTransitionToErrorState)
+{
+    // Setup for tracking mode.
+    mockLifeTester->data.nErrorReads = MAX_ERROR_READS + 1U;
+    mockLifeTester->state = &StateTrackingMode;
+    MocksForTrackingModeStep();
+    MocksForErrorEntry(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    POINTERS_EQUAL(&StateError, mockLifeTester->state);
+}
+
 #if 0
 /*
  Test for updating mpp during track delay. Expect nothing to happen here. Delay time
@@ -1162,7 +1248,6 @@ TEST(IVTestGroup, UpdateMppDuringTrackDelayTime)
     const uint32_t tElapsed = 10U;                    // time elapsed since
     const uint32_t tMock = tPrevious + tElapsed;      // value to return from millis
 
-    mockLifeTester->timer = tPrevious;
     mockLifeTester->state = StateWaitForTrackingDelay;
 
     // Check time. millis should return time within tracking delay time window
