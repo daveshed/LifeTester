@@ -43,7 +43,7 @@ STATIC const LifeTesterState_t StateTrackingMode = {
         TrackingModeEntry, // entry function (print message, led params)
         TrackingModeStep,  // step function (update LED)
         NULL,              // exit function
-        NULL               // transition function
+        TrackingModeTran   // transition function
     },                     // current state
     NULL,                  // parent state pointer
     "StateTrackingMode"    // label
@@ -76,7 +76,7 @@ STATIC const LifeTesterState_t StateMeasureNextDataPoint = {
     {
         MeasureDataPointEntry,    // entry function
         MeasureDataPointStep,     // step function
-        NULL,                     // exit function
+        MeasureNextDataPointExit, // exit function
         MeasureNextDataPointTran  // transition function
     },                            // current state
     &StateTrackingMode,           // parent state pointer
@@ -338,7 +338,7 @@ STATIC void InitialiseTran(LifeTester_t *const lifeTester,
 }
 
 /*******************************************************************************
-* FUNCTIONS FOR SCANNING STATE
+* FUNCTIONS FOR SCANNING MODE
 *******************************************************************************/
 
 STATIC void ScanningModeEntry(LifeTester_t *const lifeTester)
@@ -393,6 +393,7 @@ STATIC void ScanningModeStep(LifeTester_t *const lifeTester)
         if (lifeTester->error == ok)
         {
             data->vThis = data->vScanMpp;
+            data->vNext = data->vScanMpp + DV_MPPT;
             StateMachineTransitionOnEvent(lifeTester, ScanningDoneEvent);
         }
         else // error condition so go to error state
@@ -410,6 +411,12 @@ STATIC void ScanningModeExit(LifeTester_t *const lifeTester)
 {
     lifeTester->led.off();
 }
+
+
+/*******************************************************************************
+* FUNCTIONS FOR SCANNING MEASUREMENT
+*******************************************************************************/
+
 STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e)
 {
@@ -463,7 +470,6 @@ STATIC void MeasureDataPointEntry(LifeTester_t *const lifeTester)
     }
 }
 
-
 STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
@@ -508,14 +514,61 @@ STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester)
 * FUNCTIONS FOR TRACKING MODE
 ********************************************************************************/
 
+STATIC void TrackingModeEntry(LifeTester_t *const lifeTester)
+{
+    PrintMppHeader();
+}
+
+STATIC void TrackingModeStep(LifeTester_t *const lifeTester)
+{
+    lifeTester->led.update();
+    // check if any measurements are needed
+    if (!lifeTester->data.thisDone || !lifeTester->data.nextDone)
+    {
+        StateMachineTransitionOnEvent(lifeTester, MeasurementStartEvent);
+    }
+    else // measurements are done.
+    {
+        // TODO: tracking delay to be implemented here
+        // recalculate working mpp and restart measurements
+        UpdateTrackingData(lifeTester);
+        lifeTester->data.thisDone = false;
+        lifeTester->data.nextDone = false;
+    }
+}
+
+STATIC void TrackingModeTran(LifeTester_t *const lifeTester,
+                             Event_t e)
+{
+    if (e == MeasurementStartEvent)
+    {
+        if (!lifeTester->data.thisDone)
+        {
+            ActivateThisMeasurement(lifeTester);
+            StateMachineTransitionToState(lifeTester, &StateMeasureThisDataPoint);
+        }
+        else if (!lifeTester->data.nextDone)
+        {
+            ActivateNextMeasurement(lifeTester);
+            StateMachineTransitionToState(lifeTester, &StateMeasureNextDataPoint);
+        }
+        else
+        {
+            // nothing to measure - returns to caller
+        }
+    }
+}
+
+/*******************************************************************************
+* FUNCTIONS FOR TRACKING DATA MEASUREMENT
+********************************************************************************/
+
 STATIC void MeasureThisDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e)
 {
     if (e == MeasurementDoneEvent)
     {
-        // 'This' measurement done so go back to 'next'.
-        ActivateNextMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, &StateMeasureNextDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateTrackingMode);
     }
     else if (e == ErrorEvent)
     {
@@ -523,10 +576,13 @@ STATIC void MeasureThisDataPointTran(LifeTester_t *const lifeTester,
     }
     else
     {
-        // 'This' measurement failed so go back to into 'this' via entry.
-        ActivateThisMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, &StateMeasureThisDataPoint);
+        // Don't transition. Return to step function until measurement done.
     }
+}
+
+STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester)
+{
+    lifeTester->data.thisDone = true;
 }
 
 STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
@@ -534,9 +590,7 @@ STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
 {
     if (e == MeasurementDoneEvent)
     {
-        // 'Next' measurement done so go back to 'this'.
-        ActivateThisMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, &StateMeasureThisDataPoint);
+        StateMachineTransitionToState(lifeTester, &StateTrackingMode);
     }
     else if (e == ErrorEvent)
     {
@@ -544,12 +598,57 @@ STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
     }
     else
     {
-        // 'Next' measurement failed so go back to into 'next' via entry.
-        ActivateNextMeasurement(lifeTester);
-        StateMachineTransitionToState(lifeTester, &StateMeasureNextDataPoint);
+        // Don't transition. Return to step function until measurement done.
     }
 }
 
+STATIC void MeasureNextDataPointExit(LifeTester_t *const lifeTester)
+{
+    lifeTester->data.nextDone = true;
+}
+
+/*
+ Note: checking that the adc is sampled is not needed. This is treated as a 
+ guard and enforced in the transition function - called before this exit
+ function.
+ ie. This will only be called if guards are satisfied.
+*/
+STATIC void UpdateTrackingData(LifeTester_t *const lifeTester)
+{
+    LifeTesterData_t *const data = &lifeTester->data;
+#if 0
+    if (data->iScan < MIN_CURRENT)
+    {
+        lifeTester->error = lowCurrent;
+        data->nErrorReads++;
+    }
+    else if (data->iScan >= MAX_CURRENT)
+    {
+        lifeTester->error = currentLimit;
+        data->nErrorReads++;
+    }
+    else
+    {
+        lifeTester->error = ok;
+        data->nErrorReads = 0U;
+    }
+#endif
+    /*if power is higher at the next point, we must be going uphill so move
+    forwards one point for next loop*/
+    if (data->pNext > data->pThis)
+    {
+        data->vThis += DV_MPPT;
+        data->vNext = data->vThis + DV_MPPT;
+        lifeTester->led.stopAfter(2); //two flashes
+    }
+    else // otherwise go the other way...
+    {
+        data->vThis -= DV_MPPT;
+        data->vNext = data->vThis + DV_MPPT;
+        lifeTester->led.stopAfter(1); //one flash
+    }
+    PrintNewMpp(lifeTester);
+}
 
 #if 0
 STATIC void StateSampleNextCurrent(LifeTester_t *const lifeTester)
@@ -688,92 +787,9 @@ STATIC void StateAnalyseTrackingMeasurement(LifeTester_t *const lifeTester)
 }
 #endif
 
-/*
- Note: checking that the adc is sampled is not needed. This is treated as a 
- guard and enforced in the transition function - called before this exit
- function.
- ie. This will only be called if guards are satisfied.
-*/
-STATIC void AnalyseTrackingDataExit(LifeTester_t *const lifeTester)
-{
-    LifeTesterData_t *const data = &lifeTester->data;
-    if (data->iScan < MIN_CURRENT)
-    {
-        lifeTester->error = lowCurrent;
-        data->nErrorReads++;
-    }
-    else if (data->iScan >= MAX_CURRENT)
-    {
-        lifeTester->error = currentLimit;
-        data->nErrorReads++;
-    }
-    else
-    {
-        lifeTester->error = ok;
-        data->nErrorReads = 0U;
-    }
-
-    /*if power is higher at the next point, we must be going uphill so move
-    forwards one point for next loop*/
-    if (data->pNext > data->pThis)
-    {
-        data->vThis += DV_MPPT;
-        data->vNext = data->vThis + DV_MPPT;
-        lifeTester->led.stopAfter(2); //two flashes
-    }
-    else // otherwise go the other way...
-    {
-        data->vThis -= DV_MPPT;
-        data->vNext = data->vThis + DV_MPPT;
-        lifeTester->led.stopAfter(1); //one flash
-    }
-    ResetForNextMeasurement(lifeTester);
-    PrintNewMpp(lifeTester);
-}
-
-STATIC void TrackingModeEntry(LifeTester_t *const lifeTester)
-{
-    PrintMppHeader();
-}
-
-STATIC void TrackingModeStep(LifeTester_t *const lifeTester)
-{
-    lifeTester->led.update();
-    if (!lifeTester->data.thisDone)
-    {
-        // measure this data point
-    }
-    else if (!lifeTester->data.nextDone)
-    {
-        // measure next data point
-    }
-    else // measurements are done.
-    {
-        lifeTester->data.thisDone = false;
-        lifeTester->data.nextDone = false;
-        // recalculate working mpp and restart measurements
-    }
-}
-
-STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester)
-{
-    LifeTesterData_t *const data = &lifeTester->data;
-    if (data->iScan < MIN_CURRENT)
-    {
-        lifeTester->error = lowCurrent;
-        data->nErrorReads++;
-    }
-    else if (data->iScan >= MAX_CURRENT)
-    {
-        lifeTester->error = currentLimit;
-        data->nErrorReads++;
-    }
-    else
-    {
-        lifeTester->error = ok;
-        data->nErrorReads = 0U;
-    }
-}
+/*******************************************************************************
+* FUNCTIONS FOR ERROR STATE
+********************************************************************************/
 
 STATIC void ErrorEntry(LifeTester_t *const lifeTester)
 {

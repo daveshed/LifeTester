@@ -9,6 +9,8 @@ STATIC void StateMachineTransitionToState(LifeTester_t *const lifeTester,
                                           LifeTesterState_t const *targetState);
 static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
                                           Event_t e);
+STATIC void UpdateTrackingData(LifeTester_t *const lifeTester);
+
 // Entry functions 
 STATIC void InitialiseEntry(LifeTester_t *const lifeTester);
 STATIC void TrackingModeEntry(LifeTester_t *const lifeTester);
@@ -27,6 +29,7 @@ STATIC void ErrorStep(LifeTester_t *const lifeTester);
 STATIC void AnalyseTrackingDataExit(LifeTester_t *const lifeTester);
 STATIC void MeasureScanDataPointExit(LifeTester_t *const lifeTester);
 STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester);
+STATIC void MeasureNextDataPointExit(LifeTester_t *const lifeTester);
 STATIC void ScanningModeExit(LifeTester_t *const lifeTester);
 
 // Transition functions
@@ -39,6 +42,8 @@ STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
 STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
                                      Event_t e);
 STATIC void ScanningModeTran(LifeTester_t *const lifeTester,
+                             Event_t e);
+STATIC void TrackingModeTran(LifeTester_t *const lifeTester,
                              Event_t e);
 
 
