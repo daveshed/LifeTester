@@ -16,6 +16,7 @@ static void UpdateErrorReadings(LifeTester_t *const lifeTester);
 STATIC void InitialiseEntry(LifeTester_t *const lifeTester);
 STATIC void TrackingModeEntry(LifeTester_t *const lifeTester);
 STATIC void ScanningModeEntry(LifeTester_t *const lifeTester);
+STATIC void TrackingDelayEntry(LifeTester_t *const lifeTester);
 STATIC void MeasureDataPointEntry(LifeTester_t *const lifeTester);
 STATIC void ErrorEntry(LifeTester_t *const lifeTester);
 
@@ -23,6 +24,7 @@ STATIC void ErrorEntry(LifeTester_t *const lifeTester);
 STATIC void InitialiseStep(LifeTester_t *const lifeTester);
 STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester);
 STATIC void ScanningModeStep(LifeTester_t *const lifeTester);
+STATIC void TrackingDelayStep(LifeTester_t *const lifeTester);
 STATIC void TrackingModeStep(LifeTester_t *const lifeTester);
 STATIC void ErrorStep(LifeTester_t *const lifeTester);
 
@@ -32,6 +34,7 @@ STATIC void MeasureScanDataPointExit(LifeTester_t *const lifeTester);
 STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester);
 STATIC void MeasureNextDataPointExit(LifeTester_t *const lifeTester);
 STATIC void ScanningModeExit(LifeTester_t *const lifeTester);
+STATIC void TrackingDelayExit(LifeTester_t *const lifeTester);
 
 // Transition functions
 STATIC void InitialiseTran(LifeTester_t *const lifeTester,
@@ -53,6 +56,7 @@ extern const LifeTesterState_t StateNone;
 extern const LifeTesterState_t StateScanningMode;
 extern const LifeTesterState_t StateTrackingMode;
 extern const LifeTesterState_t StateInitialiseDevice;
+extern const LifeTesterState_t StateTrackingDelay;
 extern const LifeTesterState_t StateMeasureThisDataPoint;
 extern const LifeTesterState_t StateMeasureNextDataPoint;
 extern const LifeTesterState_t StateMeasureScanDataPoint;

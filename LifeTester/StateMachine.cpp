@@ -61,6 +61,17 @@ STATIC const LifeTesterState_t StateInitialiseDevice = {
     "StateInitialise"     // label
 };
 
+STATIC const LifeTesterState_t StateTrackingDelay = {
+    {
+        TrackingDelayEntry,       // entry function
+        TrackingDelayStep,        // step function
+        TrackingDelayExit,        // exit function
+        NULL                      // transition function
+    },                            // current state
+    &StateTrackingMode,           // parent state pointer
+    "StateTrackingDelay"          // label
+};
+
 STATIC const LifeTesterState_t StateMeasureThisDataPoint = {
     {
         MeasureDataPointEntry,    // entry function
@@ -523,21 +534,27 @@ STATIC void TrackingModeStep(LifeTester_t *const lifeTester)
 {
     lifeTester->led.update();
 
+    const bool measurementsDone = lifeTester->data.thisDone
+                                  && lifeTester->data.nextDone;
+    const bool trackDelayDone   = lifeTester->data.delayDone;
     if (lifeTester->data.nErrorReads > MAX_ERROR_READS)
     {
         StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
     }
-    else if (!lifeTester->data.thisDone || !lifeTester->data.nextDone)
+    else if (!trackDelayDone)
+    {
+        StateMachineTransitionOnEvent(lifeTester, TrackDelayStartEvent);
+    }
+    else if (!measurementsDone)
     {
         StateMachineTransitionOnEvent(lifeTester, MeasurementStartEvent);
     }
-    else // measurements are done.
+    else // recalculate working mpp and restart measurements
     {
-        // TODO: tracking delay to be implemented here
-        // recalculate working mpp and restart measurements
         UpdateTrackingData(lifeTester);
         lifeTester->data.thisDone = false;
         lifeTester->data.nextDone = false;
+        lifeTester->data.delayDone = false;
     }
 }
 
@@ -561,13 +578,17 @@ STATIC void TrackingModeTran(LifeTester_t *const lifeTester,
             // nothing to measure - returns to caller
         }
     }
+    else if (e == TrackDelayStartEvent)
+    {
+        StateMachineTransitionToState(lifeTester, &StateTrackingDelay);
+    }
     else if (e == ErrorEvent)
     {
         StateMachineTransitionToState(lifeTester, &StateError);
     }
     else
     {
-        
+
     }
 }
 
@@ -665,6 +686,26 @@ STATIC void UpdateTrackingData(LifeTester_t *const lifeTester)
         lifeTester->led.stopAfter(1); //one flash
     }
     PrintNewMpp(lifeTester);
+}
+
+STATIC void TrackingDelayEntry(LifeTester_t *const lifeTester)
+{
+    lifeTester->timer = millis();
+}
+
+STATIC void TrackingDelayStep(LifeTester_t *const lifeTester)
+{
+    const uint32_t tPresent = millis();
+    const uint32_t tElapsed = tPresent - lifeTester->timer;
+    if (tElapsed >= TRACK_DELAY_TIME)
+    {
+        StateMachineTransitionToState(lifeTester, &StateTrackingMode);
+    }
+}
+
+STATIC void TrackingDelayExit(LifeTester_t *const lifeTester)
+{
+    lifeTester->data.delayDone = true;
 }
 
 /*******************************************************************************

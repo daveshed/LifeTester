@@ -55,6 +55,7 @@ typedef struct LifeTesterData_s {
 
     bool     thisDone;    // status of measurements
     bool     nextDone;
+    bool     delayDone;
 } LifeTesterData_t;
 
 // holds the channel info for the DAC and ADC
@@ -69,6 +70,7 @@ typedef enum Event_e {
     MeasurementStartEvent,
     MeasurementDoneEvent,
     ScanningDoneEvent,
+    TrackDelayStartEvent,
     ResetEvent,  // not implemented yet
     ErrorEvent,
     MaxNumEvents
