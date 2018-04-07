@@ -205,7 +205,7 @@ static void ResetTimer(LifeTester_t *const lifeTester)
  Prepares lifetester state machine to measure this point by setting pointers 
  to the variables for this point.
 */
-STATIC void ActivateThisMeasurement(LifeTester_t *const lifeTester)
+static void ActivateThisMeasurement(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
     data->vActive = &data->vThis;
@@ -217,7 +217,7 @@ STATIC void ActivateThisMeasurement(LifeTester_t *const lifeTester)
  Prepares lifetester state machine to measure next point by setting pointers 
  to the variables for this point.
 */
-STATIC void ActivateNextMeasurement(LifeTester_t *const lifeTester)
+static void ActivateNextMeasurement(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
     data->vActive = &data->vNext;
@@ -229,7 +229,7 @@ STATIC void ActivateNextMeasurement(LifeTester_t *const lifeTester)
  Prepares lifetester state machine to measure next point by setting pointers 
  to the variables for this point.
 */
-STATIC void ActivateScanMeasurement(LifeTester_t *const lifeTester)
+static void ActivateScanMeasurement(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
     data->vActive = &data->vScan;
@@ -668,7 +668,7 @@ static void UpdateErrorReadings(LifeTester_t *const lifeTester)
  function.
  ie. This will only be called if guards are satisfied.
 */
-STATIC void UpdateTrackingData(LifeTester_t *const lifeTester)
+static void UpdateTrackingData(LifeTester_t *const lifeTester)
 {
     LifeTesterData_t *const data = &lifeTester->data;
     /*if power is higher at the next point, we must be going uphill so move
@@ -714,7 +714,6 @@ STATIC void TrackingDelayExit(LifeTester_t *const lifeTester)
 
 STATIC void ErrorEntry(LifeTester_t *const lifeTester)
 {
-    printf("error state\n");
     lifeTester->led.t(ERROR_LED_ON_TIME,ERROR_LED_OFF_TIME);
     lifeTester->led.keepFlashing();
     DacSetOutput(0U, lifeTester->io.dac);

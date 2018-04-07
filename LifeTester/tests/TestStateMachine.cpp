@@ -894,8 +894,6 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
     // keep executing scan loop until finished.
     while (vMock <= V_SCAN_MAX)
     {
-        // printf("v %u v_actual %u t %u mode %s\n",
-            // vMock, mockLifeTester->data.vScan, mockTime, mockLifeTester->state->label);
         // Transition into measure scan point...
         MocksForScanModeStep();
         // mocks for measaure scan point entry
@@ -909,8 +907,6 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
         StateMachine_UpdateStep(mockLifeTester);
         POINTERS_EQUAL(&StateMeasureScanDataPoint, mockLifeTester->state);
         CHECK_EQUAL(vMock, DacGetOutput(mockLifeTester));
-        // printf("v %u v_actual %u t %u mode %s\n",
-            // vMock, mockLifeTester->data.vScan, mockTime, mockLifeTester->state->label);
         // sampling done. Transition back to scanning mode (parent)
         mockTime += SAMPLING_TIME;
         vMock += DV_SCAN;
@@ -918,7 +914,6 @@ TEST(IVTestGroup, RunIvScanNoErrorExpectDiodeMppReturned)
         MocksForMeasureDataNoAdcRead();
         StateMachine_UpdateStep(mockLifeTester);
     }
-    printf("mode %s\n", mockLifeTester->state->label);
     POINTERS_EQUAL(&StateScanningMode, mockLifeTester->state);
     // should change from scanning->tracking mode
     MocksForScanModeStep();

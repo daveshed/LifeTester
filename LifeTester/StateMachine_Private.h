@@ -2,10 +2,10 @@
 #include "Macros.h"
 
 // Helpers
-STATIC void ActivateThisMeasurement(LifeTester_t *const lifeTester);
-STATIC void ActivateNextMeasurement(LifeTester_t *const lifeTester);
-STATIC void ActivateScanMeasurement(LifeTester_t *const lifeTester);
-STATIC void StateMachineTransitionToState(LifeTester_t *const lifeTester,
+static void ActivateThisMeasurement(LifeTester_t *const lifeTester);
+static void ActivateNextMeasurement(LifeTester_t *const lifeTester);
+static void ActivateScanMeasurement(LifeTester_t *const lifeTester);
+static void StateMachineTransitionToState(LifeTester_t *const lifeTester,
                                           LifeTesterState_t const *targetState);
 static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
                                           Event_t e);
