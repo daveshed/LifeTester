@@ -9,8 +9,6 @@
 #include "StateMachine.h"
 #include "StateMachine_Private.h"
 
-#define RUN_STATE_FN(FN, X)     if(FN != NULL){FN(X);}
-
 /*******************************************************************************
 * PRIVATE STATE DEFINITIONS
 *******************************************************************************/
@@ -77,7 +75,7 @@ STATIC const LifeTesterState_t StateMeasureThisDataPoint = {
         MeasureDataPointEntry,    // entry function
         MeasureDataPointStep,     // step function
         MeasureThisDataPointExit, // exit function
-        MeasureThisDataPointTran  // transition function
+        MeasureDataPointTran      // transition function
     },                            // current state
     &StateTrackingMode,           // parent state pointer
     "StateMeasureThisDataPoint"   // label
@@ -88,7 +86,7 @@ STATIC const LifeTesterState_t StateMeasureNextDataPoint = {
         MeasureDataPointEntry,    // entry function
         MeasureDataPointStep,     // step function
         MeasureNextDataPointExit, // exit function
-        MeasureNextDataPointTran  // transition function
+        MeasureDataPointTran      // transition function
     },                            // current state
     &StateTrackingMode,           // parent state pointer
     "StateMeasureNextDataPoint"   // label
@@ -99,7 +97,7 @@ STATIC const LifeTesterState_t StateMeasureScanDataPoint = {
         MeasureDataPointEntry,    // entry function
         MeasureDataPointStep,     // step function
         MeasureScanDataPointExit, // exit function
-        MeasureScanDataPointTran  // transition function
+        MeasureDataPointTran      // transition function
     },                            // current state
     &StateScanningMode,           // parent state pointer
     "StateMeasureScanDataPoint"   // label
@@ -126,7 +124,7 @@ static void PrintError(ErrorCode_t error)
             SERIAL_PRINTLN("ok");
             break;
         case(lowCurrent):
-            SERIAL_PRINTLN("error: low current error");
+            SERIAL_PRINTLN("error: low current");
             break;
         case(currentLimit):
             SERIAL_PRINTLN("error: current limit");
@@ -139,6 +137,7 @@ static void PrintError(ErrorCode_t error)
             break;
         case(DacSetFailed):
             SERIAL_PRINTLN("error: dac set failed");
+            break;
         default:
             SERIAL_PRINTLN("error: unknown");
             break;
@@ -305,28 +304,35 @@ STATIC void InitialiseStep(LifeTester_t *const lifeTester)
     // Check short-circuit current is above required threshold for measurements
     const uint32_t tPresent   = millis();
     const uint32_t tElapsed   = tPresent - lifeTester->timer;
-    const bool     stabilised = (tElapsed >= POST_DELAY_TIME);
+    const bool     stabilised = (tElapsed >= SETTLE_TIME);
 
-    if (!stabilised)
+    if (lifeTester->data.nErrorReads > MAX_ERROR_READS)
+    {
+        // Only transition to error if enough bad readings have happened.
+        StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
+    }
+    else if (!stabilised)
     {
         // don't do anything just keep waiting
     }
     else
     {
         const uint16_t iShortCircuit = AdcReadLifeTesterCurrent(lifeTester);
+        SERIAL_PRINT("Initialising. Short-circuit current = ");
+        SERIAL_PRINTLN(iShortCircuit);
         if (iShortCircuit < THRESHOLD_CURRENT)
         {
             lifeTester->error = currentThreshold;
+            lifeTester->data.nErrorReads++;
             DBG_PRINT("Current below threshold error ");
             DBG_PRINTLN(iShortCircuit);
-            StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
         }
         else if (iShortCircuit >= MAX_CURRENT)
         {
+            lifeTester->data.nErrorReads++;
             lifeTester->error = currentLimit;
             DBG_PRINT("Current saturated error ");
             DBG_PRINTLN(iShortCircuit);
-            StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
         }
         else
         {
@@ -435,25 +441,6 @@ STATIC void ScanningModeExit(LifeTester_t *const lifeTester)
 * FUNCTIONS FOR SCANNING MEASUREMENT
 *******************************************************************************/
 
-STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
-                                     Event_t e)
-{
-    if (e == MeasurementDoneEvent) 
-    {
-        // transition child->parent. Exit function will get called.
-        StateMachineTransitionToState(lifeTester, &StateScanningMode);
-    }
-    if (e == ErrorEvent)
-    {
-        StateMachineTransitionToState(lifeTester, &StateError);
-    }
-    else
-    {
-        /*Don't do anything. Transition function exits and execution returns to
-        calling environment (step function)*/        
-    }
-}
-
 STATIC void MeasureScanDataPointExit(LifeTester_t *const lifeTester)
 {
     UpdateScanData(lifeTester);
@@ -482,9 +469,7 @@ STATIC void MeasureDataPointEntry(LifeTester_t *const lifeTester)
     }
     else
     {
-        lifeTester->data.iSampleSum = 0U;
-        lifeTester->data.nSamples = 0U;
-        lifeTester->timer = millis();
+        ResetForNextMeasurement(lifeTester);
     }
 }
 
@@ -525,6 +510,25 @@ STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester)
     {
         /* Do nothing. Just leave update. More time elapses and then 
         when update is called, the next state will change.*/
+    }
+}
+
+STATIC void MeasureDataPointTran(LifeTester_t *const lifeTester,
+                                     Event_t e)
+{
+    if (e == MeasurementDoneEvent) 
+    {
+        // transition child->parent. Exit function will get called.
+        StateMachineTransitionToState(lifeTester, lifeTester->state->parent);
+    }
+    if (e == ErrorEvent)
+    {
+        StateMachineTransitionToState(lifeTester, &StateError);
+    }
+    else
+    {
+        /*Don't do anything. Transition function exits and execution returns to
+        calling environment (step function)*/        
     }
 }
 
@@ -603,44 +607,10 @@ STATIC void TrackingModeTran(LifeTester_t *const lifeTester,
 * FUNCTIONS FOR TRACKING DATA MEASUREMENT
 ********************************************************************************/
 
-STATIC void MeasureThisDataPointTran(LifeTester_t *const lifeTester,
-                                     Event_t e)
-{
-    if (e == MeasurementDoneEvent)
-    {
-        StateMachineTransitionToState(lifeTester, &StateTrackingMode);
-    }
-    else if (e == ErrorEvent)
-    {
-        StateMachineTransitionToState(lifeTester, &StateError);
-    }
-    else
-    {
-        // Don't transition. Return to step function until measurement done.
-    }
-}
-
 STATIC void MeasureThisDataPointExit(LifeTester_t *const lifeTester)
 {
     lifeTester->data.thisDone = true;
     UpdateErrorReadings(lifeTester);
-}
-
-STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
-                                     Event_t e)
-{
-    if (e == MeasurementDoneEvent)
-    {
-        StateMachineTransitionToState(lifeTester, &StateTrackingMode);
-    }
-    else if (e == ErrorEvent)
-    {
-        StateMachineTransitionToState(lifeTester, &StateError);
-    }
-    else
-    {
-        // Don't transition. Return to step function until measurement done.
-    }
 }
 
 STATIC void MeasureNextDataPointExit(LifeTester_t *const lifeTester)

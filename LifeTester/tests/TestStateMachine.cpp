@@ -562,7 +562,7 @@ static void MocksForInitialiseEntry(LifeTester_t const *const lifeTester)
     MocksForInitLedSetup();    
 }
 
-static void MocksForInitialiseStep(void)
+static void MocksForInitialiseStepNoAdcRead(void)
 {
     MocksForGetTime();
     MockForLedUpdate();
@@ -587,7 +587,7 @@ static void SetupForScanningMode(LifeTester_t *const lifeTester)
 {
     // note that mocks are needed to pass data to source
     const uint32_t tInit       = 2436U;
-    const uint32_t tElapsed    = POST_DELAY_TIME + 1U;
+    const uint32_t tElapsed    = SETTLE_TIME + 1U;
                    mockTime    = tInit;
                    // Set current to get through init checks
                    mockCurrent = THRESHOLD_CURRENT + 1U; 
@@ -660,7 +660,7 @@ TEST(IVTestGroup, UpdatingInitialiseStateDuringPostDelayTime)
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
     POINTERS_EQUAL(&StateInitialiseDevice, mockLifeTester->state);
     // timer will be checked again in step function.
-    MocksForInitialiseStep();
+    MocksForInitialiseStepNoAdcRead();
     StateMachine_UpdateStep(mockLifeTester);
     // expect the state and data not to change
     MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
@@ -677,7 +677,7 @@ TEST(IVTestGroup, UpdatingInitialiseStateDuringPostDelayTime)
 TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadOk)
 {
     const uint32_t tInit       = 2436U;
-    const uint32_t tElapsed    = POST_DELAY_TIME + 1U;
+    const uint32_t tElapsed    = SETTLE_TIME + 1U;
                    mockTime    = tInit;
                    mockCurrent = THRESHOLD_CURRENT; 
     MocksForInitialiseEntry(mockLifeTester);
@@ -703,13 +703,13 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadOk)
 
 /*
  Update state machine while in initialise mode after post settle time. adc will 
- be read but the value returned is below threshold so error and state change
- expected.
+ be read but the value returned is below threshold so error readings coutner
+ will increment but no state change expected.
 */
 TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadLowCurrent)
 {
     const uint32_t tInit       = 2436U;
-    const uint32_t tElapsed    = POST_DELAY_TIME + 1U;
+    const uint32_t tElapsed    = SETTLE_TIME + 1U;
                    mockTime    = tInit;
                    mockCurrent = THRESHOLD_CURRENT - 1U; 
     MocksForInitialiseEntry(mockLifeTester);
@@ -721,23 +721,22 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadLowCurrent)
     // timer will be checked again in step function.
     mockTime += tElapsed;
     MocksForInitialiseStepAdcRead(mockLifeTester);
-    MocksForErrorEntry(mockLifeTester);
     StateMachine_UpdateStep(mockLifeTester);
-    // expect the mode to change but not data
-    MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
-    POINTERS_EQUAL(&StateError, mockLifeTester->state);
+    CHECK_EQUAL(1U, mockLifeTester->data.nErrorReads);
+    POINTERS_EQUAL(&StateInitialiseDevice, mockLifeTester->state);
     CHECK_EQUAL(currentThreshold, mockLifeTester->error);
     mock().checkExpectations();
 }
 
 /*
  Update state machine while in initialise mode after post settle time. adc will 
- be read but the value returned is saturated so error and state change expected.
+ be read but the value returned is saturated so error readings should increment
+ but mode wont change.
 */
 TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadSaturated)
 {
     const uint32_t tInit       = 2436U;
-    const uint32_t tElapsed    = POST_DELAY_TIME + 1U;
+    const uint32_t tElapsed    = SETTLE_TIME + 1U;
                    mockTime    = tInit;
                    mockCurrent = MAX_CURRENT; 
     MocksForInitialiseEntry(mockLifeTester);
@@ -749,12 +748,33 @@ TEST(IVTestGroup, UpdatingInitialiseStateAfterPostDelayTimeAdcReadSaturated)
     // timer will be checked again in step function.
     mockTime += tElapsed;
     MocksForInitialiseStepAdcRead(mockLifeTester);
+    StateMachine_UpdateStep(mockLifeTester);
+    CHECK_EQUAL(1U, mockLifeTester->data.nErrorReads);
+    POINTERS_EQUAL(&StateInitialiseDevice, mockLifeTester->state);
+    CHECK_EQUAL(currentLimit, mockLifeTester->error);
+    mock().checkExpectations();
+}
+
+/*
+ Test that updating the state machine after recording max error readings in init
+ mode leads to a mode change to error state.
+*/
+TEST(IVTestGroup, UpdatingInitialiseStateAfterTooManyBadReadingsTransitionToError)
+{
+    const uint32_t tInit       = 2436U;
+    const uint32_t tElapsed    = SETTLE_TIME + 1U;
+                   mockTime    = tInit;
+                   mockCurrent = MAX_CURRENT;
+    MocksForInitialiseEntry(mockLifeTester);
+    StateMachine_Reset(mockLifeTester);
+    CHECK_EQUAL(tInit, mockLifeTester->timer);
+    POINTERS_EQUAL(&StateInitialiseDevice, mockLifeTester->state);
+    mockTime += tElapsed;
+    mockLifeTester->data.nErrorReads = MAX_ERROR_READS + 1U;
+    MocksForInitialiseStepNoAdcRead();
     MocksForErrorEntry(mockLifeTester);
     StateMachine_UpdateStep(mockLifeTester);
-    // expect the mode to change but not data
-    MEMCMP_EQUAL(expectedData, &mockLifeTester->data, sizeof(LifeTesterData_t));
     POINTERS_EQUAL(&StateError, mockLifeTester->state);
-    CHECK_EQUAL(currentLimit, mockLifeTester->error);
     mock().checkExpectations();
 }
 

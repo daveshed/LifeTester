@@ -1,6 +1,8 @@
 #include "StateMachine.h"
 #include "Macros.h"
 
+#define RUN_STATE_FN(FN, X)     if(FN != NULL){FN(X);}
+
 // Helpers
 STATIC void ActivateThisMeasurement(LifeTester_t *const lifeTester);
 STATIC void ActivateNextMeasurement(LifeTester_t *const lifeTester);
@@ -39,12 +41,8 @@ STATIC void TrackingDelayExit(LifeTester_t *const lifeTester);
 // Transition functions
 STATIC void InitialiseTran(LifeTester_t *const lifeTester,
                            Event_t e);
-STATIC void MeasureThisDataPointTran(LifeTester_t *const lifeTester,
-                                     Event_t e);
-STATIC void MeasureNextDataPointTran(LifeTester_t *const lifeTester,
-                                     Event_t e);
-STATIC void MeasureScanDataPointTran(LifeTester_t *const lifeTester,
-                                     Event_t e);
+STATIC void MeasureDataPointTran(LifeTester_t *const lifeTester,
+                                 Event_t e);
 STATIC void ScanningModeTran(LifeTester_t *const lifeTester,
                              Event_t e);
 STATIC void TrackingModeTran(LifeTester_t *const lifeTester,
