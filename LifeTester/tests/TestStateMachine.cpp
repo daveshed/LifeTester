@@ -22,37 +22,6 @@
 enum lookupColumn {voltageData, currentData, powerData};
 
 /*
- handles interrupting iv scan
-*/
-typedef struct MockInterrupt_s {
-    bool     requested; // do you want to interrupt?
-    uint32_t start;     // start of interrupt
-    uint32_t duration;  // duration of interrupt
-} MockInterrupt_t;
-
-/*
- Type holds information regarding test timers.
-*/
-typedef struct TestTiming_s {
-    uint32_t        initial;  // initial time at beginning of call
-    uint32_t        mock;     // mock time returned from millis
-    uint32_t        elapsed;  // time elapsed since previous measurement
-    uint32_t        previous; // previous measurement  
-    uint32_t        dt;       // time step in ms
-    MockInterrupt_t interrupt;// interrupt scan requests
-} TestTiming_t;
-
-/*
- Note that voltages are sent as dac codes
- */
-typedef struct TestVoltage_s {
-    uint8_t  initial;  // initial scan voltage
-    uint8_t  final;    // final scan voltage
-    uint8_t  dV;       // step size
-    uint8_t  mock;     // mock voltage sent to dac
-} TestVoltage_t;
-
-/*
  Ideal diode iv data (see ShockleyData.py). Row index corresponds to the dac code.
  I_L     1.00
  I_0     1.00E-09
@@ -361,22 +330,6 @@ void delay(unsigned long time)
  * Private function implementations for tests
  ******************************************************************************/
 /*
- Manages simulated interrupt in IV scan step. Only applies when the max power
- point is being measured.
-*/
-static void InterruptScan(TestVoltage_t *v, TestTiming_t  *t)
-{    
-    if ((v->mock == mppCodeShockley)
-        && (t->elapsed >= t->interrupt.start)
-        && t->interrupt.requested)
-    {
-        t->mock += t->interrupt.duration;
-        t->interrupt.requested = false;
-    }
-    t->elapsed = t->mock - t->previous;
-}
-
-/*
  Simulates an ideal diode under illumination connected to the lifetester. Returns
  an ADC code corresponding to the dac code input.
 */
@@ -421,6 +374,9 @@ static bool ScanMeasurementActive(LifeTester_t const *const lifeTester)
             && (data->pActive == &data->pScan));
 }
 
+/*******************************************************************************
+* MOCKS FOR TESTS
+********************************************************************************/
 static void MocksForInitDac(LifeTester_t const *const lifeTester)
 {
     mock().expectOneCall("DacSetOutput")
@@ -1007,6 +963,7 @@ TEST(IVTestGroup, CompleteTrackingMeasurementCycleNextMorePowerIncreaseV)
     MocksForMeasureThisPointEntry(mockLifeTester);
     StateMachine_UpdateStep(mockLifeTester);
     POINTERS_EQUAL(&StateMeasureThisDataPoint, mockLifeTester->state);
+    CHECK(ThisMeasurementActive(mockLifeTester));
     CHECK_EQUAL(vThis, DacGetOutput(mockLifeTester));
     CHECK_EQUAL(false, mockLifeTester->data.thisDone);
     CHECK_EQUAL(false, mockLifeTester->data.nextDone);
@@ -1028,6 +985,7 @@ TEST(IVTestGroup, CompleteTrackingMeasurementCycleNextMorePowerIncreaseV)
     MocksForMeasureNextPointEntry(mockLifeTester);
     StateMachine_UpdateStep(mockLifeTester);
     POINTERS_EQUAL(&StateMeasureNextDataPoint, mockLifeTester->state);
+    CHECK(NextMeasurementActive(mockLifeTester));
     CHECK_EQUAL(mockTime, mockLifeTester->timer);
     CHECK_EQUAL(vNext, DacGetOutput(mockLifeTester));
     // Settling time done so measurement expected

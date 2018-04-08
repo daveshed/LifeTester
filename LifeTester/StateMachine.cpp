@@ -808,12 +808,6 @@ static void StateMachineTransitionOnEvent(LifeTester_t *const lifeTester,
     }
 }
 
-void StateMachine_Reset(LifeTester_t *const lifeTester)
-{
-    lifeTester->state = &StateNone;
-    StateMachineTransitionToState(lifeTester, &StateInitialiseDevice);
-}
-
 static void RunChildStepFn(LifeTester_t *const lifeTester)
 {
     StateFn_t *step = lifeTester->state->fn.step;
@@ -828,6 +822,15 @@ static void RunParentStepFn(LifeTester_t *const lifeTester)
         StateFn_t *step = parent->fn.step;
         RUN_STATE_FN(step, lifeTester);
     }
+}
+
+/*******************************************************************************
+* PUBLIC API 
+*******************************************************************************/
+void StateMachine_Reset(LifeTester_t *const lifeTester)
+{
+    lifeTester->state = &StateNone;
+    StateMachineTransitionToState(lifeTester, &StateInitialiseDevice);
 }
 
 void StateMachine_UpdateStep(LifeTester_t *const lifeTester)

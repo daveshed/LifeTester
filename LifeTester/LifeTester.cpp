@@ -10,25 +10,23 @@
 #include <SPI.h>
 #include <Wire.h>
 
-//////////////////////////////////
-//Initialise lifetester channels//
-////////////////////////////////// 
+// Lifetester channel data
 LifeTester_t channelA = {
   {chASelect, 0U},    // io
   Flasher(LED_A_PIN), // led
   {0},                // data
-  NULL,               // state function
   0U,                 // timer
-  ok                  // error
+  ok,                 // error
+  NULL                // state
 };
 
 LifeTester_t channelB = {
   {chBSelect, 1U},
   Flasher(LED_B_PIN),
   {0},
-  NULL,
   0U,
-  ok
+  ok,
+  NULL,
 };
 
 void setup()
@@ -47,23 +45,16 @@ void setup()
   AdcInit();
   TempSenseInit();
   
-  StateMachine_Initialise(&channelA);
-  StateMachine_Initialise(&channelB);
-
-  //SETUP LEDS FOR MAIN LOOP
-  channelA.led.t(50, 50);
-  channelB.led.t(50, 50);
+  StateMachine_Reset(&channelA);
+  StateMachine_Reset(&channelB);
 
   Serial.println("Finished setup. Entering main loop.");
 }
 
 void loop()
 {
-  StateMachine_Update(&channelA);
-  StateMachine_Update(&channelB);
-
-  channelA.led.update();
-  channelB.led.update();
+  StateMachine_UpdateStep(&channelA);
+  StateMachine_UpdateStep(&channelB);
 
   TempSenseUpdate();
   I2C_PrepareData(&channelA, &channelB);
