@@ -10,6 +10,9 @@ DEFINES = -DUNIT_TEST
 
 all: make_tests run_tests
 
+debug: DEFINES += -DDEBUG
+debug: all
+
 make_tests:
 	mkdir -p ${BUILD_DIR}
 	g++ AllTests.cpp ${MOCKS_HOME}/MockLedFlash.cpp ${MOCKS_HOME}/MockIoWrapper.cpp \

@@ -326,6 +326,11 @@ void delay(unsigned long time)
         .withParameter("time", time);
 }
 
+int analogRead(uint8_t pin)
+{
+    return 0;
+}
+
 /*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
@@ -451,6 +456,24 @@ static void MockForLedOff(void)
     mock().expectOneCall("Flasher::off");
 }
 
+static void MocksForPrintNewMpp(void)
+{
+    mock().expectOneCall("TempReadDegC").
+        andReturnValue(0.0);
+}
+
+static void MocksForFlashLedOnce(void)
+{
+    mock().expectOneCall("Flasher::stopAfter")
+        .withParameter("n", 1);
+}
+
+static void MocksForFlashLedTwice(void)
+{
+    mock().expectOneCall("Flasher::stopAfter")
+        .withParameter("n", 2);
+}
+
 static void MocksForMeasureScanPointEntry(LifeTester_t const *const lifeTester) 
 {    
     MocksForSetDacToScanVoltage(mockLifeTester);
@@ -486,6 +509,20 @@ static void MocksForMeasureDataNoAdcRead(void)
 static void MocksForTrackingModeStep(void)
 {
     MockForLedUpdate();
+}
+
+static void MocksForTrackingModeStepIncreaseV(void)
+{
+    MockForLedUpdate();
+    MocksForFlashLedTwice();
+    MocksForPrintNewMpp();
+}
+
+static void MocksForTrackingModeStepDecreaseV(void)
+{
+    MockForLedUpdate();
+    MocksForFlashLedOnce();
+    MocksForPrintNewMpp();
 }
 
 static void MocksForTrackingDelayEntry(void)
@@ -529,18 +566,6 @@ static void MocksForInitialiseStep(void)
 {
     MocksForGetTime();
     MockForLedUpdate();
-}
-
-static void MocksForFlashLedOnce(void)
-{
-    mock().expectOneCall("Flasher::stopAfter")
-        .withParameter("n", 1);
-}
-
-static void MocksForFlashLedTwice(void)
-{
-    mock().expectOneCall("Flasher::stopAfter")
-        .withParameter("n", 2);
 }
 
 static void MocksForErrorLedSetup(void)
@@ -1004,8 +1029,7 @@ TEST(IVTestGroup, CompleteTrackingMeasurementCycleNextMorePowerIncreaseV)
     CHECK_EQUAL(true, mockLifeTester->data.thisDone);
     CHECK_EQUAL(true, mockLifeTester->data.nextDone);
     // Cycle has finished. Expect Led and working voltage to be updated
-    MocksForTrackingModeStep();
-    MocksForFlashLedTwice();
+    MocksForTrackingModeStepIncreaseV();
     StateMachine_UpdateStep(mockLifeTester);
     CHECK_EQUAL(vThis + DV_MPPT, mockLifeTester->data.vThis);
     CHECK_EQUAL(vNext + DV_MPPT, mockLifeTester->data.vNext);
@@ -1090,8 +1114,7 @@ TEST(IVTestGroup, CompleteTrackingMeasurementCycleThisMorePowerDecreaseV)
     CHECK_EQUAL(true, mockLifeTester->data.thisDone);
     CHECK_EQUAL(true, mockLifeTester->data.nextDone);
     // Cycle has finished. Expect Led and working voltage to be updated
-    MocksForTrackingModeStep();
-    MocksForFlashLedOnce();
+    MocksForTrackingModeStepDecreaseV();
     StateMachine_UpdateStep(mockLifeTester);
     CHECK_EQUAL(vThis - DV_MPPT, mockLifeTester->data.vThis);
     CHECK_EQUAL(vNext - DV_MPPT, mockLifeTester->data.vNext);
