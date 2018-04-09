@@ -10,8 +10,6 @@
     // note + is used to ensure that uint8_t is printed as char
 #else
     #define STATIC               static
-    #define DBG_PRINT(X)
-    #define DBG_PRINTLN(X)
     #define SERIAL_PRINT(X)      Serial.print(X)  
     #define SERIAL_PRINTLN(X)    Serial.println(X)  
     #define SERIAL_PRINTLNEND()  Serial.println()
