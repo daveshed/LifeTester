@@ -2,26 +2,25 @@
 #define MACROS_H
 
 #ifdef UNIT_TEST
-    #include <iostream>
+    #include <stdio.h>
     #define STATIC
-    #define SERIAL_PRINT(X)      (std::cout << +X)
-    #define SERIAL_PRINTLN(X)    (std::cout << +X << std::endl)
-    #define SERIAL_PRINTLNEND()  (std::cout << std::endl)
-    // note + is used to ensure that uint8_t is printed as char
+    #define SERIAL_PRINT(MSG, FMT)    printf(FMT, MSG)
+    #define SERIAL_PRINTLN(MSG, FMT)  printf(FMT "\n", MSG)
+    #define SERIAL_PRINTLNEND()       printf("\n")
 #else
-    #define STATIC               static
-    #define SERIAL_PRINT(X)      Serial.print(X)  
-    #define SERIAL_PRINTLN(X)    Serial.println(X)  
-    #define SERIAL_PRINTLNEND()  Serial.println()
+    #define STATIC                    static
+    #define SERIAL_PRINT(MSG, FMT)    Serial.print(MSG)  
+    #define SERIAL_PRINTLN(MSG, FMT)  Serial.println(MSG)  
+    #define SERIAL_PRINTLNEND()       Serial.println()
 #endif // UNIT_TEST
 
 #ifdef DEBUG
-    #define DBG_PRINT(X)         SERIAL_PRINT(X)
-    #define DBG_PRINTLN(X)       SERIAL_PRINTLN(X)
-    #define DBG_PRINTLNEND()     SERIAL_PRINTLNEND()
+    #define DBG_PRINT(MSG, FMT)       SERIAL_PRINT(MSG, FMT)
+    #define DBG_PRINTLN(MSG, FMT)     SERIAL_PRINTLN(MSG, FMT)
+    #define DBG_PRINTLNEND()          SERIAL_PRINTLNEND()
 #else
-    #define DBG_PRINT(X)
-    #define DBG_PRINTLN(X)
+    #define DBG_PRINT(MSG, FMT)
+    #define DBG_PRINTLN(MSG, FMT)
     #define DBG_PRINTLNEND()
 #endif // DEBUG
 

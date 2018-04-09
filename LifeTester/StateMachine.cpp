@@ -121,25 +121,25 @@ static void PrintError(ErrorCode_t error)
     switch(error)
     {
         case(ok):
-            SERIAL_PRINTLN("ok");
+            SERIAL_PRINTLN("ok", "%s");
             break;
         case(lowCurrent):
-            SERIAL_PRINTLN("error: low current");
+            SERIAL_PRINTLN("error: low current", "%s");
             break;
         case(currentLimit):
-            SERIAL_PRINTLN("error: current limit");
+            SERIAL_PRINTLN("error: current limit", "%s");
             break;
         case(currentThreshold):
-            SERIAL_PRINTLN("error: below current threshold");
+            SERIAL_PRINTLN("error: below current threshold", "%s");
             break;
         case(invalidScan):
-            SERIAL_PRINTLN("error: invalid scan shape");
+            SERIAL_PRINTLN("error: invalid scan shape", "%s");
             break;
         case(DacSetFailed):
-            SERIAL_PRINTLN("error: dac set failed");
+            SERIAL_PRINTLN("error: dac set failed", "%s");
             break;
         default:
-            SERIAL_PRINTLN("error: unknown");
+            SERIAL_PRINTLN("error: unknown", "%s");
             break;
     }
 }
@@ -147,54 +147,54 @@ static void PrintError(ErrorCode_t error)
 static void PrintScanMpp(LifeTester_t const *const lifeTester)
 {
     SERIAL_PRINTLNEND();
-    SERIAL_PRINT("iMpp = ");
-    SERIAL_PRINT(lifeTester->data.iScanMpp);
-    SERIAL_PRINT(", Vmpp = ");
-    SERIAL_PRINT(lifeTester->data.vScanMpp);
-    SERIAL_PRINT(", ");
+    SERIAL_PRINT("iMpp = ", "%s");
+    SERIAL_PRINT(lifeTester->data.iScanMpp, "%u");
+    SERIAL_PRINT(", Vmpp = ", "%s");
+    SERIAL_PRINT(lifeTester->data.vScanMpp, "%u");
+    SERIAL_PRINT(", ", "%s");
     PrintError(lifeTester->error);
 }
 
 static void PrintScanPoint(LifeTester_t const *const lifeTester)
 {
-    SERIAL_PRINT(lifeTester->io.dac);
-    SERIAL_PRINT(", ");
-    SERIAL_PRINT(lifeTester->data.vScan);
-    SERIAL_PRINT(", ");
-    SERIAL_PRINT(lifeTester->data.iScan);
-    SERIAL_PRINT(", ");
-    SERIAL_PRINT(lifeTester->data.pScan);
-    SERIAL_PRINT(", ");
+    SERIAL_PRINT(lifeTester->io.dac, "%u");
+    SERIAL_PRINT(", ", "%s");
+    SERIAL_PRINT(lifeTester->data.vScan, "%u");
+    SERIAL_PRINT(", ", "%s");
+    SERIAL_PRINT(lifeTester->data.iScan, "%u");
+    SERIAL_PRINT(", ", "%s");
+    SERIAL_PRINT(lifeTester->data.pScan, "%u");
+    SERIAL_PRINT(", ", "%s");
     PrintError(lifeTester->error);
 }
 
 static void PrintScanHeader(void)
 {
-    SERIAL_PRINTLN("Scanning for MPP...");
-    SERIAL_PRINTLN("channel, V, I, P, error");
+    SERIAL_PRINTLN("Scanning for MPP...", "%s");
+    SERIAL_PRINTLN("channel, V, I, P, error", "%s");
 }
 
 static void PrintNewMpp(LifeTester_t const *const lifeTester)
 {
-    SERIAL_PRINT(lifeTester->io.dac);
-    SERIAL_PRINT(", ");
-    SERIAL_PRINT(lifeTester->data.vThis);
-    SERIAL_PRINT(", ");
-    SERIAL_PRINT(lifeTester->data.iThis);
-    SERIAL_PRINT(", ");
-    SERIAL_PRINT(lifeTester->data.pThis);
-    SERIAL_PRINT(", ");
-    SERIAL_PRINT(analogRead(LIGHT_SENSOR_PIN));
-    SERIAL_PRINT(", ");
-    SERIAL_PRINT(TempReadDegC());
-    SERIAL_PRINT(", ");
+    SERIAL_PRINT(lifeTester->io.dac, "%u");
+    SERIAL_PRINT(", ", "%s");
+    SERIAL_PRINT(lifeTester->data.vThis, "%u");
+    SERIAL_PRINT(", ", "%s");
+    SERIAL_PRINT(lifeTester->data.iThis, "%u");
+    SERIAL_PRINT(", ", "%s");
+    SERIAL_PRINT(lifeTester->data.pThis, "%u");
+    SERIAL_PRINT(", ", "%s");
+    SERIAL_PRINT(analogRead(LIGHT_SENSOR_PIN), "%u");
+    SERIAL_PRINT(", ", "%s");
+    SERIAL_PRINT(TempReadDegC(), "%f");
+    SERIAL_PRINT(", ", "%s");
     PrintError(lifeTester->error);
 }
 
 static void PrintMppHeader(void)
 {
-    SERIAL_PRINTLN("Tracking max power point...");
-    SERIAL_PRINTLN("channel, DACx, ADCx, power, Light Sensor, T(C)");    
+    SERIAL_PRINTLN("Tracking max power point...", "%s");
+    SERIAL_PRINTLN("channel, DACx, ADCx, power, Light Sensor, T(C)", "%s");    
 }
 
 static void ResetTimer(LifeTester_t *const lifeTester)
@@ -289,7 +289,7 @@ STATIC void InitialiseEntry(LifeTester_t *const lifeTester)
     // TODO - move to step fn. Simpler to keep transitions to child step fn only
     if (!(DacGetOutput(lifeTester) == 0U)) 
     {
-        DBG_PRINTLN("Dac set error");
+        DBG_PRINTLN("Dac set error", "%s");
         StateMachineTransitionOnEvent(lifeTester, ErrorEvent);
     }
     // Signal that lifetester is being initialised.
@@ -318,21 +318,21 @@ STATIC void InitialiseStep(LifeTester_t *const lifeTester)
     else
     {
         const uint16_t iShortCircuit = AdcReadLifeTesterCurrent(lifeTester);
-        SERIAL_PRINT("Initialising. Short-circuit current = ");
-        SERIAL_PRINTLN(iShortCircuit);
+        SERIAL_PRINT("Initialising. Short-circuit current = ", "%s");
+        SERIAL_PRINTLN(iShortCircuit, "%u");
         if (iShortCircuit < THRESHOLD_CURRENT)
         {
             lifeTester->error = currentThreshold;
             lifeTester->data.nErrorReads++;
-            DBG_PRINT("Current below threshold error ");
-            DBG_PRINTLN(iShortCircuit);
+            DBG_PRINT("Current below threshold error ", "%s");
+            DBG_PRINTLN(iShortCircuit, "%u");
         }
         else if (iShortCircuit >= MAX_CURRENT)
         {
             lifeTester->data.nErrorReads++;
             lifeTester->error = currentLimit;
-            DBG_PRINT("Current saturated error ");
-            DBG_PRINTLN(iShortCircuit);
+            DBG_PRINT("Current saturated error ", "%s");
+            DBG_PRINTLN(iShortCircuit, "%u");
         }
         else
         {
@@ -744,10 +744,10 @@ STATIC void StateMachineTransitionToState(LifeTester_t *const lifeTester,
                                           LifeTesterState_t const *const targetState)
 {
     LifeTesterState_t const* state = lifeTester->state;
-    DBG_PRINT("Transition from ");
-    DBG_PRINT(state->label);
-    DBG_PRINT("->");
-    DBG_PRINTLN(targetState->label);
+    DBG_PRINT("Transition from ", "%s");
+    DBG_PRINT(state->label, "%s");
+    DBG_PRINT("->", "%s");
+    DBG_PRINTLN(targetState->label, "%s");
 
     if (targetState == state)
     {
@@ -813,7 +813,7 @@ static void RunParentStepFn(LifeTester_t *const lifeTester)
 *******************************************************************************/
 void StateMachine_Reset(LifeTester_t *const lifeTester)
 {
-    DBG_PRINTLN("Resetting device");
+    DBG_PRINTLN("Resetting device", "%s");
     lifeTester->state = &StateNone;
     StateMachineTransitionToState(lifeTester, &StateInitialiseDevice);
 }
