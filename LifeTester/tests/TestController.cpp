@@ -4,7 +4,7 @@
 #include "CppUTestExt/MockSupportPlugin.h"
 
 // Code under test
-#include "I2C.h"
+#include "Controller.h"
 
 // support
 #include "Wire.h"

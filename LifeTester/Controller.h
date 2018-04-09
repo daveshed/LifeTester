@@ -1,5 +1,5 @@
-#ifndef I2C_H
-#define I2C_H
+#ifndef CONTROLLER_H
+#define CONTROLLER_H
 
 #ifdef _cplusplus
 extern "C" {

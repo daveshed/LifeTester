@@ -16,8 +16,9 @@ debug: all
 
 make_tests:
 	mkdir -p ${BUILD_DIR}
-	g++ AllTests.cpp ${MOCKS_HOME}/MockLedFlash.cpp ${MOCKS_HOME}/MockIoWrapper.cpp TestI2C.cpp ../I2C.cpp \
-	TestStateMachine.cpp ../StateMachine.cpp ${INCLUDES} ${LIBS} ${DEBUG_FLAGS} ${DEFINES} -o ${BUILD_DIR}/tests
+	g++ AllTests.cpp ${MOCKS_HOME}/MockLedFlash.cpp ${MOCKS_HOME}/MockIoWrapper.cpp \
+	TestController.cpp ../Controller.cpp TestStateMachine.cpp ../StateMachine.cpp \
+	${INCLUDES} ${LIBS} ${DEBUG_FLAGS} ${DEFINES} -o ${BUILD_DIR}/tests
 
 run_tests: make_tests
 	./${BUILD_DIR}/tests

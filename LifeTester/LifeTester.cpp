@@ -2,7 +2,7 @@
 #include "Config.h"
 #include "IoWrapper.h"
 #include "StateMachine.h"
-#include "I2C.h"
+#include "Controller.h"
 #include "LedFlash.h"
 #include "LifeTesterTypes.h"
 #include "MCP4802.h" // dac types

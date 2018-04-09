@@ -1,10 +1,9 @@
 #include "Arduino.h"
 #include "Config.h"
-#include "I2C.h"
+#include "Controller.h"
 #include "IoWrapper.h"
 #include "LifeTesterTypes.h"
 #include "Macros.h"
-// #include <stdint.h>
 #include "Wire.h"
 
 #define MAX_DATA_SIZE     8 //8 bytes for a uint64_t
