@@ -1,7 +1,7 @@
 #include "Arduino.h"
 #include "Config.h"
 #include "IoWrapper.h"
-#include "IV.h"
+#include "StateMachine.h"
 #include "I2C.h"
 #include "LedFlash.h"
 #include "LifeTesterTypes.h"
@@ -10,29 +10,23 @@
 #include <SPI.h>
 #include <Wire.h>
 
-//////////////////////////////////
-//Initialise lifetester channels//
-////////////////////////////////// 
-LifeTester_t LTChannelA = {
-  {chASelect, 0U},  // dac, adc - TODO: check that these are correct settings!
-  Flasher(LED_A_PIN),
-  0,
-  0,
-  0,
-  ok,
-  {0},
-  0
+// Lifetester channel data
+LifeTester_t channelA = {
+  {chASelect, 0U},    // io
+  Flasher(LED_A_PIN), // led
+  {0},                // data
+  0U,                 // timer
+  ok,                 // error
+  NULL                // state
 };
 
-LifeTester_t LTChannelB = {
-  {chBSelect, 1U},  // dac, adc
+LifeTester_t channelB = {
+  {chBSelect, 1U},
   Flasher(LED_B_PIN),
-  0,
-  0,
-  0,
-  ok,
   {0},
-  0
+  0U,
+  ok,
+  NULL,
 };
 
 void setup()
@@ -51,42 +45,17 @@ void setup()
   AdcInit();
   TempSenseInit();
   
-  //MPP INITIAL SEARCH/SCAN
-  Serial.println("Scanning for MPP...");
-  IV_Scan(&LTChannelA, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN);
-  // initialise DAC to MPP initial guess
-  DacSetOutput(LTChannelA.IVData.v, LTChannelA.channel.dac);
-  
-  IV_Scan(&LTChannelB, V_SCAN_MIN, V_SCAN_MAX, DV_SCAN); 
-  //initialise DAC to MPP initial guess - channel b
-  DacSetOutput(LTChannelB.IVData.v, LTChannelB.channel.dac);
-
-  //DATA HEADINGS
-  Serial.println();
-  Serial.println("Tracking max power point...");
-  Serial.println("DACx, ADCx, power, error, Light Sensor, T(C), channel");
-
-  //SETUP LEDS FOR MAIN LOOP
-  LTChannelA.Led.t(50, 50);
-  LTChannelB.Led.t(50, 50);
-
-  //set timer ready for measurements
-  LTChannelA.timer = LTChannelB.timer = millis();
+  StateMachine_Reset(&channelA);
+  StateMachine_Reset(&channelB);
 
   Serial.println("Finished setup. Entering main loop.");
 }
 
 void loop()
 {
-  IV_MpptUpdate(&LTChannelA);
-  IV_MpptUpdate(&LTChannelB);
-
-  //LED will update every time the loop runs
-  LTChannelA.Led.update();
-  LTChannelB.Led.update();
+  StateMachine_UpdateStep(&channelA);
+  StateMachine_UpdateStep(&channelB);
 
   TempSenseUpdate();
-  
-  I2C_PrepareData(&LTChannelA, &LTChannelB);
+  I2C_PrepareData(&channelA, &channelB);
 }
-

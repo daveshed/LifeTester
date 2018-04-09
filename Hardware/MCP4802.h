@@ -29,7 +29,8 @@ typedef enum shdnSelect_e {
 // selects chA/chB
 typedef enum chSelect_e {
     chASelect,
-    chBSelect
+    chBSelect,
+    nChannels
 } chSelect_t;
 
 // Function to initialise the interface with DAC
