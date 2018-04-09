@@ -3,7 +3,8 @@
 #include "I2C.h"
 #include "IoWrapper.h"
 #include "LifeTesterTypes.h"
-#include <stdint.h>
+#include "Macros.h"
+// #include <stdint.h>
 #include "Wire.h"
 
 #define MAX_DATA_SIZE     8 //8 bytes for a uint64_t
@@ -58,18 +59,18 @@ void I2C_PackIntToBytes(const uint64_t data, uint8_t byteArray[], const uint8_t 
     byteArray[i] = data >> (8 * i);
   }
 }
-
+#if 0
 void I2C_PrintByteArray(const uint8_t byteArray[], const uint16_t n)
 {
   Serial.print("byteArray[] =");
   for (int i = 0; i < n; i++)
   {
-    Serial.print(" ");
+    SERIAL_PRINT(" ", "%s");
     Serial.print(byteArray[i]);
   }
   Serial.println();
 }
-
+#endif
 void I2C_TransmitData(void)
 {
   Wire.write(I2CByteBuffer, bufferIdx);  
@@ -81,7 +82,7 @@ void I2C_PrepareData(LifeTester_t const *const LTChannelA, LifeTester_t const *c
   
   // assign elements of the buffer
   
-  BUFFER_WRITE(millis());
+  BUFFER_WRITE((uint32_t)LTChannelA->timer);
   BUFFER_WRITE((uint16_t)*LTChannelA->data.vActive);
   BUFFER_WRITE((uint16_t)*LTChannelA->data.iActive);
   BUFFER_WRITE((uint16_t)*LTChannelB->data.vActive);

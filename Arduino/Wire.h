@@ -22,14 +22,13 @@
 #ifndef TwoWire_h
 #define TwoWire_h
 
+#ifndef UNIT_TEST
 #include <inttypes.h>
 #include "Stream.h"
-
 #define BUFFER_LENGTH 32
 
 // WIRE_HAS_END means Wire has end()
 #define WIRE_HAS_END 1
-
 class TwoWire : public Stream
 {
   private:
@@ -78,7 +77,14 @@ class TwoWire : public Stream
     inline size_t write(int n) { return write((uint8_t)n); }
     using Print::write;
 };
-
+#else  // prototypes used in unit tests only
+class TwoWire
+{
+  public:
+    TwoWire();
+    virtual size_t write(const uint8_t *, size_t);
+};
+#endif  // UNIT_TEST
 extern TwoWire Wire;
 
 #endif
