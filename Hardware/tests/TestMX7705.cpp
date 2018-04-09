@@ -119,7 +119,7 @@ static uint8_t GetChannel(uint8_t commsReg)
 // Checks the contets of the spi settings data agrees with private data
 static void CheckSpiSettings(const SpiSettings_t *settings)
 {
-    CHECK_EQUAL(CS_DELAY, settings->chipSelectDelay);
+    CHECK_EQUAL(CS_DELAY_ADC, settings->chipSelectDelay);
     CHECK_EQUAL(SPI_CLOCK_SPEED, settings->clockSpeed);
     CHECK_EQUAL(SPI_BIT_ORDER, settings->bitOrder);
     CHECK_EQUAL(SPI_DATA_MODE, settings->dataMode);
