@@ -1,14 +1,11 @@
 #include "Arduino.h"
 #include "Config.h"
 #include "Controller.h"
+#include "Controller_Private.h"
 #include "IoWrapper.h"
 #include "LifeTesterTypes.h"
 #include "Macros.h"
 #include "Wire.h"
-
-#define MAX_DATA_SIZE     8 //8 bytes for a uint64_t
-#define BUFFER_ENTRIES    9
-#define BUFFER_MAX_SIZE   MAX_DATA_SIZE * BUFFER_ENTRIES
 
 /*
 function that executes whenever data is requested by master
@@ -58,16 +55,16 @@ void I2C_PackIntToBytes(const uint64_t data, uint8_t byteArray[], const uint8_t 
     byteArray[i] = data >> (8 * i);
   }
 }
-#if 0
-void I2C_PrintByteArray(const uint8_t byteArray[], const uint16_t n)
+#if 1
+void I2C_PrintByteArray(void)
 {
-  Serial.print("byteArray[] =");
-  for (int i = 0; i < n; i++)
+  SERIAL_PRINT("byteArray =", "%s");
+  for (int i = 0; i < BUFFER_MAX_SIZE; i++)
   {
     SERIAL_PRINT(" ", "%s");
-    Serial.print(byteArray[i]);
+    SERIAL_PRINT(I2CByteBuffer[i], "%u");
   }
-  Serial.println();
+  SERIAL_PRINTLNEND();
 }
 #endif
 void I2C_TransmitData(void)
@@ -87,6 +84,7 @@ void I2C_PrepareData(LifeTester_t const *const LTChannelA, LifeTester_t const *c
   BUFFER_WRITE((uint16_t)*LTChannelB->data.vActive);
   BUFFER_WRITE((uint16_t)*LTChannelB->data.iActive);
   BUFFER_WRITE((uint16_t)TempGetRawData());
+  // BUFFER_WRITE((uint16_t)0U);
   BUFFER_WRITE((uint16_t)analogRead(LIGHT_SENSOR_PIN));
   BUFFER_WRITE((uint8_t)LTChannelA->error);
   BUFFER_WRITE((uint8_t)LTChannelB->error);

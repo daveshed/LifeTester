@@ -10,7 +10,7 @@
 // support
 #include "Arduino.h"       // arduino function prototypes - implemented MockAduino.c
 #include "Config.h"
-#include "MockArduino.h"   // mockDigitalPins, mockMillis, private variables
+#include "MockArduino.h"
 #include "MockSpiCommon.h" // Mock spi interface
 #include "SpiCommon.h"     // spi function prototypes - mocks implemented here.
 #include <string.h>

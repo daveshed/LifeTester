@@ -5,10 +5,22 @@
 
 // Code under test
 #include "Controller.h"
+#include "Controller_Private.h"
 
 // support
+#include "Config.h"
 #include "Wire.h"
 #include "MockArduino.h"
+#include "IoWrapper.h"
+#include "LifeTesterTypes.h"
+#include "StateMachine_Private.h"
+#include <string.h> //memset, memcpy
+
+static uint8_t transmitBuffer[BUFFER_LENGTH];  // length in wire.h 
+static LifeTester_t *mockLifeTesterA;
+static LifeTester_t *mockLifeTesterB;
+
+extern uint8_t I2CByteBuffer[BUFFER_MAX_SIZE];
 
 // intantiates the wire interface object
 TwoWire::TwoWire()
@@ -18,12 +30,14 @@ TwoWire::TwoWire()
 // Mocks needed for reading data in update function
 size_t TwoWire::write(const uint8_t *data, size_t quantity)
 {
-    mock().actualCall("Wire::write")
+    mock().actualCall("TwoWire::write")
         .withParameter("data", data)
-        .withParameter("quantity", quantity);    
+        .withParameter("quantity", quantity);
+
+    memcpy(transmitBuffer, data, quantity);
     return (size_t)mock().unsignedIntReturnValue();
 }
-
+// instance of TwoWire visible from tests and source via external lilnkage in header
 TwoWire Wire = TwoWire();
 /*******************************************************************************
  * UNIT TESTS
@@ -32,7 +46,26 @@ TEST_GROUP(I2cTestGroup)
 {
     void setup(void)
     {
-        // nothing to do yet
+        memset(transmitBuffer, 0U, BUFFER_LENGTH);
+        mock().disable();
+        const LifeTester_t lifeTesterInit = {
+            {chASelect, 0U},    // io
+            Flasher(LED_A_PIN), // led
+            {0},                // data
+            0U,                 // timer
+            ok,                 // error
+            NULL
+        };
+        mock().enable();
+        // Copy to a static variable for tests to work on
+        static LifeTester_t dataForTestA = lifeTesterInit;
+        static LifeTester_t dataForTestB = lifeTesterInit;
+        // Need to copy the data every time. A static is only initialised once.
+        memcpy(&dataForTestA, &lifeTesterInit, sizeof(LifeTester_t));
+        memcpy(&dataForTestB, &lifeTesterInit, sizeof(LifeTester_t));
+        // access data through pointers
+        mockLifeTesterA = &dataForTestA;
+        mockLifeTesterB = &dataForTestB;
     }
 
     void teardown(void)
@@ -41,10 +74,58 @@ TEST_GROUP(I2cTestGroup)
     }
 };
 
-// Dummy test to check things are working
-TEST(I2cTestGroup, dummy)
+static uint32_t ReadUint32FromBuffer(uint8_t const *const buffer)
 {
-    FAIL("Fail me!");
-    // check function calls
+    uint32_t retVal = 0U;
+    for (int i = 0; i < sizeof(uint32_t); i++)
+    {
+        retVal |= (buffer[i] << (i * 8));
+    }
+    return retVal;
+}
+
+static uint16_t ReadUnit16FromBuffer(uint8_t const *const buffer)
+{
+    return (uint16_t)(buffer[0U] & (buffer[1U] << 8U));
+}
+
+static ErrorCode_t ReadUint8FromBuffer(uint8_t const *const buffer)
+{
+    return (ErrorCode_t)*buffer;
+}
+
+TEST(I2cTestGroup, DataCopiedToTransmitBufferOk)
+{
+    ReadUint32FromBuffer(transmitBuffer);
+    const uint32_t tExpected = 23432;
+    const uint16_t vExpected = 34;
+    const uint16_t iExpected = 2345U;
+    const ErrorCode_t errorExpected = lowCurrent;
+    ActivateThisMeasurement(mockLifeTesterA);
+
+    mockLifeTesterA->timer = tExpected;
+    mockLifeTesterA->data.vThis = vExpected;
+    mockLifeTesterA->data.iThis = iExpected;
+    mockLifeTesterA->data.iThis = iExpected;
+    mockLifeTesterA->error = errorExpected;
+    ActivateThisMeasurement(mockLifeTesterB);
+    mockLifeTesterB->timer = tExpected;
+    mockLifeTesterB->data.vThis = vExpected;
+    mockLifeTesterB->data.iThis = iExpected;
+    mockLifeTesterB->error = errorExpected;
+    mock().expectOneCall("TempGetRawData")
+        .andReturnValue(0U);
+    mock().expectOneCall("analogRead")
+        .withParameter("pin", LIGHT_SENSOR_PIN)
+        .andReturnValue(0);  // note returns signed
+    I2C_PrepareData(mockLifeTesterA, mockLifeTesterB);
+    mock().expectOneCall("TwoWire::write")
+        .withParameter("data", (const void *)I2CByteBuffer)
+        .withParameter("quantity", 18U)
+        .andReturnValue(18U);
+
+    I2C_TransmitData();
+    I2C_PrintByteArray();
+    CHECK_EQUAL(tExpected, ReadUint32FromBuffer(transmitBuffer));
     mock().checkExpectations();
 }

@@ -131,6 +131,7 @@ void TempSenseUpdate(void)
 uint16_t TempGetRawData(void)
 {
     mock().actualCall("TempGetRawData");
+    return mock().unsignedIntReturnValue();
 }
 
 float TempReadDegC(void)

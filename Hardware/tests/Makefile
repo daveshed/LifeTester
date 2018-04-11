@@ -12,8 +12,8 @@ all: make_tests run_tests
 make_tests:
 	mkdir -p ${BUILD_DIR}
 	g++ AllTests.cpp Support/MockArduino.c Support/MockSpiCommon.cpp \
-	Support/TestUtils.cpp TestLedFlash.cpp ../LedFlash.cpp TestTC77.cpp \
-	../TC77.cpp TestMX7705.cpp ../MX7705.cpp TestMCP4802.cpp ../MCP4802.cpp \
+	TestLedFlash.cpp ../LedFlash.cpp TestTC77.cpp ../TC77.cpp \
+	TestMX7705.cpp ../MX7705.cpp TestMCP4802.cpp ../MCP4802.cpp \
 	${INCLUDES} ${LIBS} ${DEBUG_FLAGS} ${DEFINES} -o ${BUILD_DIR}/tests
 
 run_tests: make_tests

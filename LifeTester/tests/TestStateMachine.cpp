@@ -304,34 +304,6 @@ static uint16_t mockCurrent;
 static LifeTester_t *mockLifeTester;
 
 /*******************************************************************************
- * Mock function implementations for tests
- ******************************************************************************/
-/*
- Mock implemetation for Arduino library millis. Returns a long int corresponding
- to the current value of the device timer in ms.
- */
-unsigned long millis(void)
-{
-    mock().actualCall("millis");
-    uint32_t retval = mock().unsignedLongIntReturnValue();
-    return retval;
-}
-
-/*
- Mock implemetation for Arduino library function delay.
- */
-void delay(unsigned long time)
-{
-    mock().actualCall("delay")
-        .withParameter("time", time);
-}
-
-int analogRead(uint8_t pin)
-{
-    return 0;
-}
-
-/*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
 /*
@@ -458,8 +430,11 @@ static void MockForLedOff(void)
 
 static void MocksForPrintNewMpp(void)
 {
-    mock().expectOneCall("TempReadDegC").
-        andReturnValue(0.0);
+    mock().expectOneCall("analogRead")
+        .withParameter("pin", LIGHT_SENSOR_PIN)
+        .andReturnValue(0);
+    mock().expectOneCall("TempReadDegC")
+        .andReturnValue(0.0);
 }
 
 static void MocksForFlashLedOnce(void)

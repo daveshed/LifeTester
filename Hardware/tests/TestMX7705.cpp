@@ -10,7 +10,7 @@
 // support
 #include "Arduino.h"       // arduino function prototypes - implemented MockAduino.c
 #include "Config.h"
-#include "MockArduino.h"   // mockDigitalPins, mockMillis, private variables
+#include "MockArduino.h"
 #include "MockSpiCommon.h" // Mock spi interface
 #include "SpiCommon.h"     // spi function prototypes - mocks implemented here.
 #include <string.h>
@@ -53,7 +53,7 @@ typedef struct AdcIoRegisters_s {
 } AdcIoRegisters_t;
 
 static AdcIoRegisters_t mx7705Adc; 
-
+static uint32_t mockMillis;
 /* Mock spi buffers used in transferring data
 TODO: move to mockSpiState defined in MockSpiCommon.cpp */
 static uint8_t inputBuffer[BUFFER_SIZE];
@@ -374,7 +374,8 @@ static void MockForMX7705Polling(uint8_t channel)
         TIMEOUT_MS / roundtripTime:
         conversionTime / roundtripTime;
 
-    mock().expectOneCall("millis");    
+    mock().expectOneCall("millis")
+        .andReturnValue(mockMillis);
     /* 
      Mocks for polling comms reg - only poll within timeout or conversion time.
      Note that another poll is expected since we have a do while loop - poll
@@ -382,9 +383,11 @@ static void MockForMX7705Polling(uint8_t channel)
     */
     for (int i = 0; (i <= nPolls + 1); i++)
     {
-        mock().expectOneCall("millis");    
+        mock().expectOneCall("millis")
+            .andReturnValue(mockMillis);
         MockForMX7705Write(RequestRegRead(CommsReg, channel));
         MockForMX7705Read();        
+        mockMillis += roundtripTime;
     }
 }    
 
