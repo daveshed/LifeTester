@@ -4,89 +4,103 @@
 #include "Controller_Private.h"
 #include "IoWrapper.h"
 #include "LifeTesterTypes.h"
-#include "Macros.h"
 #include "Wire.h"
 
 /*
 function that executes whenever data is requested by master
 this function is registered as an event, see setup()
 all other code is interrupted and the data sent to master 
-send data as a sequence of 18 bytes...
+send data as a sequence of 17 bytes...
 
-timer (uint32_t) MSB/LSB(v_a) MSB/LSB(i_a) MSB/LSB(v_b) MSB/LSB(i_b)
-MSB/LSB(T) MSB/LSB(intensity)error_A error B
+Variable   n Bytes
+timer      4
+v_a        1
+i_a        2
+v_b        1
+i_b        2
+T          2
+I_light    2
+error_A    1
+error B    1
+Checksum   1
+TOTAL -> 17 Bytes
 */
 
-uint8_t I2CByteBuffer[BUFFER_MAX_SIZE] = {0};
-uint8_t bufferIdx = 0;
+STATIC DataBuffer_t buf;
 
-/*
- * Macro to write an unsigened int to a the buffer
- * Data can take 8, 16, 32 or 64 bit size and 
- * should be passed by value. Buffer idx global and incremented
- * according to data size.
- */
-#define BUFFER_WRITE(data)                                            \
-  I2C_PackIntToBytes(data, (I2CByteBuffer + bufferIdx), sizeof(data));\
-  bufferIdx += sizeof(data)
-
-#define BUFFER_RST()                              \
-  I2C_ClearArray(I2CByteBuffer, BUFFER_MAX_SIZE); \
-  bufferIdx = 0
-
-void I2C_ClearArray(uint8_t byteArray[], const uint8_t numBytes)
+static void ResetBuffer(DataBuffer_t *const buf)
 {
-  for (int i = 0; i < numBytes; i++)
-  {
-    byteArray[i] = 0;
-  }
+    memset(buf->d, 0U, BUFFER_MAX_SIZE);
+    buf->tail = 0U;
 }
 
-/*
- * packing an unsigned int into individual bytes and copying into the array arg
- * LSB will be at the lower index ie. for a uint16_t byteArray[i] = LSB, [i+1] = MSB
- */
-void I2C_PackIntToBytes(const uint64_t data, uint8_t byteArray[], const uint8_t numBytes)
+static bool IsFull(DataBuffer_t const *const buf)
 {
-  //TO DO: assert statement to check the size of data does not exceed uint64_t
-
-  for (int i = 0; i < numBytes; i++)
-  {
-    byteArray[i] = data >> (8 * i);
-  }
-}
-#if 1
-void I2C_PrintByteArray(void)
-{
-  SERIAL_PRINT("byteArray =", "%s");
-  for (int i = 0; i < BUFFER_MAX_SIZE; i++)
-  {
-    SERIAL_PRINT(" ", "%s");
-    SERIAL_PRINT(I2CByteBuffer[i], "%u");
-  }
-  SERIAL_PRINTLNEND();
-}
-#endif
-void I2C_TransmitData(void)
-{
-  Wire.write(I2CByteBuffer, bufferIdx);  
+    return !(buf->tail < BUFFER_MAX_SIZE);
 }
 
-void I2C_PrepareData(LifeTester_t const *const LTChannelA, LifeTester_t const *const LTChannelB)
+static void WriteUint8ToBuffer(DataBuffer_t *const buf, uint8_t data)
 {
-  BUFFER_RST();
-  
-  // assign elements of the buffer
-  
-  BUFFER_WRITE((uint32_t)LTChannelA->timer);
-  BUFFER_WRITE((uint16_t)*LTChannelA->data.vActive);
-  BUFFER_WRITE((uint16_t)*LTChannelA->data.iActive);
-  BUFFER_WRITE((uint16_t)*LTChannelB->data.vActive);
-  BUFFER_WRITE((uint16_t)*LTChannelB->data.iActive);
-  BUFFER_WRITE((uint16_t)TempGetRawData());
-  // BUFFER_WRITE((uint16_t)0U);
-  BUFFER_WRITE((uint16_t)analogRead(LIGHT_SENSOR_PIN));
-  BUFFER_WRITE((uint8_t)LTChannelA->error);
-  BUFFER_WRITE((uint8_t)LTChannelB->error);
+    if (!IsFull(buf))
+    {
+        buf->d[buf->tail] = data;
+        buf->tail++;
+    }
+}
 
+static void WriteUint16ToBuffer(DataBuffer_t *const buf, uint16_t data)
+{
+    WriteUint8ToBuffer(buf, (data & 0xFFU));
+    WriteUint8ToBuffer(buf, ((data >> 8U) & 0xFFU));
+}
+
+static void WriteUint32ToBuffer(DataBuffer_t *const buf, uint32_t data)
+{
+    for (int i = 0; i < sizeof(uint32_t); i++)
+    {
+        const uint8_t byteToWrite = (data >> (8U * i)) & 0xFFU;
+        WriteUint8ToBuffer(buf, byteToWrite);
+    }
+}
+
+static uint8_t CheckSum(DataBuffer_t const *const buf)
+{
+    uint8_t checkSum = 0U;
+    for (int i = 0; i < buf->tail; i++)
+    {
+        checkSum += buf->d[i];
+    }
+    return checkSum;
+}
+
+STATIC void PrintBuffer(DataBuffer_t const *const buf)
+{
+    SERIAL_PRINT("buffer =", "%s");
+    for (int i = 0; i < BUFFER_MAX_SIZE; i++)
+    {
+        SERIAL_PRINT(" ", "%s");
+        SERIAL_PRINT(buf->d[i], "%u");
+    }
+    SERIAL_PRINTLNEND();
+}
+
+STATIC void WriteDataToBuffer(LifeTester_t const *const LTChannelA,
+                              LifeTester_t const *const LTChannelB)
+{
+    ResetBuffer(&buf);
+    WriteUint32ToBuffer(&buf, LTChannelA->timer);
+    WriteUint8ToBuffer(&buf, *LTChannelA->data.vActive);
+    WriteUint16ToBuffer(&buf, *LTChannelA->data.iActive);
+    WriteUint8ToBuffer(&buf, *LTChannelB->data.vActive);
+    WriteUint16ToBuffer(&buf, *LTChannelB->data.iActive);
+    WriteUint16ToBuffer(&buf, TempGetRawData());
+    WriteUint16ToBuffer(&buf, analogRead(LIGHT_SENSOR_PIN));
+    WriteUint8ToBuffer(&buf, (uint8_t)LTChannelA->error);
+    WriteUint8ToBuffer(&buf, (uint8_t)LTChannelB->error);
+    WriteUint8ToBuffer(&buf, CheckSum(&buf));
+}
+
+void Controller_TransmitData(void)
+{
+    Wire.write(buf.d, buf.tail);  
 }

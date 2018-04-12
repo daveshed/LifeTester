@@ -16,12 +16,37 @@
 #include "StateMachine_Private.h"
 #include <string.h> //memset, memcpy
 
-static uint8_t transmitBuffer[BUFFER_LENGTH];  // length in wire.h 
+static uint8_t transmitBuffer[BUFFER_MAX_SIZE];  // length in wire.h 
 static LifeTester_t *mockLifeTesterA;
 static LifeTester_t *mockLifeTesterB;
 
-extern uint8_t I2CByteBuffer[BUFFER_MAX_SIZE];
 
+/*******************************************************************************
+* PRIVATE FUNCTION IMPLEMENTATIONS
+*******************************************************************************/
+static  uint8_t ReadUint8FromBuffer(uint8_t const *const buffer)
+{
+    return *buffer;
+}
+
+static uint32_t ReadUint32FromBuffer(uint8_t const *const buffer)
+{
+    uint32_t retVal = 0U;
+    for (int i = 0; i < sizeof(uint32_t); i++)
+    {
+        retVal |= (buffer[i] << (i * 8));
+    }
+    return retVal;
+}
+
+static uint16_t ReadUnit16FromBuffer(uint8_t const *const buffer)
+{
+    return (uint16_t)(buffer[0U] & (buffer[1U] << 8U));
+}
+
+/*******************************************************************************
+* MOCK FUNCTION IMPLEMENTATIONS FOR TEST
+*******************************************************************************/
 // intantiates the wire interface object
 TwoWire::TwoWire()
 {
@@ -39,10 +64,12 @@ size_t TwoWire::write(const uint8_t *data, size_t quantity)
 }
 // instance of TwoWire visible from tests and source via external lilnkage in header
 TwoWire Wire = TwoWire();
+
+
 /*******************************************************************************
  * UNIT TESTS
  ******************************************************************************/
-TEST_GROUP(I2cTestGroup)
+TEST_GROUP(ControllerTestGroup)
 {
     void setup(void)
     {
@@ -74,27 +101,7 @@ TEST_GROUP(I2cTestGroup)
     }
 };
 
-static uint32_t ReadUint32FromBuffer(uint8_t const *const buffer)
-{
-    uint32_t retVal = 0U;
-    for (int i = 0; i < sizeof(uint32_t); i++)
-    {
-        retVal |= (buffer[i] << (i * 8));
-    }
-    return retVal;
-}
-
-static uint16_t ReadUnit16FromBuffer(uint8_t const *const buffer)
-{
-    return (uint16_t)(buffer[0U] & (buffer[1U] << 8U));
-}
-
-static ErrorCode_t ReadUint8FromBuffer(uint8_t const *const buffer)
-{
-    return (ErrorCode_t)*buffer;
-}
-
-TEST(I2cTestGroup, DataCopiedToTransmitBufferOk)
+TEST(ControllerTestGroup, DataCopiedToTransmitBufferOk)
 {
     ReadUint32FromBuffer(transmitBuffer);
     const uint32_t tExpected = 23432;
@@ -105,7 +112,6 @@ TEST(I2cTestGroup, DataCopiedToTransmitBufferOk)
 
     mockLifeTesterA->timer = tExpected;
     mockLifeTesterA->data.vThis = vExpected;
-    mockLifeTesterA->data.iThis = iExpected;
     mockLifeTesterA->data.iThis = iExpected;
     mockLifeTesterA->error = errorExpected;
     ActivateThisMeasurement(mockLifeTesterB);
@@ -118,14 +124,14 @@ TEST(I2cTestGroup, DataCopiedToTransmitBufferOk)
     mock().expectOneCall("analogRead")
         .withParameter("pin", LIGHT_SENSOR_PIN)
         .andReturnValue(0);  // note returns signed
-    I2C_PrepareData(mockLifeTesterA, mockLifeTesterB);
+    WriteDataToBuffer(mockLifeTesterA, mockLifeTesterB);
     mock().expectOneCall("TwoWire::write")
-        .withParameter("data", (const void *)I2CByteBuffer)
-        .withParameter("quantity", 18U)
-        .andReturnValue(18U);
+        .withParameter("data", (const void *)buf.d)
+        .withParameter("quantity", 17U)
+        .andReturnValue(17U);
 
-    I2C_TransmitData();
-    I2C_PrintByteArray();
+    Controller_TransmitData();
+    PrintBuffer(&buf);
     CHECK_EQUAL(tExpected, ReadUint32FromBuffer(transmitBuffer));
     mock().checkExpectations();
 }
