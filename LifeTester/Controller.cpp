@@ -28,10 +28,11 @@ TOTAL -> 17 Bytes
 
 STATIC DataBuffer_t buf;
 
-static void ResetBuffer(DataBuffer_t *const buf)
+STATIC void ResetBuffer(DataBuffer_t *const buf)
 {
     memset(buf->d, 0U, BUFFER_MAX_SIZE);
     buf->tail = 0U;
+    buf->head = 0U;
 }
 
 static bool IsFull(DataBuffer_t const *const buf)
@@ -46,6 +47,7 @@ static void WriteUint8ToBuffer(DataBuffer_t *const buf, uint8_t data)
         buf->d[buf->tail] = data;
         buf->tail++;
     }
+    // what do if it is full??
 }
 
 static void WriteUint16ToBuffer(DataBuffer_t *const buf, uint16_t data)

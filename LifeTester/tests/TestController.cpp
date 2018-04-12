@@ -16,7 +16,9 @@
 #include "StateMachine_Private.h"
 #include <string.h> //memset, memcpy
 
-static uint8_t transmitBuffer[BUFFER_MAX_SIZE];  // length in wire.h 
+
+
+static DataBuffer_t transmitBuffer;
 static LifeTester_t *mockLifeTesterA;
 static LifeTester_t *mockLifeTesterB;
 
@@ -24,24 +26,37 @@ static LifeTester_t *mockLifeTesterB;
 /*******************************************************************************
 * PRIVATE FUNCTION IMPLEMENTATIONS
 *******************************************************************************/
-static  uint8_t ReadUint8FromBuffer(uint8_t const *const buffer)
+static bool IsEmpty(DataBuffer_t const *const buf)
 {
-    return *buffer;
+    return !(buf->head < buf->tail);
 }
 
-static uint32_t ReadUint32FromBuffer(uint8_t const *const buffer)
+static uint8_t ReadUint8(DataBuffer_t *const buf)
 {
-    uint32_t retVal = 0U;
-    for (int i = 0; i < sizeof(uint32_t); i++)
+    uint8_t retVal = 0U;
+    if (!IsEmpty(buf))
     {
-        retVal |= (buffer[i] << (i * 8));
+        retVal = buf->d[buf->head];
+        buf->head++;
     }
     return retVal;
 }
 
-static uint16_t ReadUnit16FromBuffer(uint8_t const *const buffer)
+static uint16_t ReadUint16(DataBuffer_t *const buf)
 {
-    return (uint16_t)(buffer[0U] & (buffer[1U] << 8U));
+    const uint8_t lsb = ReadUint8(buf);
+    const uint8_t msb = ReadUint8(buf);
+    return (uint16_t)(lsb | (msb << 8U));
+}
+
+static uint32_t ReadUint32(DataBuffer_t *const buf)
+{
+    uint32_t retVal = 0U;
+    for (int i = 0; i < sizeof(uint32_t); i++)
+    {
+        retVal |= (ReadUint8(buf) << (i * 8U));
+    }
+    return retVal;
 }
 
 /*******************************************************************************
@@ -59,7 +74,8 @@ size_t TwoWire::write(const uint8_t *data, size_t quantity)
         .withParameter("data", data)
         .withParameter("quantity", quantity);
 
-    memcpy(transmitBuffer, data, quantity);
+    memcpy(&transmitBuffer.d, data, quantity);
+    transmitBuffer.tail += quantity;
     return (size_t)mock().unsignedIntReturnValue();
 }
 // instance of TwoWire visible from tests and source via external lilnkage in header
@@ -73,7 +89,7 @@ TEST_GROUP(ControllerTestGroup)
 {
     void setup(void)
     {
-        memset(transmitBuffer, 0U, BUFFER_LENGTH);
+        ResetBuffer(&transmitBuffer);
         mock().disable();
         const LifeTester_t lifeTesterInit = {
             {chASelect, 0U},    // io
@@ -103,13 +119,11 @@ TEST_GROUP(ControllerTestGroup)
 
 TEST(ControllerTestGroup, DataCopiedToTransmitBufferOk)
 {
-    ReadUint32FromBuffer(transmitBuffer);
     const uint32_t tExpected = 23432;
     const uint16_t vExpected = 34;
     const uint16_t iExpected = 2345U;
     const ErrorCode_t errorExpected = lowCurrent;
     ActivateThisMeasurement(mockLifeTesterA);
-
     mockLifeTesterA->timer = tExpected;
     mockLifeTesterA->data.vThis = vExpected;
     mockLifeTesterA->data.iThis = iExpected;
@@ -132,6 +146,6 @@ TEST(ControllerTestGroup, DataCopiedToTransmitBufferOk)
 
     Controller_TransmitData();
     PrintBuffer(&buf);
-    CHECK_EQUAL(tExpected, ReadUint32FromBuffer(transmitBuffer));
+    CHECK_EQUAL(tExpected, ReadUint32(&transmitBuffer));
     mock().checkExpectations();
 }
