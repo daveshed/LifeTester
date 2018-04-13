@@ -16,12 +16,8 @@
 #include "StateMachine_Private.h"
 #include <string.h> //memset, memcpy
 
-
-
-static DataBuffer_t transmitBuffer;
 static LifeTester_t *mockLifeTesterA;
 static LifeTester_t *mockLifeTesterB;
-
 
 /*******************************************************************************
 * PRIVATE FUNCTION IMPLEMENTATIONS
@@ -78,9 +74,36 @@ size_t TwoWire::write(const uint8_t *data, size_t quantity)
     transmitBuffer.tail += quantity;
     return (size_t)mock().unsignedIntReturnValue();
 }
+
+int TwoWire::read(void)
+{
+    mock().actualCall("TwoWire::read");
+}
+
+int TwoWire::available(void)
+{
+    mock().actualCall("TwoWire::read");
+    return mock().intReturnValue();
+}
+
 // instance of TwoWire visible from tests and source via external lilnkage in header
 TwoWire Wire = TwoWire();
 
+/*******************************************************************************
+* MOCKS FOR TESTS
+*******************************************************************************/
+static void MocksForReadTempData(uint16_t mockTemp)
+{
+    mock().expectOneCall("TempGetRawData")
+        .andReturnValue(mockTemp);    
+}
+
+static void MocksForAnalogRead(int16_t mockVal)
+{
+    mock().expectOneCall("analogRead")
+        .withParameter("pin", LIGHT_SENSOR_PIN)
+        .andReturnValue(mockVal);
+}
 
 /*******************************************************************************
  * UNIT TESTS
@@ -119,33 +142,51 @@ TEST_GROUP(ControllerTestGroup)
 
 TEST(ControllerTestGroup, DataCopiedToTransmitBufferOk)
 {
-    const uint32_t tExpected = 23432;
+    const uint32_t timeExpected = 23432;
     const uint16_t vExpected = 34;
     const uint16_t iExpected = 2345U;
+    const uint16_t tempExpected = 924U;
+    const uint16_t adcReadExpected = 234U;
     const ErrorCode_t errorExpected = lowCurrent;
     ActivateThisMeasurement(mockLifeTesterA);
-    mockLifeTesterA->timer = tExpected;
+    mockLifeTesterA->timer = timeExpected;
     mockLifeTesterA->data.vThis = vExpected;
     mockLifeTesterA->data.iThis = iExpected;
     mockLifeTesterA->error = errorExpected;
     ActivateThisMeasurement(mockLifeTesterB);
-    mockLifeTesterB->timer = tExpected;
+    mockLifeTesterB->timer = timeExpected;
     mockLifeTesterB->data.vThis = vExpected;
     mockLifeTesterB->data.iThis = iExpected;
     mockLifeTesterB->error = errorExpected;
-    mock().expectOneCall("TempGetRawData")
-        .andReturnValue(0U);
-    mock().expectOneCall("analogRead")
-        .withParameter("pin", LIGHT_SENSOR_PIN)
-        .andReturnValue(0);  // note returns signed
-    WriteDataToBuffer(mockLifeTesterA, mockLifeTesterB);
+    MocksForReadTempData(tempExpected);
+    MocksForAnalogRead(adcReadExpected);
+    Controller_WriteDataToBuffer(mockLifeTesterA, mockLifeTesterB);
     mock().expectOneCall("TwoWire::write")
-        .withParameter("data", (const void *)buf.d)
+        .withParameter("data", (const void *)transmitBuffer.d)
         .withParameter("quantity", 17U)
         .andReturnValue(17U);
-
     Controller_TransmitData();
-    PrintBuffer(&buf);
-    CHECK_EQUAL(tExpected, ReadUint32(&transmitBuffer));
+    PrintBuffer(&transmitBuffer);
+    CHECK_EQUAL(timeExpected, ReadUint32(&transmitBuffer));
+    CHECK_EQUAL(vExpected, ReadUint8(&transmitBuffer));
+    CHECK_EQUAL(iExpected, ReadUint16(&transmitBuffer));
+    CHECK_EQUAL(vExpected, ReadUint8(&transmitBuffer));
+    CHECK_EQUAL(iExpected, ReadUint16(&transmitBuffer));
+    CHECK_EQUAL(tempExpected, ReadUint16(&transmitBuffer));
+    CHECK_EQUAL(adcReadExpected, ReadUint16(&transmitBuffer));
+    CHECK_EQUAL(lowCurrent, ReadUint8(&transmitBuffer));
+    CHECK_EQUAL(lowCurrent, ReadUint8(&transmitBuffer));
     mock().checkExpectations();
+}
+
+TEST(ControllerTestGroup, CheckSumCalcultesOk)
+{
+    DataBuffer_t b;
+    const uint8_t checkSumExpected = 12U;
+    WriteUint8(&b, 4U);
+    WriteUint8(&b, 1U);
+    WriteUint8(&b, 0U);
+    WriteUint8(&b, 7U);
+    const uint8_t checkSumActual = CheckSum(&b);
+    CHECK_EQUAL(checkSumExpected, checkSumActual);
 }

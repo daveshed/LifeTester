@@ -36,8 +36,8 @@ void setup()
   SPI.begin();
     
   // I2C COMMUNICATION WITH MASTER ARDUINO
-  Wire.begin(I2C_ADDRESS);          // I2C address defined at compile time - see makefile
-  Wire.onRequest(I2C_TransmitData); // register event
+  Wire.begin(I2C_ADDRESS);                 // I2C address defined at compile time
+  Wire.onRequest(Controller_TransmitData); // register event
 
   // INITIALISE I/O
   Serial.println("Initialising IO...");
@@ -57,5 +57,5 @@ void loop()
   StateMachine_UpdateStep(&channelB);
 
   TempSenseUpdate();
-  I2C_PrepareData(&channelA, &channelB);
+  Controller_WriteDataToBuffer(&channelA, &channelB);
 }

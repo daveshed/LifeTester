@@ -9,15 +9,14 @@ typedef struct DataBuffer_s {
 } DataBuffer_t;
 
 #ifdef UNIT_TEST
-    extern DataBuffer_t buf;
+    extern DataBuffer_t transmitBuffer;
+    extern DataBuffer_t receiveBuffer;
 #endif
 
 STATIC void ResetBuffer(DataBuffer_t *const buf);
 static bool IsFull(DataBuffer_t const *const buf);
-static void WriteUint8ToBuffer(DataBuffer_t *const buf, uint8_t data);
-static void WriteUint16ToBuffer(DataBuffer_t *const buf, uint16_t data);
-static void WriteUint32ToBuffer(DataBuffer_t *const buf, uint32_t data);
-static uint8_t CheckSum(DataBuffer_t const *const buf);
+STATIC void WriteUint8(DataBuffer_t *const buf, uint8_t data);
+static void WriteUint16(DataBuffer_t *const buf, uint16_t data);
+static void WriteUint32(DataBuffer_t *const buf, uint32_t data);
+STATIC uint8_t CheckSum(DataBuffer_t const *const buf);
 STATIC void PrintBuffer(DataBuffer_t const *const buf);
-STATIC void WriteDataToBuffer(LifeTester_t const *const LTChannelA,
-                              LifeTester_t const *const LTChannelB);
