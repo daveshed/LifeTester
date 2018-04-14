@@ -84,6 +84,7 @@ class TwoWire
     TwoWire();
     virtual int available(void);
     virtual int read(void);
+    virtual size_t write(uint8_t);
     virtual size_t write(const uint8_t *, size_t);
 };
 #endif  // UNIT_TEST

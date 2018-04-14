@@ -28,14 +28,11 @@ error B    1
 Checksum   1
 TOTAL -> 17 Bytes
 */
-void Controller_WriteDataToBuffer(LifeTester_t const *const LTChannelA,
-                                  LifeTester_t const *const LTChannelB);
+void Controller_ConsumeCommand(LifeTester_t *const lifeTesterChA,
+                               LifeTester_t *const lifeTesterChB);
 
-/*
-Api to implement
-
-
-*/
+void Controller_ReceiveHandler(int numBytes);
+void Controller_RequestHandler(void);
 
 
 #ifdef _cplusplus

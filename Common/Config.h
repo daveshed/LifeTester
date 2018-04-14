@@ -9,6 +9,7 @@ extern "C" {
 #define DAC_CS_PIN          (9U)
 #define LED_A_PIN           (5U)
 #define LED_B_PIN           (6U)
+#define COMMS_LED_PIN       (7U)  // TODO: check me
 #define TEMP_CS_PIN         (8U)
 #define LIGHT_SENSOR_PIN    (0U)
 
@@ -42,6 +43,15 @@ extern "C" {
 #define ERROR_LED_OFF_TIME  (500U)
 #define INIT_LED_ON_TIME    (100U)
 #define INIT_LED_OFF_TIME   (100U)
+
+void Config_SetSettleTime(uint16_t tSettle);
+void Config_SetTrackDelay(uint16_t tDelay);
+void Config_SetSampleTime(uint16_t tSample);
+void Config_SetThresholdCurrent(uint16_t iThreshold);
+uint16_t Config_GetSettleTime(void);
+uint16_t Config_GetTrackDelay(void);
+uint16_t Config_GetSampleTime(void);
+uint16_t Config_GetThresholdCurrent(void);
 
 #endif
 #ifdef _cplusplus

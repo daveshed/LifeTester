@@ -37,10 +37,12 @@ void setup()
     
   // I2C COMMUNICATION WITH MASTER ARDUINO
   Wire.begin(I2C_ADDRESS);                 // I2C address defined at compile time
-  Wire.onRequest(Controller_TransmitData); // register event
+  Wire.onRequest(Controller_RequestHandler); // register event
+  Wire.onReceive(Controller_ReceiveHandler); // register event
 
   // INITIALISE I/O
   Serial.println("Initialising IO...");
+  pinMode(COMMS_LED_PIN, OUTPUT);
   DacInit();
   AdcInit();
   TempSenseInit();
@@ -57,5 +59,5 @@ void loop()
   StateMachine_UpdateStep(&channelB);
 
   TempSenseUpdate();
-  Controller_WriteDataToBuffer(&channelA, &channelB);
+  Controller_ConsumeCommand(&channelA, &channelB);
 }

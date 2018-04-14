@@ -4,21 +4,16 @@
 #include "Controller_Private.h"
 #include "IoWrapper.h"
 #include "LifeTesterTypes.h"
+#include "StateMachine.h"
 #include "Wire.h"
 
-typedef enum ControllerCommand_e {
-    None,
-    Reset,
-    SetParams,
-    GetParams,
-    GetData,
-    MaxCommands
-} ControllerCommand_t;
+
+typedef bool LtChannel_t;
 
 ControllerCommand_t cmdRequest;
 STATIC DataBuffer_t transmitBuffer;
 STATIC DataBuffer_t receiveBuffer;
-static uint8_t CommandReg;
+STATIC uint8_t      commsReg;
 
 STATIC void ResetBuffer(DataBuffer_t *const buf)
 {
@@ -85,56 +80,176 @@ STATIC void PrintBuffer(DataBuffer_t const *const buf)
     SERIAL_PRINTLNEND();
 }
 
-void Controller_WriteDataToBuffer(LifeTester_t const *const LTChannelA,
-                                  LifeTester_t const *const LTChannelB)
+static ControllerCommand_t GetCommand()
 {
-    ResetBuffer(&transmitBuffer);
-    WriteUint32(&transmitBuffer, LTChannelA->timer);
-    WriteUint8(&transmitBuffer, *LTChannelA->data.vActive);
-    WriteUint16(&transmitBuffer, *LTChannelA->data.iActive);
-    WriteUint8(&transmitBuffer, *LTChannelB->data.vActive);
-    WriteUint16(&transmitBuffer, *LTChannelB->data.iActive);
+    return (ControllerCommand_t)bitExtract(commsReg, COMMAND_MASK, COMMAND_OFFSET);
+}
+
+static LtChannel_t GetChannel()
+{
+    return bitRead(commsReg, CH_SELECT_BIT);
+}
+
+static void SetDataReady(void)
+{
+    bitSet(commsReg, DATA_RDY_BIT);
+}
+
+static bool DataReady(void)
+{
+    return bitRead(commsReg, DATA_RDY_BIT);
+}
+
+static void ClearDataReady(void)
+{
+    bitClear(commsReg, DATA_RDY_BIT);
+}
+
+static void SetCmdDone()
+{
+    bitSet(commsReg, CMD_DONE_BIT);
+}
+
+static bool CmdDone()
+{
+    return bitRead(commsReg, CMD_DONE_BIT);
+}
+
+static void ClearCmdDone()
+{
+    bitClear(commsReg, CMD_DONE_BIT);
+}
+
+STATIC void WriteDataToTransmitBuffer(LifeTester_t const *const lifeTester)
+{
+    WriteUint32(&transmitBuffer, lifeTester->timer);
+    WriteUint8(&transmitBuffer, *lifeTester->data.vActive);
+    WriteUint16(&transmitBuffer, *lifeTester->data.iActive);
     WriteUint16(&transmitBuffer, TempGetRawData());
     WriteUint16(&transmitBuffer, analogRead(LIGHT_SENSOR_PIN));
-    WriteUint8(&transmitBuffer, (uint8_t)LTChannelA->error);
-    WriteUint8(&transmitBuffer, (uint8_t)LTChannelB->error);
+    WriteUint8(&transmitBuffer, (uint8_t)lifeTester->error);
     WriteUint8(&transmitBuffer, CheckSum(&transmitBuffer));
 }
 
-void Controller_TransmitData(void)
+static void WriteParamsToTransmitBuffer(void)
+{
+    #if 0
+    WriteUint8(&transmitBuffer, Config_GetSettleTime() >> TIMING_BIT_SHIFT);
+    WriteUint8(&transmitBuffer, Config_GetTrackDelay() >> TIMING_BIT_SHIFT);
+    WriteUint8(&transmitBuffer, Config_GetSampleTime() >> TIMING_BIT_SHIFT);
+    WriteUint8(&transmitBuffer, Config_GetThresholdCurrent() >> CURRENT_BIT_SHIFT);
+    #endif
+}
+
+static void ReadParamsFromReceiveBuffer(void)
+{
+    // Not implemented yet
+}
+
+static void TransmitData(void)
 {
     Wire.write(transmitBuffer.d, NumBytes(&transmitBuffer));
 }
 
+static void ReceiveData(void)
+{
+    while (Wire.available())
+    {
+        WriteUint8(&receiveBuffer, Wire.read());
+        NumBytes(&receiveBuffer);
+    }
+}
+/*
+ Handles a request for data from the master device
+*/
 void Controller_RequestHandler(void)
 {
-    switch(cmdRequest)
+    digitalWrite(COMMS_LED_PIN, HIGH);
+    switch(GetCommand())
     {
-        case (None):
-            // Ready for a write to the command register
-            CommandReg = Wire.read();
-            break;
-        case (SetParams):
-            // Ready to receive data into settings register
-            ResetBuffer(&receiveBuffer);
-            while (Wire.available())
+        case GetParams:
+        case GetData:
+            // Ready to transmit params/data - already in buffer
+            if (DataReady())
             {
-                WriteUint8(&receiveBuffer, Wire.read());
-                NumBytes(&receiveBuffer);
+                TransmitData();
+                SetCmdDone();
             }
             break;
-        case (GetParams):
-            // Ready to transmit measurement params
-            Wire.write(transmitBuffer.d, NumBytes(&transmitBuffer));
-            break;
-        case (GetData):
-            // Request to transmit data
-            Controller_TransmitData();
-            break;
-        case (Reset):
-            /*Reset event - resets all channels. Note that the mode is
-            set here and can be read with a getter from main*/
+        case GetCommsReg:
         default:
+            Wire.write(commsReg);
             break;
+    }
+    digitalWrite(COMMS_LED_PIN, LOW);
+}
+
+/*
+ Handles data received from master device
+*/
+void Controller_ReceiveHandler(int numBytes)
+{
+    digitalWrite(COMMS_LED_PIN, HIGH);
+    if (CmdDone())
+    {
+        // last command done so ready to receive another one.
+        commsReg = bitExtract(Wire.read(), COMMAND_MASK, COMMAND_OFFSET);
+        ResetBuffer(&transmitBuffer);
+        ResetBuffer(&receiveBuffer);
+    }
+    else
+    {
+        switch(GetCommand())
+        {
+            case SetParams:
+                // Ready to receive data into settings register
+                ReceiveData();
+                SetDataReady();
+                break;
+            default:
+                // overwrites comms reg if master writes after other commands
+                commsReg = bitExtract(Wire.read(), COMMAND_MASK, COMMAND_OFFSET);
+                break;
+        }
+    }
+    digitalWrite(COMMS_LED_PIN, LOW);
+}
+
+void Controller_ConsumeCommand(LifeTester_t *const lifeTesterChA,
+                               LifeTester_t *const lifeTesterChB)
+{
+    if (!CmdDone())
+    {
+        LifeTester_t *const ltRequested = 
+            (GetChannel() == LIFETESTER_CH_A) ? lifeTesterChA : lifeTesterChB;
+        switch (GetCommand())  // get last command stored in reg
+        {
+            case Reset:
+                StateMachine_Reset(ltRequested);
+                SetCmdDone();
+                break;
+            case SetParams:
+                if (DataReady())
+                {
+                    ReadParamsFromReceiveBuffer();
+                    SetCmdDone();
+                }
+                break;
+            case GetParams:
+                // WriteParamsToTransmitBuffer();
+                SetDataReady();
+                break;
+            case GetData:
+                // WriteDataToTransmitBuffer(ltRequested);
+                SetDataReady();
+                break;
+            default:
+                SetCmdDone();
+                break;
+        }
+    }
+    else
+    {
+        // bitDelete(commsReg, COMMAND_MASK, COMMAND_OFFSET);
     }
 }
