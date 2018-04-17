@@ -6,10 +6,12 @@
 // Bit:  7 6 5 4 3  2 1 0
 // Func:           |command 
 // comms register mask and bit shifts
+#define EMPTY_BITS_MASK   (7U)
+#define EMPTY_BITS_SHIFT  (3U)
 #define COMMAND_MASK      (7U)
 #define COMMAND_OFFSET    (0U)
-#define CMD_DONE_BIT      (3U)
-#define DATA_RDY_BIT      (4U)
+#define RDY_BIT           (5U)
+#define RW_BIT            (6U)
 #define CH_SELECT_BIT     (7U)
 
 // channel definition
@@ -30,7 +32,6 @@ typedef enum ControllerCommand_e {
     None,
     Reset,
     SetParams,
-    GetCommsReg,
     GetParams,
     GetData,
     MaxCommands
@@ -39,7 +40,11 @@ typedef enum ControllerCommand_e {
 #ifdef UNIT_TEST
     extern DataBuffer_t transmitBuffer;
     extern DataBuffer_t receiveBuffer;
-    extern uint8_t      commsReg;
+    extern uint8_t      cmdReg;
+    extern uint8_t settleTime;
+    extern uint8_t trackDelay;
+    extern uint8_t sampleTime;
+    extern uint8_t thresholdCurrent;
 #endif
 
 STATIC void ResetBuffer(DataBuffer_t *const buf);

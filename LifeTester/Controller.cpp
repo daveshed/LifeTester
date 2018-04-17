@@ -12,8 +12,14 @@ typedef bool LtChannel_t;
 
 ControllerCommand_t cmdRequest;
 STATIC DataBuffer_t transmitBuffer;
-STATIC DataBuffer_t receiveBuffer;
-STATIC uint8_t      commsReg;
+STATIC uint8_t      cmdReg;
+
+// TODO: replace with getters/setters in config.c
+STATIC uint8_t settleTime;
+STATIC uint8_t trackDelay;
+STATIC uint8_t sampleTime;
+STATIC uint8_t thresholdCurrent;
+
 
 STATIC void ResetBuffer(DataBuffer_t *const buf)
 {
@@ -80,48 +86,64 @@ STATIC void PrintBuffer(DataBuffer_t const *const buf)
     SERIAL_PRINTLNEND();
 }
 
-static ControllerCommand_t GetCommand()
+static ControllerCommand_t GetCommand(const uint8_t *reg)
 {
-    return (ControllerCommand_t)bitExtract(commsReg, COMMAND_MASK, COMMAND_OFFSET);
+    return (ControllerCommand_t)bitExtract(*reg, COMMAND_MASK, COMMAND_OFFSET);
 }
 
-static LtChannel_t GetChannel()
+static LtChannel_t GetChannel(const uint8_t *reg)
 {
-    return bitRead(commsReg, CH_SELECT_BIT);
+    return bitRead(*reg, CH_SELECT_BIT);
 }
 
-static void SetDataReady(void)
+static void SetReadyStatus(uint8_t *reg)
 {
-    bitSet(commsReg, DATA_RDY_BIT);
+    bitSet(*reg, RDY_BIT);
 }
 
-static bool DataReady(void)
+static bool IsReady(const uint8_t *reg)
 {
-    return bitRead(commsReg, DATA_RDY_BIT);
+    return bitRead(*reg, RDY_BIT);
 }
 
-static void ClearDataReady(void)
+static void ClearReadyStatus(uint8_t *reg)
 {
-    bitClear(commsReg, DATA_RDY_BIT);
+    bitClear(*reg, RDY_BIT);
 }
 
-static void SetCmdDone()
+static bool IsWriteModeSet(const uint8_t *reg)
 {
-    bitSet(commsReg, CMD_DONE_BIT);
+    return bitRead(*reg, RW_BIT);
 }
 
-static bool CmdDone()
+static void SetReadMode(uint8_t *reg)
 {
-    return bitRead(commsReg, CMD_DONE_BIT);
+    bitClear(*reg, RW_BIT);
 }
 
-static void ClearCmdDone()
+static void SetWriteMode(uint8_t *reg)
 {
-    bitClear(commsReg, CMD_DONE_BIT);
+    bitClear(*reg, RW_BIT);
+}
+
+static void ParseNewCmdFromMaster(uint8_t newCmd)
+{
+    if (IsWriteModeSet(&newCmd)) // Write in the new command to action
+    {
+        bitDelete(newCmd, EMPTY_BITS_MASK, EMPTY_BITS_SHIFT);
+        ClearReadyStatus(&newCmd);
+        // go bit will be set by master here.
+        cmdReg = newCmd;
+    }
+    else  // data stays the same just clear write bit
+    {
+        SetReadMode(&cmdReg);
+    }
 }
 
 STATIC void WriteDataToTransmitBuffer(LifeTester_t const *const lifeTester)
 {
+    // TODO: handle dodgy pointers in vActive, iActive
     WriteUint32(&transmitBuffer, lifeTester->timer);
     WriteUint8(&transmitBuffer, *lifeTester->data.vActive);
     WriteUint16(&transmitBuffer, *lifeTester->data.iActive);
@@ -133,17 +155,18 @@ STATIC void WriteDataToTransmitBuffer(LifeTester_t const *const lifeTester)
 
 static void WriteParamsToTransmitBuffer(void)
 {
-    #if 0
-    WriteUint8(&transmitBuffer, Config_GetSettleTime() >> TIMING_BIT_SHIFT);
-    WriteUint8(&transmitBuffer, Config_GetTrackDelay() >> TIMING_BIT_SHIFT);
-    WriteUint8(&transmitBuffer, Config_GetSampleTime() >> TIMING_BIT_SHIFT);
-    WriteUint8(&transmitBuffer, Config_GetThresholdCurrent() >> CURRENT_BIT_SHIFT);
-    #endif
+    WriteUint8(&transmitBuffer, settleTime);
+    WriteUint8(&transmitBuffer, trackDelay);
+    WriteUint8(&transmitBuffer, sampleTime);
+    WriteUint8(&transmitBuffer, thresholdCurrent);
 }
 
-static void ReadParamsFromReceiveBuffer(void)
+static void ReadNewParamsFromMaster(void)
 {
-    // Not implemented yet
+    settleTime = Wire.read();
+    trackDelay = Wire.read();
+    sampleTime = Wire.read();
+    thresholdCurrent = Wire.read();
 }
 
 static void TransmitData(void)
@@ -151,65 +174,66 @@ static void TransmitData(void)
     Wire.write(transmitBuffer.d, NumBytes(&transmitBuffer));
 }
 
-static void ReceiveData(void)
-{
-    while (Wire.available())
-    {
-        WriteUint8(&receiveBuffer, Wire.read());
-        NumBytes(&receiveBuffer);
-    }
-}
 /*
- Handles a request for data from the master device
+ Handles a read request from the master device/slave write
 */
 void Controller_RequestHandler(void)
 {
     digitalWrite(COMMS_LED_PIN, HIGH);
-    switch(GetCommand())
+    if (IsWriteModeSet(&cmdReg))
     {
-        case GetParams:
-        case GetData:
-            // Ready to transmit params/data - already in buffer
-            if (DataReady())
-            {
-                TransmitData();
-                SetCmdDone();
-            }
-            break;
-        case GetCommsReg:
-        default:
-            Wire.write(commsReg);
-            break;
+        switch(GetCommand(&cmdReg))
+        {
+            case GetParams:
+            case GetData:
+                if (IsReady(&cmdReg))
+                {
+                    TransmitData();
+                    SetReadMode(&cmdReg);
+                }
+                else
+                {
+                    Wire.write(cmdReg);
+                }
+                break;
+            default:
+                // defensive: master shouldn't have read here
+                SetReadMode(&cmdReg);
+                Wire.write(cmdReg);
+                break;
+        }
+    }
+    else
+    {
+        // Read cmd reg requested. Allows master to poll device
+        Wire.write(cmdReg);
     }
     digitalWrite(COMMS_LED_PIN, LOW);
 }
 
 /*
- Handles data received from master device
+ Handles data write from master device/slave read
 */
 void Controller_ReceiveHandler(int numBytes)
 {
     digitalWrite(COMMS_LED_PIN, HIGH);
-    if (CmdDone())
+    if (!IsReady(&cmdReg))
     {
-        // last command done so ready to receive another one.
-        commsReg = bitExtract(Wire.read(), COMMAND_MASK, COMMAND_OFFSET);
-        ResetBuffer(&transmitBuffer);
-        ResetBuffer(&receiveBuffer);
+        Wire.read(); // busy - dump the command 
     }
     else
     {
-        switch(GetCommand())
+        if ((GetCommand(&cmdReg) == SetParams)
+            && IsWriteModeSet(&cmdReg))
         {
-            case SetParams:
-                // Ready to receive data into settings register
-                ReceiveData();
-                SetDataReady();
-                break;
-            default:
-                // overwrites comms reg if master writes after other commands
-                commsReg = bitExtract(Wire.read(), COMMAND_MASK, COMMAND_OFFSET);
-                break;
+            ReadNewParamsFromMaster();
+            SetReadMode(&cmdReg);
+            SetReadyStatus(&cmdReg);
+        }
+        else
+        {
+            const uint8_t newCmd = Wire.read() ;
+            ParseNewCmdFromMaster(newCmd);
         }
     }
     digitalWrite(COMMS_LED_PIN, LOW);
@@ -218,38 +242,30 @@ void Controller_ReceiveHandler(int numBytes)
 void Controller_ConsumeCommand(LifeTester_t *const lifeTesterChA,
                                LifeTester_t *const lifeTesterChB)
 {
-    if (!CmdDone())
+    if (IsWriteModeSet(&cmdReg))
     {
         LifeTester_t *const ltRequested = 
-            (GetChannel() == LIFETESTER_CH_A) ? lifeTesterChA : lifeTesterChB;
-        switch (GetCommand())  // get last command stored in reg
+            (GetChannel(&cmdReg) == LIFETESTER_CH_A) ? lifeTesterChA : lifeTesterChB;
+        switch (GetCommand(&cmdReg))
         {
             case Reset:
                 StateMachine_Reset(ltRequested);
-                SetCmdDone();
-                break;
-            case SetParams:
-                if (DataReady())
-                {
-                    ReadParamsFromReceiveBuffer();
-                    SetCmdDone();
-                }
                 break;
             case GetParams:
-                // WriteParamsToTransmitBuffer();
-                SetDataReady();
+                WriteParamsToTransmitBuffer();
                 break;
             case GetData:
-                // WriteDataToTransmitBuffer(ltRequested);
-                SetDataReady();
+                WriteDataToTransmitBuffer(ltRequested);
                 break;
+            case SetParams:
             default:
-                SetCmdDone();
                 break;
         }
+        SetReadMode(&cmdReg);
+        SetReadyStatus(&cmdReg);
     }
     else
     {
-        // bitDelete(commsReg, COMMAND_MASK, COMMAND_OFFSET);
+        // no command to consume - request handler will return cmdReg in read
     }
 }
