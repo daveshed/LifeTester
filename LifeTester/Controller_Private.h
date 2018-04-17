@@ -29,11 +29,10 @@ typedef struct DataBuffer_s {
 } DataBuffer_t;
 
 typedef enum ControllerCommand_e {
-    None,
+    CmdReg,
+    ParamsReg,
+    DataReg,
     Reset,
-    SetParams,
-    GetParams,
-    GetData,
     MaxCommands
 } ControllerCommand_t;
 
