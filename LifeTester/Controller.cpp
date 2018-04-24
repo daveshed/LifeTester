@@ -11,7 +11,6 @@
 ControllerCommand_t cmdRequest;
 STATIC DataBuffer_t transmitBuffer;
 STATIC uint8_t      cmdReg;
-static uint8_t      newCmdReg;
 
 // TODO: replace with getters/setters in config.c
 STATIC uint8_t settleTime;
@@ -85,66 +84,6 @@ STATIC void PrintBuffer(DataBuffer_t const *const buf)
     SERIAL_PRINTLNEND();
 }
 
-static ControllerCommand_t GetCommand(const uint8_t *reg)
-{
-    return (ControllerCommand_t)bitExtract(*reg, COMMAND_MASK, COMMAND_OFFSET);
-}
-
-static void SetCommand(uint8_t *reg, ControllerCommand_t cmd)
-{
-    bitInsert(*reg, (uint8_t)cmd, COMMAND_MASK, COMMAND_OFFSET);
-}
-
-static LtChannel_t GetChannel(const uint8_t *reg)
-{
-    return bitRead(*reg, CH_SELECT_BIT);
-}
-
-static void SetReadyStatus(uint8_t *reg)
-{
-    bitSet(*reg, RDY_BIT);
-}
-
-static bool IsReady(const uint8_t *reg)
-{
-    return bitRead(*reg, RDY_BIT);
-}
-
-static void ClearReadyStatus(uint8_t *reg)
-{
-    bitClear(*reg, RDY_BIT);
-}
-
-static void SetGoStatus(uint8_t *reg)
-{
-    bitSet(*reg, GO_BIT);
-}
-
-static bool IsGo(const uint8_t *reg)
-{
-    return bitRead(*reg, GO_BIT);
-}
-
-static void ClearGoStatus(uint8_t *reg)
-{
-    bitClear(*reg, GO_BIT);
-}
-
-static bool IsWriteModeSet(const uint8_t *reg)
-{
-    return bitRead(*reg, RW_BIT);
-}
-
-static void SetReadMode(uint8_t *reg)
-{
-    bitClear(*reg, RW_BIT);
-}
-
-static void SetWriteMode(uint8_t *reg)
-{
-    bitClear(*reg, RW_BIT);
-}
-
 STATIC void WriteDataToTransmitBuffer(LifeTester_t const *const lifeTester)
 {
     // TODO: handle dodgy pointers in vActive, iActive
@@ -180,7 +119,7 @@ static void TransmitData(void)
     Wire.write(transmitBuffer.d, NumBytes(&transmitBuffer));
 }
 
-static void LoadNewCmdToReg(void)
+static void LoadNewCmdToReg(uint8_t newCmdReg)
 {
     bitCopy(cmdReg, newCmdReg, CH_SELECT_BIT);
     bitCopy(cmdReg, newCmdReg, RW_BIT);
@@ -188,22 +127,21 @@ static void LoadNewCmdToReg(void)
     SET_COMMAND(cmdReg, GET_COMMAND(newCmdReg));
 }
 
-static void ParseNewCmdRegFromMaster(void)
+static void UpdateStatusBits(uint8_t newCmdReg)
 {
     const ControllerCommand_t c = GET_COMMAND(newCmdReg);
     // set status bits
-    if (IsWriteModeSet(&newCmdReg))
+    if (IS_WRITE(newCmdReg))
     {
-        // LoadNewCmdToReg();
         switch (c)
         {
             case Reset:
-                IsGo(&cmdReg) ? ClearReadyStatus(&cmdReg)
-                              : SetReadyStatus(&cmdReg);
+                IS_GO(cmdReg) ? CLEAR_RDY_STATUS(cmdReg)
+                              : SET_RDY_STATUS(cmdReg);
                 break;
             default:
-                ClearGoStatus(&cmdReg);  // only applies for reading/loading
-                SetReadyStatus(&cmdReg); 
+                CLEAR_RDY_STATUS(cmdReg);  // only applies for reading/loading
+                SET_RDY_STATUS(cmdReg); 
                 break;
         }
     }
@@ -212,17 +150,15 @@ static void ParseNewCmdRegFromMaster(void)
         switch (c)
         {
             case Reset:
-                // LoadNewCmdToReg();
-                IsGo(&cmdReg) ? ClearReadyStatus(&cmdReg)
-                              : SetReadyStatus(&cmdReg);
+                IS_GO(cmdReg) ? CLEAR_RDY_STATUS(cmdReg)
+                              : SET_RDY_STATUS(cmdReg);
                 break;
             case ParamsReg:
             case DataReg:
-                // LoadNewCmdToReg();
                 // data requested - need to load into buffer now. Set busy
-                if (IsGo(&cmdReg))
+                if (IS_GO(cmdReg))
                 {
-                    ClearReadyStatus(&cmdReg);
+                    CLEAR_RDY_STATUS(cmdReg);
                 }
                 break;
             case CmdReg:  // command not loaded - preserve reg as is for reading
@@ -256,11 +192,11 @@ void Controller_ReceiveHandler(int numBytes)
     {
         ReadNewParamsFromMaster();
         // protect from another write without command
-        SetReadMode(&cmdReg);
+        SET_READ_MODE(cmdReg);
     }
     else
     {
-        newCmdReg = Wire.read();
+        const uint8_t newCmdReg = Wire.read();
         // requesting write to cmd reg
         if (GET_COMMAND(newCmdReg) == CmdReg)
         {
@@ -268,19 +204,20 @@ void Controller_ReceiveHandler(int numBytes)
             {
                 if (IS_RDY(cmdReg))
                 {
-                    LoadNewCmdToReg();
+                    LoadNewCmdToReg(newCmdReg);
                 }
             }
             else  //read
             {
+                ResetBuffer(&transmitBuffer);
                 WriteUint8(&transmitBuffer, cmdReg);
             }
         }
         // receiving new command 
         else if (GET_COMMAND(cmdReg) == CmdReg)
         {
-            LoadNewCmdToReg();
-            ParseNewCmdRegFromMaster();  // TODO - rename     
+            LoadNewCmdToReg(newCmdReg);
+            UpdateStatusBits(newCmdReg);
         }
         else
         {
@@ -293,36 +230,36 @@ void Controller_ReceiveHandler(int numBytes)
 void Controller_ConsumeCommand(LifeTester_t *const lifeTesterChA,
                                LifeTester_t *const lifeTesterChB)
 {
-    LifeTester_t *const ltRequested = 
-        (GetChannel(&cmdReg) == LIFETESTER_CH_A) ? lifeTesterChA : lifeTesterChB;
-    switch (GetCommand(&cmdReg))
+    LifeTester_t *const ch = 
+        (GET_CHANNEL(cmdReg) == LIFETESTER_CH_A) ? lifeTesterChA : lifeTesterChB;
+    switch (GET_COMMAND(cmdReg))
     {
         case Reset:
-            if (IsGo(&cmdReg))
+            if (IS_GO(cmdReg))
             {
-                StateMachine_Reset(ltRequested);
-                ClearGoStatus(&cmdReg);
+                StateMachine_Reset(ch);
+                CLEAR_GO_STATUS(cmdReg);
             }
-            SetReadyStatus(&cmdReg);
+            SET_RDY_STATUS(cmdReg);
             break;
         case ParamsReg:
-            if (IsGo(&cmdReg) && !IsWriteModeSet(&cmdReg))
+            if (IS_GO(cmdReg) && !IS_WRITE(cmdReg))
             {
                 WriteParamsToTransmitBuffer();
                 // Ready for read.
-                SetReadyStatus(&cmdReg);
+                SET_RDY_STATUS(cmdReg);
                 // ensure data isn't loaded again
-                ClearGoStatus(&cmdReg);
+                CLEAR_GO_STATUS(cmdReg);
             }
             break;
         case DataReg:
-            if (IsGo(&cmdReg) && !IsWriteModeSet(&cmdReg))
+            if (IS_GO(cmdReg) && !IS_WRITE(cmdReg))
             {
-                WriteDataToTransmitBuffer(ltRequested);
+                WriteDataToTransmitBuffer(ch);
                 // Ready for read.
-                SetReadyStatus(&cmdReg);                    
+                SET_RDY_STATUS(cmdReg);                    
                 // ensure data isn't loaded again
-                ClearGoStatus(&cmdReg);
+                CLEAR_GO_STATUS(cmdReg);
             }
             break;
         default:

@@ -261,7 +261,6 @@ TEST(ControllerTestGroup, DataCopiedToTransmitBufferOk)
     ExpectReadTempAndReturn(tempExpectedA);
     ExpectAnalogReadAndReturn(adcReadExpectedA);
     WriteDataToTransmitBuffer(mockLifeTesterA);
-    PrintBuffer(&transmitBuffer);
     CHECK_EQUAL(timeExpectedA, ReadUint32(&transmitBuffer));
     CHECK_EQUAL(vExpectedA, ReadUint8(&transmitBuffer));
     CHECK_EQUAL(iExpectedA, ReadUint16(&transmitBuffer));
@@ -304,6 +303,7 @@ TEST(ControllerTestGroup, GetCmdRegChAOk)
     Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
     // now read the data back
     ExpectCommsLedSwitchOn();
+    WriteUint8(&transmitBuffer, 76);  // try to break test - junk in buffer
     ExpectSendTransmitBuffer(&transmitBuffer);
     ExpectCommsLedSwitchOff();
     Controller_RequestHandler();
@@ -311,27 +311,36 @@ TEST(ControllerTestGroup, GetCmdRegChAOk)
     CHECK_EQUAL(cmdRegInit, cmdReg);
     mock().checkExpectations();
 }
-// TODO - following test requires implementation of two cmd regs
-#if 0
+
 TEST(ControllerTestGroup, GetCmdRegChBOk)
 {
-    uint8_t cmd = GetCtrlReadCmd(LIFETESTER_CH_B, CmdReg);
-    cmdReg = cmd;
+    // initialise the command reg with any old stuff
+    uint8_t cmdRegInit = 0U;
+    SET_CHANNEL(cmdRegInit, LIFETESTER_CH_B);
+    SET_READ_MODE(cmdRegInit);
+    SET_RDY_STATUS(cmdRegInit);
+    CLEAR_GO_STATUS(cmdRegInit);
+    SET_COMMAND(cmdRegInit, DataReg);
+    cmdReg = cmdRegInit;
+    // Now write to device to request read of cmd reg
     ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(cmd);
+    ExpectReceiveByte(READ_CH_B_CMD);
     ExpectCommsLedSwitchOff();
     const uint8_t nBytesSent = 1U;
     Controller_ReceiveHandler(nBytesSent);
-    CHECK_EQUAL(cmd, cmdReg);
-    Controller_ConsumeCommand(mockLifeTesterB, mockLifeTesterB);
+    // command reg shouldn't change
+    CHECK_EQUAL(cmdRegInit, cmdReg);    
+    Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
+    // now read the data back
     ExpectCommsLedSwitchOn();
-    ExpectTransmitByte(cmd);
+    WriteUint8(&transmitBuffer, 76);  // try to break test - junk in buffer
+    ExpectSendTransmitBuffer(&transmitBuffer);
     ExpectCommsLedSwitchOff();
     Controller_RequestHandler();
-    CHECK_EQUAL(cmd, cmdReg);
+    CHECK_EQUAL(cmdRegInit, transmitBuffer.d[0]);
+    CHECK_EQUAL(cmdRegInit, cmdReg);
     mock().checkExpectations();
 }
-#endif
 
 TEST(ControllerTestGroup, ResetChannelAOk)
 {
@@ -509,5 +518,48 @@ TEST(ControllerTestGroup, RequestDataFromChAfterReadyStatusIsSet)
     CHECK_EQUAL(tempExpectedA, ReadUint16(&transmitBuffer));
     CHECK_EQUAL(adcReadExpectedA, ReadUint16(&transmitBuffer));
     CHECK_EQUAL(errorExpectedA, ReadUint8(&transmitBuffer));
+    mock().checkExpectations();
+}
+
+TEST(ControllerTestGroup, RequestDataFromChBfterReadyStatusIsSet)
+{   
+    SetExpectedLtDataA(mockLifeTesterA);
+    SetExpectedLtDataB(mockLifeTesterB);
+    // read ch data already set
+    cmdReg = READ_CH_B_DATA;
+    CHECK(!IS_RDY(cmdReg));
+    // poll cmd reg to see if data is ready
+    const uint8_t nBytesSent = 1U;
+    ExpectCommsLedSwitchOn();
+    ExpectReceiveByte(READ_CH_B_CMD);
+    ExpectCommsLedSwitchOff();
+    Controller_ReceiveHandler(nBytesSent);
+    // Master reads from cmd reg - command not consumed so not ready
+    ExpectCommsLedSwitchOn();
+    ExpectSendTransmitBuffer(&transmitBuffer);
+    ExpectCommsLedSwitchOff();
+    Controller_RequestHandler();
+    CHECK_EQUAL(cmdReg, transmitBuffer.d[0]);
+    CHECK_EQUAL(DataReg, GET_COMMAND(cmdReg));
+    CHECK(!IS_WRITE(cmdReg));
+    CHECK(!IS_RDY(cmdReg));
+    CHECK(IS_GO(cmdReg));
+    CHECK_EQUAL(LIFETESTER_CH_B, GET_CHANNEL(cmdReg));
+    // now command is consumed and data should be loaded to buffer
+    ExpectReadTempAndReturn(tempExpectedB);
+    ExpectAnalogReadAndReturn(adcReadExpectedB);
+    Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
+    // now data is ready according to reg
+    CHECK_EQUAL(DataReg, GET_COMMAND(cmdReg));
+    CHECK(!IS_WRITE(cmdReg));
+    CHECK(IS_RDY(cmdReg));
+    CHECK(!IS_GO(cmdReg));
+    CHECK_EQUAL(LIFETESTER_CH_B, GET_CHANNEL(cmdReg));
+    CHECK_EQUAL(timeExpectedB, ReadUint32(&transmitBuffer));
+    CHECK_EQUAL(vExpectedB, ReadUint8(&transmitBuffer));
+    CHECK_EQUAL(iExpectedB, ReadUint16(&transmitBuffer));
+    CHECK_EQUAL(tempExpectedB, ReadUint16(&transmitBuffer));
+    CHECK_EQUAL(adcReadExpectedB, ReadUint16(&transmitBuffer));
+    CHECK_EQUAL(errorExpectedB, ReadUint8(&transmitBuffer));
     mock().checkExpectations();
 }
