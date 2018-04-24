@@ -7,10 +7,9 @@
 // Bit:  7  6   5  4  3  2  1  0
 // Func: Ch RW RDY GO X |  CMD  |
 // comms register mask and bit shifts
-#define EMPTY_BITS_MASK   (7U)
-#define EMPTY_BITS_SHIFT  (3U)
 #define COMMAND_MASK      (7U)
 #define COMMAND_OFFSET    (0U)
+#define UNUSED_BIT        (3U)
 #define GO_BIT            (4U)
 #define RDY_BIT           (5U)
 #define RW_BIT            (6U)

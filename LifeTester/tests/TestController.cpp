@@ -28,6 +28,19 @@
 static LifeTester_t *mockLifeTesterA;
 static LifeTester_t *mockLifeTesterB;
 static DataBuffer_t mockRxBuffer;  // data received by device from master see Wire.cpp
+// example data used to set mock lifetesters
+const uint32_t timeExpectedA = 23432;
+const uint16_t vExpectedA = 34U;
+const uint16_t iExpectedA = 2345U;
+const uint16_t tempExpectedA = 924U;
+const uint16_t adcReadExpectedA = 234U;
+const ErrorCode_t errorExpectedA = lowCurrent;
+const uint32_t timeExpectedB = 23432;
+const uint16_t vExpectedB = 34U;
+const uint16_t iExpectedB = 5245U;
+const uint16_t tempExpectedB = 424U;
+const uint16_t adcReadExpectedB = 134U;
+const ErrorCode_t errorExpectedB = invalidScan;
 
 /*******************************************************************************
 * PRIVATE FUNCTION IMPLEMENTATIONS
@@ -115,7 +128,7 @@ void StateMachine_Reset(LifeTester_t *const lifeTester)
 TwoWire Wire = TwoWire();
 
 /*******************************************************************************
-* MOCKS FOR TESTS
+* MOCK FUNCTION EXPECTS FOR TESTS
 *******************************************************************************/
 static void ExpectReadTempAndReturn(uint16_t mockTemp)
 {
@@ -129,13 +142,13 @@ static void ExpectAnalogReadAndReturn(int16_t mockVal)
         .withParameter("pin", LIGHT_SENSOR_PIN)
         .andReturnValue(mockVal);
 }
-
+#if 0
 static void ExpectTransmitByte(uint8_t byteToSend)
 {
     mock().expectOneCall("TwoWire::write")
         .withParameter("data", byteToSend);
 }
-
+#endif
 static void ExpectSendTransmitBuffer(DataBuffer_t *const buf)
 {
     mock().expectOneCall("TwoWire::write")
@@ -182,19 +195,6 @@ static uint8_t GetCtrlWriteCmd(bool ch, ControllerCommand_t ctrlCmd)
     bitSet(cmd, RW_BIT);
     return cmd;  
 }
-
-const uint32_t timeExpectedA = 23432;
-const uint16_t vExpectedA = 34U;
-const uint16_t iExpectedA = 2345U;
-const uint16_t tempExpectedA = 924U;
-const uint16_t adcReadExpectedA = 234U;
-const ErrorCode_t errorExpectedA = lowCurrent;
-const uint32_t timeExpectedB = 23432;
-const uint16_t vExpectedB = 34U;
-const uint16_t iExpectedB = 5245U;
-const uint16_t tempExpectedB = 424U;
-const uint16_t adcReadExpectedB = 134U;
-const ErrorCode_t errorExpectedB = invalidScan;
 
 static void SetExpectedLtDataA(LifeTester_t *const lifeTester)
 {   

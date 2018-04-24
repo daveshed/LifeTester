@@ -11,11 +11,6 @@ STATIC DataBuffer_t transmitBuffer;
 STATIC uint8_t      cmdReg;
 
 // TODO: replace with getters/setters in config.c
-STATIC uint8_t settleTime;
-STATIC uint8_t trackDelay;
-STATIC uint8_t sampleTime;
-STATIC uint8_t thresholdCurrent;
-
 
 STATIC void ResetBuffer(DataBuffer_t *const buf)
 {
@@ -98,18 +93,25 @@ STATIC void WriteDataToTransmitBuffer(LifeTester_t const *const lifeTester)
 static void WriteParamsToTransmitBuffer(void)
 {
     ResetBuffer(&transmitBuffer);
-    WriteUint8(&transmitBuffer, settleTime);
-    WriteUint8(&transmitBuffer, trackDelay);
-    WriteUint8(&transmitBuffer, sampleTime);
-    WriteUint8(&transmitBuffer, thresholdCurrent);
+    WriteUint8(&transmitBuffer,
+        (Config_GetSettleTime() >> TIMING_BIT_SHIFT));
+    WriteUint8(&transmitBuffer,
+        (Config_GetTrackDelay() >> TIMING_BIT_SHIFT));
+    WriteUint8(&transmitBuffer,
+        (Config_GetSampleTime() >> TIMING_BIT_SHIFT));
+    WriteUint8(&transmitBuffer,
+        (Config_GetThresholdCurrent() >> CURRENT_BIT_SHIFT));
 }
 
+/*
+ Sets measurement parameters from byte width variables.
+*/
 static void ReadNewParamsFromMaster(void)
 {
-    settleTime = Wire.read();
-    trackDelay = Wire.read();
-    sampleTime = Wire.read();
-    thresholdCurrent = Wire.read();
+    Config_SetSettleTime(Wire.read() << TIMING_BIT_SHIFT);
+    Config_SetTrackDelay(Wire.read() << TIMING_BIT_SHIFT);
+    Config_SetSampleTime(Wire.read() << TIMING_BIT_SHIFT);
+    Config_SetThresholdCurrent(Wire.read() << CURRENT_BIT_SHIFT);
 }
 
 static void TransmitData(void)
@@ -117,6 +119,9 @@ static void TransmitData(void)
     Wire.write(transmitBuffer.d, NumBytes(&transmitBuffer));
 }
 
+/*
+ Copies everything except the unused and rdy bit
+*/
 static void LoadNewCmdToReg(uint8_t newCmdReg)
 {
     bitCopy(cmdReg, newCmdReg, CH_SELECT_BIT);

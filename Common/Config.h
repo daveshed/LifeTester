@@ -44,6 +44,7 @@ extern "C" {
 #define INIT_LED_ON_TIME    (100U)
 #define INIT_LED_OFF_TIME   (100U)
 
+void Config_InitParams(void);
 void Config_SetSettleTime(uint16_t tSettle);
 void Config_SetTrackDelay(uint16_t tDelay);
 void Config_SetSampleTime(uint16_t tSample);
