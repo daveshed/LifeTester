@@ -7,8 +7,6 @@
 #include "StateMachine.h"
 #include "Wire.h"
 
-
-ControllerCommand_t cmdRequest;
 STATIC DataBuffer_t transmitBuffer;
 STATIC uint8_t      cmdReg;
 
