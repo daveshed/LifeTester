@@ -4,8 +4,8 @@
 #define DATA_SEND_SIZE    (13U)  // size of data sent for single channel
 
 // register map
-// Bit:  7 6 5 4 3  2 1 0
-// Func:           |command 
+// Bit:  7  6   5  4  3  2  1  0
+// Func: Ch RW RDY GO X |  CMD  |
 // comms register mask and bit shifts
 #define EMPTY_BITS_MASK   (7U)
 #define EMPTY_BITS_SHIFT  (3U)
@@ -26,6 +26,8 @@
 
 // byte requested but no data to return
 #define EMPTY_BYTE        (0xFF)
+
+typedef bool LtChannel_t;
 
 // Commands
 #define CLEAR_GO_STATUS(REG)    bitClear(REG, GO_BIT)
