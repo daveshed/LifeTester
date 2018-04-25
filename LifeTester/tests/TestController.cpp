@@ -18,14 +18,14 @@
 #include "StateMachine_Private.h"
 #include <string.h> //memset, memcpy
 
-#define RESET_CH_A        (0x13U)
+#define RESET_CH_A        (0x3U)
 #define READ_CH_A_CMD     (0x0U)
 #define READ_CH_B_CMD     (0x80U)
 #define WRITE_CH_A_CMD    (0x40U)
 #define READ_CH_A_DATA    (0x12U)
 #define READ_CH_B_DATA    (0x92U)
-#define READ_PARAMS       (0x11U)
-#define WRITE_PARAMS      (0x51U)
+#define READ_PARAMS       (0x1U)
+#define WRITE_PARAMS      (0x41U)
 
 static LifeTester_t *mockLifeTesterA;
 static LifeTester_t *mockLifeTesterB;

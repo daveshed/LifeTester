@@ -10,8 +10,6 @@
 STATIC DataBuffer_t transmitBuffer;
 STATIC uint8_t      cmdReg;
 
-// TODO: replace with getters/setters in config.c
-
 STATIC void ResetBuffer(DataBuffer_t *const buf)
 {
     memset(buf->d, EMPTY_BYTE, BUFFER_MAX_SIZE);
