@@ -199,7 +199,8 @@ void Controller_ReceiveHandler(int numBytes)
     else
     {
         const uint8_t newCmdReg = Wire.read();
-        // TODO - flush buffer now?
+        // Make sure old commands don't fill up buffer
+        FlushReadBuffer();
         // requesting write to cmd reg
         if (GET_COMMAND(newCmdReg) == CmdReg)
         {
@@ -252,7 +253,7 @@ void Controller_ConsumeCommand(LifeTester_t *const lifeTesterChA,
             }
             else
             {
-                // FlushReadBuffer(); - TODO
+                FlushReadBuffer();
                 SET_RDY_STATUS(cmdReg);
             }
             break;

@@ -182,6 +182,20 @@ static void ExpectCommsLedSwitchOff(void)
         .withParameter("value", LOW);
 }
 
+static void ExpectReadBufferFlush(void)
+{
+    mock().expectOneCall("TwoWire::available")
+        .andReturnValue(0);
+}
+
+static void ExpectsForReceiveHandlerRWCmdReg(uint8_t cmd)
+{
+    ExpectCommsLedSwitchOn();
+    ExpectReceiveByte(cmd);
+    ExpectReadBufferFlush();
+    ExpectCommsLedSwitchOff();
+}
+
 /*******************************************************************************
 * HELPERS
 *******************************************************************************/
@@ -298,9 +312,7 @@ TEST(ControllerTestGroup, GetCmdRegChAOk)
     SET_COMMAND(cmdRegInit, DataReg);
     cmdReg = cmdRegInit;
     // Now write to device to request read of cmd reg
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(READ_CH_A_CMD);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(READ_CH_A_CMD);
     const uint8_t nBytesSent = 1U;
     Controller_ReceiveHandler(nBytesSent);
     // command reg shouldn't change
@@ -327,9 +339,7 @@ TEST(ControllerTestGroup, GetCmdRegChBOk)
     SET_COMMAND(cmdRegInit, DataReg);
     cmdReg = cmdRegInit;
     // Now write to device to request read of cmd reg
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(READ_CH_B_CMD);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(READ_CH_B_CMD);
     const uint8_t nBytesSent = 1U;
     Controller_ReceiveHandler(nBytesSent);
     // command reg shouldn't change
@@ -349,9 +359,7 @@ TEST(ControllerTestGroup, GetCmdRegChBOk)
 TEST(ControllerTestGroup, ResetChannelAOk)
 {
     // First request a write to the cmd reg
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(WRITE_CH_A_CMD);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_A_CMD);
     const uint8_t nBytesSent = 1U;
     Controller_ReceiveHandler(nBytesSent);
     CHECK(IS_WRITE(cmdReg))
@@ -359,9 +367,7 @@ TEST(ControllerTestGroup, ResetChannelAOk)
     CHECK_EQUAL(CmdReg, GET_COMMAND(cmdReg));
     Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
     // then write the reset command
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(RESET_CH_A);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(RESET_CH_A);
     Controller_ReceiveHandler(nBytesSent);
     CHECK_EQUAL(Reset, GET_COMMAND(cmdReg));
     CHECK(!IS_RDY(cmdReg));
@@ -370,9 +376,7 @@ TEST(ControllerTestGroup, ResetChannelAOk)
         .withParameter("lifeTester", mockLifeTesterA);
     Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
     // Poll the cmd reg - rdy should be set saying cmd done.
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(READ_CH_A_CMD);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(READ_CH_A_CMD);
     Controller_ReceiveHandler(nBytesSent);
     Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
     // expect to read cmd reg. Rdy bit set and go bit cleared
@@ -394,6 +398,7 @@ TEST(ControllerTestGroup, RequestDataFromChANotReadyRdyBitNotSet)
     // Request to read the cmdReg - polling
     ExpectCommsLedSwitchOn();
     ExpectReceiveByte(READ_CH_A_CMD);
+    ExpectReadBufferFlush();
     ExpectCommsLedSwitchOff();
     const uint8_t nBytesSent = 1U;
     const uint8_t cmdRegInit = cmdReg;
@@ -419,9 +424,7 @@ TEST(ControllerTestGroup, RequestDataFromChBNotReadyCmdReturnsCmdReg)
     // setup cmdReg in read data reg mode with go set but ready not set yet.
     cmdReg = READ_CH_B_DATA;
     // Request to read the cmdReg - polling
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(READ_CH_B_CMD);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(READ_CH_B_CMD);
     const uint8_t nBytesSent = 1U;
     const uint8_t cmdRegInit = cmdReg;
     Controller_ReceiveHandler(nBytesSent);
@@ -446,9 +449,7 @@ TEST(ControllerTestGroup, RequestDataFromChANotReadyHackDataRdyCmdBits)
     uint8_t hackCmd = READ_CH_A_DATA;
     // user tries to force data ready status
     SET_RDY_STATUS(hackCmd);
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(hackCmd);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(hackCmd);
     const uint8_t nBytesSent = 1U;
     Controller_ReceiveHandler(nBytesSent);
     // ready bit is reset when command is parsed
@@ -459,9 +460,7 @@ TEST(ControllerTestGroup, RequestDataFromChANotReadyHackDataRdyCmdBits)
 TEST(ControllerTestGroup, WriteAndReadCmdBackFromCmdReg)
 {
     // request to write command for channel A
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(WRITE_CH_A_CMD);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_A_CMD);
     const uint8_t nBytesSent = 1U;
     Controller_ReceiveHandler(nBytesSent);
     CHECK_EQUAL(CmdReg, GET_COMMAND(cmdReg));
@@ -469,9 +468,7 @@ TEST(ControllerTestGroup, WriteAndReadCmdBackFromCmdReg)
     CHECK(IS_RDY(cmdReg));
     CHECK_EQUAL(LIFETESTER_CH_A, GET_CHANNEL(cmdReg));
     // Now write the command in - request data read ch A
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(READ_CH_A_DATA);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(READ_CH_A_DATA);
     Controller_ReceiveHandler(nBytesSent);
     CHECK_EQUAL(DataReg, GET_COMMAND(cmdReg));
     CHECK(!IS_WRITE(cmdReg));
@@ -488,9 +485,7 @@ TEST(ControllerTestGroup, RequestDataFromChAfterReadyStatusIsSet)
     CHECK(!IS_RDY(cmdReg));
     // poll cmd reg to see if data is ready
     const uint8_t nBytesSent = 1U;
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(READ_CH_A_CMD);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(READ_CH_A_CMD);
     Controller_ReceiveHandler(nBytesSent);
     // Master reads from cmd reg - command not consumed so not ready
     ExpectCommsLedSwitchOn();
@@ -529,9 +524,7 @@ TEST(ControllerTestGroup, RequestDataFromChBfterReadyStatusIsSet)
     CHECK(!IS_RDY(cmdReg));
     // poll cmd reg to see if data is ready
     const uint8_t nBytesSent = 1U;
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(READ_CH_B_CMD);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(READ_CH_B_CMD);
     Controller_ReceiveHandler(nBytesSent);
     // Master reads from cmd reg - command not consumed so not ready
     ExpectCommsLedSwitchOn();
@@ -563,15 +556,11 @@ TEST(ControllerTestGroup, RequestDataFromChBfterReadyStatusIsSet)
 TEST(ControllerTestGroup, ReadMeasurementParams)
 {
     // request to write command reg for channel A
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(WRITE_CH_A_CMD);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_A_CMD);
     const uint8_t nBytesSent = 1U;
     Controller_ReceiveHandler(nBytesSent);
     // Now write the read params command to reg
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(READ_PARAMS);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(READ_PARAMS);
     Controller_ReceiveHandler(nBytesSent);
     CHECK_EQUAL(ParamsReg, GET_COMMAND(cmdReg));
     CHECK(!IS_WRITE(cmdReg));
@@ -596,20 +585,17 @@ TEST(ControllerTestGroup, ReadMeasurementParams)
 TEST(ControllerTestGroup, SetMeasurementParams)
 {
     // request to write command reg for channel A
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(WRITE_CH_A_CMD);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_A_CMD);
     uint8_t nBytesSent = 1U;
     Controller_ReceiveHandler(nBytesSent);
     // Now write the write params command to reg
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(WRITE_PARAMS);
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_PARAMS);
     Controller_ReceiveHandler(nBytesSent);
     CHECK_EQUAL(ParamsReg, GET_COMMAND(cmdReg));
     CHECK(IS_WRITE(cmdReg));
     CHECK(!IS_RDY(cmdReg));
-    // No mock calls expected here either
+    // Controller will clear the read buffer 
+    ExpectReadBufferFlush();
     Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
     CHECK(IS_RDY(cmdReg));
     /*
