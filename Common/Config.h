@@ -5,16 +5,18 @@
 extern "C" {
 #endif 
 
-#define ADC_CS_PIN          (10U)
-#define DAC_CS_PIN          (9U)
-#define LED_A_PIN           (5U)
-#define LED_B_PIN           (6U)
-#define COMMS_LED_PIN       (7U)  // TODO: check me
-#define TEMP_CS_PIN         (8U)
-#define LIGHT_SENSOR_PIN    (0U)
+#include "Controller.h"
 
-#define CS_DELAY            (1U)   // delay between CS edge and spi transfer in ms
-#define CS_DELAY_ADC        (20U)  // ADC is particularly slow
+#define ADC_CS_PIN            (10U)
+#define DAC_CS_PIN            (9U)
+#define LED_A_PIN             (5U)
+#define LED_B_PIN             (6U)
+#define COMMS_LED_PIN         (7U)  // TODO: check me
+#define TEMP_CS_PIN           (8U)
+#define LIGHT_SENSOR_PIN      (0U)
+
+#define CS_DELAY              (1U)   // delay between CS edge and spi transfer in ms
+#define CS_DELAY_ADC          (20U)  // ADC is particularly slow
 
 //Measurement settings//
 /*
@@ -22,27 +24,31 @@ extern "C" {
  * change in power between points so that the perturb-observe algorithm will see it and 
  * adjust to the point with increased power.
  */
-#define V_SCAN_MIN          (0U)
-#define V_SCAN_MAX          (100U)
-#define DV_SCAN             (1U)   //step size in MPP scan
-#define DV_MPPT             (1U)
-#define SETTLE_TIME         (200U) //settle time after setting DAC to ADC measurement
-#define SAMPLING_TIME       (200U) //time interval over which ADC measurements are made continuously then averaged afterward
-#define TRACK_DELAY_TIME    (200U) //time period between tracking measurements
+#define V_SCAN_MIN            (0U)
+#define V_SCAN_MAX            (100U)
+#define DV_SCAN               (1U)   //step size in MPP scan
+#define DV_MPPT               (1U)
+#define SETTLE_TIME           (200U) //settle time after setting DAC to ADC measurement
+#define SAMPLING_TIME         (200U) //time interval over which ADC measurements are made continuously then averaged afterward
+#define TRACK_DELAY_TIME      (200U) //time period between tracking measurements
+#define SETTLE_TIME_MAX       (0xFF << TIMING_BIT_SHIFT)
+#define SAMPLING_TIME_MAX     (0xFF << TIMING_BIT_SHIFT)
+#define TRACK_DELAY_TIME_MAX  (0xFF << TIMING_BIT_SHIFT)
 
 // error handling
-#define MAX_ERROR_READS     (20U)  //number of allowed bad readings before error state
-#define MAX_CURRENT         (0xFFFFU)
-#define MIN_CURRENT         (200U) // minimum current allowed during mpp update
-#define THRESHOLD_CURRENT   (1000U) //required threshold ADCreading in MPPscan for test to start
+#define MAX_ERROR_READS       (20U)  //number of allowed bad readings before error state
+#define MAX_CURRENT           (0xFFFFU)
+#define MIN_CURRENT           (200U) // minimum current allowed during mpp update
+#define THRESHOLD_CURRENT     (1000U) //required threshold ADCreading in MPPscan for test to start
+#define THRESHOLD_CURRENT_MAX (0xFF << CURRENT_BIT_SHIFT)
 
 // Led flasher timings
-#define SCAN_LED_ON_TIME    (50U)
-#define SCAN_LED_OFF_TIME   (500U)
-#define ERROR_LED_ON_TIME   (500U)
-#define ERROR_LED_OFF_TIME  (500U)
-#define INIT_LED_ON_TIME    (100U)
-#define INIT_LED_OFF_TIME   (100U)
+#define SCAN_LED_ON_TIME      (50U)
+#define SCAN_LED_OFF_TIME     (500U)
+#define ERROR_LED_ON_TIME     (500U)
+#define ERROR_LED_OFF_TIME    (500U)
+#define INIT_LED_ON_TIME      (100U)
+#define INIT_LED_OFF_TIME     (100U)
 
 void Config_InitParams(void);
 void Config_SetSettleTime(uint16_t tSettle);

@@ -7,6 +7,9 @@ extern "C" {
 
 #include "LifeTesterTypes.h"
 
+// reduce resolution of params for transmit/receive
+#define TIMING_BIT_SHIFT  (6U)
+#define CURRENT_BIT_SHIFT (8U)
 
 void Controller_TransmitData(void);
 /*

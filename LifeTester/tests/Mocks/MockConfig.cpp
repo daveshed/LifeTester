@@ -50,6 +50,6 @@ uint16_t Config_GetSampleTime(void)
 
 uint16_t Config_GetThresholdCurrent(void)
 {
-    mock().actualCall("Config_GetSampleTime");
+    mock().actualCall("Config_GetThresholdCurrent");
     return mock().unsignedIntReturnValue();
 }
