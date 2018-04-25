@@ -115,13 +115,13 @@ size_t TwoWire::write(uint8_t data)
 int TwoWire::read(void)
 {
     mock().actualCall("TwoWire::read");
-    return mock().intReturnValue();
+    return ReadUint8(&mockRxBuffer);
 }
 
 int TwoWire::available(void)
 {
     mock().actualCall("TwoWire::available");
-    return mock().intReturnValue();    
+    return NumBytes(&mockRxBuffer);    
 }
 
 void StateMachine_Reset(LifeTester_t *const lifeTester)
@@ -164,8 +164,8 @@ static void ExpectSendTransmitBuffer(DataBuffer_t *const buf)
 
 static void ExpectReceiveByte(uint8_t byteReceived)
 {
-    mock().expectOneCall("TwoWire::read")
-        .andReturnValue(byteReceived);
+    mock().expectOneCall("TwoWire::read");
+    WriteUint8(&mockRxBuffer, byteReceived);
 }
 
 static void ExpectCommsLedSwitchOn(void)
@@ -184,15 +184,19 @@ static void ExpectCommsLedSwitchOff(void)
 
 static void ExpectReadBufferFlush(void)
 {
-    mock().expectOneCall("TwoWire::available")
-        .andReturnValue(0);
+    mock().expectOneCall("TwoWire::available");
+    for (int i = 0; i < NumBytes(&mockRxBuffer); i++)
+    {
+        mock().expectOneCall("TwoWire::read");
+        mock().expectOneCall("TwoWire::available");
+    }
 }
 
 static void ExpectsForReceiveHandlerRWCmdReg(uint8_t cmd)
 {
     ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(cmd);
     ExpectReadBufferFlush();
+    ExpectReceiveByte(cmd);
     ExpectCommsLedSwitchOff();
 }
 
@@ -244,6 +248,7 @@ TEST_GROUP(ControllerTestGroup)
     void setup(void)
     {
         ResetBuffer(&transmitBuffer);
+        ResetBuffer(&mockRxBuffer);
         mock().disable();
         pinMode(COMMS_LED_PIN, OUTPUT);
         const LifeTester_t lifeTesterInit = {
@@ -396,10 +401,7 @@ TEST(ControllerTestGroup, RequestDataFromChANotReadyRdyBitNotSet)
     // setup cmdReg in read data reg mode with go set but ready not set yet.
     cmdReg = READ_CH_A_DATA;
     // Request to read the cmdReg - polling
-    ExpectCommsLedSwitchOn();
-    ExpectReceiveByte(READ_CH_A_CMD);
-    ExpectReadBufferFlush();
-    ExpectCommsLedSwitchOff();
+    ExpectsForReceiveHandlerRWCmdReg(READ_CH_A_CMD);
     const uint8_t nBytesSent = 1U;
     const uint8_t cmdRegInit = cmdReg;
     Controller_ReceiveHandler(nBytesSent);
@@ -584,6 +586,10 @@ TEST(ControllerTestGroup, ReadMeasurementParams)
 
 TEST(ControllerTestGroup, SetMeasurementParams)
 {
+    // Write some junk into the read buffer - shouldn't break
+    WriteUint8(&mockRxBuffer, 32);
+    WriteUint8(&mockRxBuffer, 8);
+    WriteUint8(&mockRxBuffer, 81);
     // request to write command reg for channel A
     ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_A_CMD);
     uint8_t nBytesSent = 1U;
@@ -594,7 +600,7 @@ TEST(ControllerTestGroup, SetMeasurementParams)
     CHECK_EQUAL(ParamsReg, GET_COMMAND(cmdReg));
     CHECK(IS_WRITE(cmdReg));
     CHECK(!IS_RDY(cmdReg));
-    // Controller will clear the read buffer 
+    // Controller will clear the read buffer ready to read in params
     ExpectReadBufferFlush();
     Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
     CHECK(IS_RDY(cmdReg));
