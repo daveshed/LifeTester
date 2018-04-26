@@ -1,9 +1,9 @@
 #include <Config.h>
 
-static uint8_t settleTime;
-static uint8_t trackDelay;
-static uint8_t sampleTime;
-static uint8_t thresholdCurrent;
+static uint16_t settleTime;
+static uint16_t trackDelay;
+static uint16_t sampleTime;
+static uint16_t thresholdCurrent;
 
 void Config_InitParams(void)
 {
