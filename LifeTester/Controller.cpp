@@ -17,14 +17,19 @@ STATIC void ResetBuffer(DataBuffer_t *const buf)
     buf->head = 0U;
 }
 
+STATIC uint8_t NumBytes(DataBuffer_t const *const buf)
+{
+    return buf->tail - buf->head;
+}
+
 static bool IsFull(DataBuffer_t const *const buf)
 {
     return !(buf->tail < BUFFER_MAX_SIZE);
 }
 
-STATIC uint8_t NumBytes(DataBuffer_t const *const buf)
+STATIC bool IsEmpty(DataBuffer_t const *const buf)
 {
-    return buf->tail - buf->head;
+    return (NumBytes(buf) == 0U);
 }
 
 STATIC void WriteUint8(DataBuffer_t *const buf, uint8_t data)
@@ -125,13 +130,13 @@ static void ReadNewParamsFromMaster(void)
     Config_SetThresholdCurrent(Wire.read() << CURRENT_BIT_SHIFT);
 }
 /*
- Copies everything except rdy bit and deletes data in unused bits
+ Copies everything except rdy bit and clears any error codes 
 */
 static void LoadNewCmdToReg(uint8_t newCmdReg)
 {
     bitCopy(cmdReg, newCmdReg, CH_SELECT_BIT);
     bitCopy(cmdReg, newCmdReg, RW_BIT);
-    bitDelete(cmdReg, UNUSED_MASK, UNUSED_OFFSET);
+    bitDelete(cmdReg, ERROR_MASK, ERROR_OFFSET);
     SET_COMMAND(cmdReg, GET_COMMAND(newCmdReg));
 }
 
@@ -143,11 +148,19 @@ static void UpdateStatusBits(uint8_t newCmdReg)
     {
         switch (c)
         {
+            case DataReg:
+                // Master can't write to the data register
+                SET_ERROR(cmdReg, UnkownCmdError);
+                break;
             case Reset:
                 CLEAR_RDY_STATUS(cmdReg);
                 break;
-            default:
+            case ParamsReg:
+            case CmdReg:
                 CLEAR_RDY_STATUS(cmdReg);  // only applies for reading/loading
+                break;
+            default:
+                SET_ERROR(cmdReg, UnkownCmdError);
                 break;
         }
     }
@@ -164,12 +177,12 @@ static void UpdateStatusBits(uint8_t newCmdReg)
                 CLEAR_RDY_STATUS(cmdReg);
                 break;
             case CmdReg:  // command not loaded - preserve reg as is for reading
+                break;
             default:
+                SET_ERROR(cmdReg, UnkownCmdError);
                 break;
         }
     }
-
-    // TODO: handle bad command
 }
 
 /*
@@ -178,23 +191,40 @@ static void UpdateStatusBits(uint8_t newCmdReg)
 void Controller_RequestHandler(void)
 {
     digitalWrite(COMMS_LED_PIN, HIGH);
-    TransmitData();
+    if (!IsEmpty(&transmitBuffer))
+    {
+        TransmitData();
+    }
+    else
+    {
+        SET_ERROR(cmdReg, BusyError);
+    }
     digitalWrite(COMMS_LED_PIN, LOW);
 }
 
 /*
  Handles data write from master device/slave read
 */
-// TODO: use numbytes arg - consume all data? Check not reading when no data is there.
 void Controller_ReceiveHandler(int numBytes)
 {
     digitalWrite(COMMS_LED_PIN, HIGH);
     // writing new measurement parameters - not a command
-    if ((GET_COMMAND(cmdReg) == ParamsReg) && IS_WRITE(cmdReg))
+    // Note that all params MUST be written in a single transaction
+    if ((GET_COMMAND(cmdReg) == ParamsReg)
+        && IS_WRITE(cmdReg))
     {
-        ReadNewParamsFromMaster();
-        // protect from another write without command
-        SET_READ_MODE(cmdReg);
+        if (numBytes == PARAMS_REG_SIZE)
+        {
+            ReadNewParamsFromMaster();
+            // protect from another write without command
+            SET_READ_MODE(cmdReg);
+        }
+        else
+        {
+            // chuck away bad settings - wrong size
+            FlushReadBuffer();
+            SET_ERROR(cmdReg, BadParamsError);
+        }
     }
     else
     {
@@ -209,6 +239,10 @@ void Controller_ReceiveHandler(int numBytes)
                 if (IS_RDY(cmdReg))
                 {
                     LoadNewCmdToReg(newCmdReg);
+                }
+                else
+                {
+                    SET_ERROR(cmdReg, BusyError);
                 }
             }
             else  //read cmd reg requested. load data to buffer

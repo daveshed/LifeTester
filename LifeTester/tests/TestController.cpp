@@ -18,14 +18,17 @@
 #include "StateMachine_Private.h"
 #include <string.h> //memset, memcpy
 
-#define RESET_CH_A        (0x3U)
-#define READ_CH_A_CMD     (0x0U)
-#define READ_CH_B_CMD     (0x80U)
-#define WRITE_CH_A_CMD    (0x40U)
-#define READ_CH_A_DATA    (0x12U)
-#define READ_CH_B_DATA    (0x92U)
-#define READ_PARAMS       (0x1U)
-#define WRITE_PARAMS      (0x41U)
+#define RESET_CH_A              (0x3U)
+#define RESET_CH_B              (0x83U)
+#define READ_CH_A_CMD           (0x0U)
+#define READ_CH_B_CMD           (0x80U)
+#define WRITE_CH_A_CMD          (0x40U)
+#define WRITE_CH_B_CMD          (0xC0U)
+#define READ_CH_A_DATA          (0x2U)
+#define READ_CH_B_DATA          (0x82U)
+#define READ_PARAMS             (0x1U)
+#define WRITE_PARAMS            (0x41U)
+#define WRITE_CH_B_DATA_BAD_CMD (0xC2U)
 
 static LifeTester_t *mockLifeTesterA;
 static LifeTester_t *mockLifeTesterB;
@@ -51,11 +54,6 @@ const uint16_t thresholdCurrent = THRESHOLD_CURRENT_MAX / 2U;
 /*******************************************************************************
 * PRIVATE FUNCTION IMPLEMENTATIONS
 *******************************************************************************/
-static bool IsEmpty(DataBuffer_t const *const buf)
-{
-    return !(buf->head < buf->tail);
-}
-
 static uint8_t ReadUint8(DataBuffer_t *const buf)
 {
     uint8_t retVal = 0U;
@@ -331,6 +329,7 @@ TEST(ControllerTestGroup, GetCmdRegChAOk)
     Controller_RequestHandler();
     CHECK_EQUAL(cmdRegInit, transmitBuffer.d[0]);
     CHECK_EQUAL(cmdRegInit, cmdReg);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     mock().checkExpectations();
 }
 
@@ -358,6 +357,7 @@ TEST(ControllerTestGroup, GetCmdRegChBOk)
     Controller_RequestHandler();
     CHECK_EQUAL(cmdRegInit, transmitBuffer.d[0]);
     CHECK_EQUAL(cmdRegInit, cmdReg);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     mock().checkExpectations();
 }
 
@@ -393,6 +393,43 @@ TEST(ControllerTestGroup, ResetChannelAOk)
     CHECK_EQUAL(Reset, GET_COMMAND(cmdReg));
     // check that the command reg has been loaded to transmit buffer
     CHECK_EQUAL(cmdReg, transmitBuffer.d[0]);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
+    mock().checkExpectations();
+}
+
+TEST(ControllerTestGroup, ResetChannelBOk)
+{
+    // First request a write to the cmd reg
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_B_CMD);
+    const uint8_t nBytesSent = 1U;
+    Controller_ReceiveHandler(nBytesSent);
+    CHECK(IS_WRITE(cmdReg))
+    CHECK(IS_RDY(cmdReg))
+    CHECK_EQUAL(CmdReg, GET_COMMAND(cmdReg));
+    Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
+    // then write the reset command
+    ExpectsForReceiveHandlerRWCmdReg(RESET_CH_B);
+    Controller_ReceiveHandler(nBytesSent);
+    CHECK_EQUAL(Reset, GET_COMMAND(cmdReg));
+    CHECK(!IS_RDY(cmdReg));
+    CHECK_EQUAL(LIFETESTER_CH_B, GET_CHANNEL(cmdReg));
+    mock().expectOneCall("StateMachine_Reset")
+        .withParameter("lifeTester", mockLifeTesterB);
+    Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
+    // Poll the cmd reg - rdy should be set saying cmd done.
+    ExpectsForReceiveHandlerRWCmdReg(READ_CH_B_CMD);
+    Controller_ReceiveHandler(nBytesSent);
+    Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
+    // expect to read cmd reg. Rdy bit set and go bit cleared
+    ExpectCommsLedSwitchOn();
+    ExpectSendTransmitBuffer(&transmitBuffer);
+    ExpectCommsLedSwitchOff();
+    Controller_RequestHandler();
+    CHECK(IS_RDY(cmdReg));
+    CHECK_EQUAL(Reset, GET_COMMAND(cmdReg));
+    // check that the command reg has been loaded to transmit buffer
+    CHECK_EQUAL(cmdReg, transmitBuffer.d[0]);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     mock().checkExpectations();
 }
 
@@ -409,6 +446,7 @@ TEST(ControllerTestGroup, RequestDataFromChANotReadyRdyBitNotSet)
     // cmd reg should be passed to transmit buffer ready for read
     CHECK_EQUAL(DataReg, GET_COMMAND(cmdReg));
     CHECK_EQUAL(cmdRegInit, cmdReg);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     // Master reads from cmd reg - rdy not set. Go is cleared after call
     ExpectCommsLedSwitchOn();
     ExpectSendTransmitBuffer(&transmitBuffer);
@@ -418,6 +456,7 @@ TEST(ControllerTestGroup, RequestDataFromChANotReadyRdyBitNotSet)
     CHECK_EQUAL(DataReg, GET_COMMAND(cmdReg));
     CHECK_EQUAL(LIFETESTER_CH_A, GET_CHANNEL(cmdReg));
     CHECK_EQUAL(cmdReg, transmitBuffer.d[0]);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     mock().checkExpectations();
 }
 
@@ -425,6 +464,7 @@ TEST(ControllerTestGroup, RequestDataFromChBNotReadyCmdReturnsCmdReg)
 {   
     // setup cmdReg in read data reg mode with go set but ready not set yet.
     cmdReg = READ_CH_B_DATA;
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     // Request to read the cmdReg - polling
     ExpectsForReceiveHandlerRWCmdReg(READ_CH_B_CMD);
     const uint8_t nBytesSent = 1U;
@@ -434,6 +474,7 @@ TEST(ControllerTestGroup, RequestDataFromChBNotReadyCmdReturnsCmdReg)
     CHECK_EQUAL(cmdReg, transmitBuffer.d[0]);
     CHECK_EQUAL(DataReg, GET_COMMAND(cmdReg));
     CHECK_EQUAL(cmdRegInit, cmdReg);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     // Master reads from cmd reg - rdy not set. Go is cleared after call
     ExpectCommsLedSwitchOn();
     ExpectSendTransmitBuffer(&transmitBuffer);
@@ -443,6 +484,7 @@ TEST(ControllerTestGroup, RequestDataFromChBNotReadyCmdReturnsCmdReg)
     CHECK_EQUAL(DataReg, GET_COMMAND(cmdReg));
     CHECK_EQUAL(LIFETESTER_CH_B, GET_CHANNEL(cmdReg));
     CHECK_EQUAL(cmdReg, transmitBuffer.d[0]);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     mock().checkExpectations();
 }
 
@@ -456,6 +498,44 @@ TEST(ControllerTestGroup, RequestDataFromChANotReadyHackDataRdyCmdBits)
     Controller_ReceiveHandler(nBytesSent);
     // ready bit is reset when command is parsed
     CHECK(!IS_RDY(cmdReg));
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
+    // master now reads from device. Expect error raised. Busy/data not ready
+    CHECK(IsEmpty(&transmitBuffer));
+    ExpectCommsLedSwitchOn();
+    ExpectCommsLedSwitchOff();
+    Controller_RequestHandler();
+    CHECK_EQUAL(BusyError, GET_ERROR(cmdReg));
+    mock().checkExpectations();
+}
+
+TEST(ControllerTestGroup, WritingNewCommandNotReadyRaisesError)
+{
+    // setup cmd reg with by requesting a write
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_B_CMD);
+    const uint8_t nBytesSent = 1U;
+    Controller_ReceiveHandler(nBytesSent);
+    // master then requests a reset on ch b
+    ExpectsForReceiveHandlerRWCmdReg(RESET_CH_B);
+    Controller_ReceiveHandler(nBytesSent);
+    // device is busy. Requesting to write another command will raise error
+    CHECK(!IS_RDY(cmdReg));
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_B_CMD);
+    Controller_ReceiveHandler(nBytesSent);
+    CHECK(!IS_RDY(cmdReg));
+    CHECK_EQUAL(BusyError, GET_ERROR(cmdReg));
+}
+
+TEST(ControllerTestGroup, UnkownCommandRaisesError)
+{
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_B_CMD);
+    const uint8_t nBytesSent = 1U;
+    Controller_ReceiveHandler(nBytesSent);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
+    // write to the data register - not allowed raise error
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_B_DATA_BAD_CMD);
+    Controller_ReceiveHandler(nBytesSent);
+    CHECK_EQUAL(UnkownCmdError, GET_ERROR(cmdReg));
     mock().checkExpectations();
 }
 
@@ -476,6 +556,8 @@ TEST(ControllerTestGroup, WriteAndReadCmdBackFromCmdReg)
     CHECK(!IS_WRITE(cmdReg));
     CHECK(!IS_RDY(cmdReg));
     CHECK_EQUAL(LIFETESTER_CH_A, GET_CHANNEL(cmdReg));
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
+    mock().checkExpectations();
 }
 
 TEST(ControllerTestGroup, RequestDataFromChAfterReadyStatusIsSet)
@@ -507,6 +589,7 @@ TEST(ControllerTestGroup, RequestDataFromChAfterReadyStatusIsSet)
     CHECK_EQUAL(DataReg, GET_COMMAND(cmdReg));
     CHECK(!IS_WRITE(cmdReg));
     CHECK(IS_RDY(cmdReg));
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     CHECK_EQUAL(LIFETESTER_CH_A, GET_CHANNEL(cmdReg));
     CHECK_EQUAL(timeExpectedA, ReadUint32(&transmitBuffer));
     CHECK_EQUAL(vExpectedA, ReadUint8(&transmitBuffer));
@@ -545,6 +628,7 @@ TEST(ControllerTestGroup, RequestDataFromChBfterReadyStatusIsSet)
     CHECK_EQUAL(DataReg, GET_COMMAND(cmdReg));
     CHECK(!IS_WRITE(cmdReg));
     CHECK(IS_RDY(cmdReg));
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     CHECK_EQUAL(LIFETESTER_CH_B, GET_CHANNEL(cmdReg));
     CHECK_EQUAL(timeExpectedB, ReadUint32(&transmitBuffer));
     CHECK_EQUAL(vExpectedB, ReadUint8(&transmitBuffer));
@@ -567,6 +651,7 @@ TEST(ControllerTestGroup, ReadMeasurementParams)
     CHECK_EQUAL(ParamsReg, GET_COMMAND(cmdReg));
     CHECK(!IS_WRITE(cmdReg));
     CHECK(!IS_RDY(cmdReg));
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
     // Command is consumed - expect calls getting params to load into buffer
     mock().expectOneCall("Config_GetSettleTime").andReturnValue(settleTime);
     mock().expectOneCall("Config_GetTrackDelay").andReturnValue(trackDelay);
@@ -626,6 +711,41 @@ TEST(ControllerTestGroup, SetMeasurementParams)
     mock().expectOneCall("Config_SetThresholdCurrent")
         .withParameter("iThreshold", (thresholdCurrentReduced << CURRENT_BIT_SHIFT));
     ExpectCommsLedSwitchOff();
+    // receive handler needs all params in a single transaction
+    Controller_ReceiveHandler(PARAMS_REG_SIZE);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
+    mock().checkExpectations();
+}
+
+TEST(ControllerTestGroup, SetMeasurementParamsRegWrongSize)
+{    
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_CH_A_CMD);
+    const uint8_t nBytesSent = 1U;
     Controller_ReceiveHandler(nBytesSent);
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
+    // Now write the write params command to reg
+    ExpectsForReceiveHandlerRWCmdReg(WRITE_PARAMS);
+    Controller_ReceiveHandler(nBytesSent);
+    CHECK_EQUAL(ParamsReg, GET_COMMAND(cmdReg));
+    CHECK(IS_WRITE(cmdReg));
+    CHECK(!IS_RDY(cmdReg));
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
+    // Controller will clear the read buffer ready to read in params
+    ExpectReadBufferFlush();
+    Controller_ConsumeCommand(mockLifeTesterA, mockLifeTesterB);
+    CHECK(IS_RDY(cmdReg));
+    CHECK_EQUAL(Ok, GET_ERROR(cmdReg));
+    // Slave only recieves 1 byte not the 4 required for setting params
+    ExpectCommsLedSwitchOn();
+    // No read expected - device throws data away.
+    ExpectReadBufferFlush();
+    ExpectCommsLedSwitchOff();
+    Controller_ReceiveHandler(nBytesSent);
+    // Error raised by controller
+    CHECK(IsEmpty(&mockRxBuffer));
+    CHECK(IS_RDY(cmdReg));
+    CHECK_EQUAL(ParamsReg, GET_COMMAND(cmdReg));
+    CHECK(IS_WRITE(cmdReg));
+    CHECK_EQUAL(BadParamsError, GET_ERROR(cmdReg));
     mock().checkExpectations();
 }

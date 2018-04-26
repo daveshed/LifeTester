@@ -2,6 +2,7 @@
 
 #define BUFFER_MAX_SIZE   (32U)
 #define DATA_SEND_SIZE    (13U)  // size of data sent for single channel
+#define PARAMS_REG_SIZE   (4U)
 
 // register map
 // Bit:  7  6   5  4  3  2  1  0
@@ -9,8 +10,8 @@
 // comms register mask and bit shifts
 #define COMMAND_MASK      (7U)
 #define COMMAND_OFFSET    (0U)
-#define UNUSED_MASK       (3U)
-#define UNUSED_OFFSET     (3U)
+#define ERROR_MASK        (3U)
+#define ERROR_OFFSET      (3U)
 #define RDY_BIT           (5U)
 #define RW_BIT            (6U)
 #define CH_SELECT_BIT     (7U)
@@ -29,6 +30,8 @@ typedef bool LtChannel_t;
 #define CLEAR_RDY_STATUS(REG)   bitClear(REG, RDY_BIT)
 #define GET_COMMAND(REG) \
     (ControllerCommand_t)(bitExtract(REG, COMMAND_MASK, COMMAND_OFFSET))
+#define GET_ERROR(REG) \
+    (ControllerError_t)(bitExtract(REG, ERROR_MASK, ERROR_OFFSET))
 #define GET_CHANNEL(REG)        (LtChannel_t)bitRead(REG, CH_SELECT_BIT)
 #define IS_GO(REG)              bitRead(REG, GO_BIT)
 #define IS_RDY(REG)             bitRead(REG, RDY_BIT)
@@ -40,6 +43,8 @@ typedef bool LtChannel_t;
 #define SET_WRITE_MODE(REG)     bitClear(REG, RW_BIT)
 #define SET_COMMAND(REG, CMD) \
     bitInsert(REG, (uint8_t)CMD, COMMAND_MASK, COMMAND_OFFSET)
+#define SET_ERROR(REG, ERR) \
+    bitInsert(REG, (uint8_t)ERR, ERROR_MASK, ERROR_OFFSET)
 
 typedef struct DataBuffer_s {
     uint8_t d[BUFFER_MAX_SIZE];
@@ -55,6 +60,14 @@ typedef enum ControllerCommand_e {
     MaxCommands
 } ControllerCommand_t;
 
+typedef enum ControllerError_e {
+    Ok,
+    BusyError,
+    UnkownCmdError,
+    BadParamsError,
+    MaxErrorCodes
+} ControllerError_t;
+
 #ifdef UNIT_TEST
     extern DataBuffer_t transmitBuffer;
     extern DataBuffer_t receiveBuffer;
@@ -64,6 +77,7 @@ typedef enum ControllerCommand_e {
 STATIC uint8_t NumBytes(DataBuffer_t const *const buf);
 STATIC void ResetBuffer(DataBuffer_t *const buf);
 static bool IsFull(DataBuffer_t const *const buf);
+STATIC bool IsEmpty(DataBuffer_t const *const buf);
 STATIC void WriteUint8(DataBuffer_t *const buf, uint8_t data);
 static void WriteUint16(DataBuffer_t *const buf, uint16_t data);
 static void WriteUint32(DataBuffer_t *const buf, uint32_t data);
