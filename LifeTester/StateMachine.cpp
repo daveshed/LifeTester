@@ -304,7 +304,7 @@ STATIC void InitialiseStep(LifeTester_t *const lifeTester)
     // Check short-circuit current is above required threshold for measurements
     const uint32_t tPresent   = millis();
     const uint32_t tElapsed   = tPresent - lifeTester->timer;
-    const bool     stabilised = (tElapsed >= SETTLE_TIME);
+    const bool     stabilised = (tElapsed >= Config_GetSettleTime());
 
     if (lifeTester->data.nErrorReads > MAX_ERROR_READS)
     {
@@ -320,7 +320,7 @@ STATIC void InitialiseStep(LifeTester_t *const lifeTester)
         const uint16_t iShortCircuit = AdcReadLifeTesterCurrent(lifeTester);
         SERIAL_PRINT("Initialising. Short-circuit current = ", "%s");
         SERIAL_PRINTLN(iShortCircuit, "%u");
-        if (iShortCircuit < THRESHOLD_CURRENT)
+        if (iShortCircuit < Config_GetThresholdCurrent())
         {
             lifeTester->error = currentThreshold;
             lifeTester->data.nErrorReads++;
@@ -478,10 +478,12 @@ STATIC void MeasureDataPointStep(LifeTester_t *const lifeTester)
     LifeTesterData_t *const data = &lifeTester->data;
 
     const uint32_t tPresent = millis();
+    const uint16_t tSettle = Config_GetSettleTime();
+    const uint16_t tSample = Config_GetSampleTime();
     const uint32_t tElapsed = tPresent - lifeTester->timer;
-    const bool     readAdc = (tElapsed >= SETTLE_TIME)
-                             && (tElapsed < (SETTLE_TIME + SAMPLING_TIME));
-    const bool     samplingExpired = (tElapsed >= (SETTLE_TIME + SAMPLING_TIME));
+    const bool     readAdc = (tElapsed >= tSettle)
+                             && (tElapsed < (tSettle + tSample));
+    const bool     samplingExpired = (tElapsed >= (tSettle + tSample));
     const bool     adcRead = (lifeTester->data.nSamples > 0U);
 
     if (readAdc) // Is it time to read the adc?
@@ -674,7 +676,7 @@ STATIC void TrackingDelayStep(LifeTester_t *const lifeTester)
 {
     const uint32_t tPresent = millis();
     const uint32_t tElapsed = tPresent - lifeTester->timer;
-    if (tElapsed >= TRACK_DELAY_TIME)
+    if (tElapsed >= Config_GetTrackDelay())
     {
         StateMachineTransitionToState(lifeTester, &StateTrackingMode);
     }

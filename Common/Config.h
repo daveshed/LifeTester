@@ -28,9 +28,11 @@ extern "C" {
 #define V_SCAN_MAX            (100U)
 #define DV_SCAN               (1U)   //step size in MPP scan
 #define DV_MPPT               (1U)
+// ddefault timings set at start up
 #define SETTLE_TIME           (200U) //settle time after setting DAC to ADC measurement
 #define SAMPLING_TIME         (200U) //time interval over which ADC measurements are made continuously then averaged afterward
 #define TRACK_DELAY_TIME      (200U) //time period between tracking measurements
+// maximum allowed values
 #define SETTLE_TIME_MAX       (0xFF << TIMING_BIT_SHIFT)
 #define SAMPLING_TIME_MAX     (0xFF << TIMING_BIT_SHIFT)
 #define TRACK_DELAY_TIME_MAX  (0xFF << TIMING_BIT_SHIFT)

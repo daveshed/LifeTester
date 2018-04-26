@@ -33,8 +33,8 @@ make_test_statemachine:
 	@echo "********************************************************************"
 	mkdir -p ${BUILD_DIR}
 	g++ AllTests.cpp ${MOCKS_HOME}/MockLedFlash.cpp \
-	${MOCKS_HOME}/MockIoWrapper.cpp ${ARDUINO_MOCK}/MockArduino.c \
-	../StateMachine.cpp TestStateMachine.cpp \
+	${MOCKS_HOME}/MockConfig.cpp ${MOCKS_HOME}/MockIoWrapper.cpp \
+	${ARDUINO_MOCK}/MockArduino.c ../StateMachine.cpp TestStateMachine.cpp \
 	${INCLUDES} ${LIBS} ${DEBUG_FLAGS} ${DEFINES} -o ${BUILD_DIR}/TestStateMachine
 
 run_tests: make_test_controller make_test_statemachine
