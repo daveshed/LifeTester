@@ -9,7 +9,8 @@
 
 STATIC DataBuffer_t transmitBuffer;
 STATIC uint8_t      cmdReg;
-
+static bool         cmdRegReadRequested = false;
+    
 STATIC void ResetBuffer(DataBuffer_t *const buf)
 {
     memset(buf->d, EMPTY_BYTE, BUFFER_MAX_SIZE);
@@ -30,6 +31,13 @@ static bool IsFull(DataBuffer_t const *const buf)
 STATIC bool IsEmpty(DataBuffer_t const *const buf)
 {
     return (NumBytes(buf) == 0U);
+}
+
+static uint16_t ReadUint16(void)
+{
+    const uint8_t lsb = Wire.read(); 
+    const uint8_t msb = Wire.read();
+    return ((lsb & 0xFF) | ((msb & 0xFF) << 8U));
 }
 
 STATIC void WriteUint8(DataBuffer_t *const buf, uint8_t data)
@@ -109,14 +117,10 @@ STATIC void WriteDataToTransmitBuffer(LifeTester_t const *const lifeTester)
 static void WriteParamsToTransmitBuffer(void)
 {
     ResetBuffer(&transmitBuffer);
-    WriteUint8(&transmitBuffer,
-        (Config_GetSettleTime() >> TIMING_BIT_SHIFT));
-    WriteUint8(&transmitBuffer,
-        (Config_GetTrackDelay() >> TIMING_BIT_SHIFT));
-    WriteUint8(&transmitBuffer,
-        (Config_GetSampleTime() >> TIMING_BIT_SHIFT));
-    WriteUint8(&transmitBuffer,
-        (Config_GetThresholdCurrent() >> CURRENT_BIT_SHIFT));
+    WriteUint16(&transmitBuffer, Config_GetSettleTime());
+    WriteUint16(&transmitBuffer, Config_GetTrackDelay());
+    WriteUint16(&transmitBuffer, Config_GetSampleTime());
+    WriteUint16(&transmitBuffer, Config_GetThresholdCurrent());
 }
 
 /*
@@ -124,10 +128,10 @@ static void WriteParamsToTransmitBuffer(void)
 */
 static void ReadNewParamsFromMaster(void)
 {
-    Config_SetSettleTime(Wire.read() << TIMING_BIT_SHIFT);
-    Config_SetTrackDelay(Wire.read() << TIMING_BIT_SHIFT);
-    Config_SetSampleTime(Wire.read() << TIMING_BIT_SHIFT);
-    Config_SetThresholdCurrent(Wire.read() << CURRENT_BIT_SHIFT);
+    Config_SetSettleTime(ReadUint16());
+    Config_SetTrackDelay(ReadUint16());
+    Config_SetSampleTime(ReadUint16());
+    Config_SetThresholdCurrent(ReadUint16());
 }
 /*
  Copies everything except rdy bit and clears any error codes 
@@ -185,19 +189,38 @@ static void UpdateStatusBits(uint8_t newCmdReg)
     }
 }
 
+void Controller_Init(void)
+{
+    ResetBuffer(&transmitBuffer);
+    cmdReg = 0U;
+    SET_RDY_STATUS(cmdReg);
+    FlushReadBuffer();
+    cmdRegReadRequested = false;
+}
+
 /*
  Handles a read request from the master device/slave write
 */
 void Controller_RequestHandler(void)
 {
     digitalWrite(COMMS_LED_PIN, HIGH);
-    if (!IsEmpty(&transmitBuffer))
+    if (cmdRegReadRequested)
     {
-        TransmitData();
+        // SERIAL_PRINTLN("Transmit cmd reg", "%s");
+        cmdRegReadRequested = false;
+        Wire.write(cmdReg);
     }
     else
     {
-        SET_ERROR(cmdReg, BusyError);
+        if (!IsEmpty(&transmitBuffer))
+        {
+            // SERIAL_PRINTLN("Transmit data buffer", "%s");
+            TransmitData();
+        }
+        else
+        {
+            SET_ERROR(cmdReg, BusyError);
+        }
     }
     digitalWrite(COMMS_LED_PIN, LOW);
 }
@@ -208,8 +231,11 @@ void Controller_RequestHandler(void)
 void Controller_ReceiveHandler(int numBytes)
 {
     digitalWrite(COMMS_LED_PIN, HIGH);
-    // writing new measurement parameters - not a command
-    // Note that all params MUST be written in a single transaction
+    /*
+     writing new measurement parameters - not a command.
+     Note that all params MUST be written in a single transaction and polling
+     can't be done here (not necessary). How would we know the difference bet-
+     ween a request to read the cmd reg and the actual params being written.*/
     if ((GET_COMMAND(cmdReg) == ParamsReg)
         && IS_WRITE(cmdReg))
     {
@@ -226,9 +252,11 @@ void Controller_ReceiveHandler(int numBytes)
             SET_ERROR(cmdReg, BadParamsError);
         }
     }
-    else
+    else // new command isued...
     {
         const uint8_t newCmdReg = Wire.read();
+        // SERIAL_PRINT("I2C received ", "%s");
+        SERIAL_PRINTLN(newCmdReg, "%u");
         // Make sure old commands don't fill up buffer
         FlushReadBuffer();
         // requesting write to cmd reg
@@ -238,27 +266,31 @@ void Controller_ReceiveHandler(int numBytes)
             {
                 if (IS_RDY(cmdReg))
                 {
+                    // SERIAL_PRINTLN("new command requested", "%s");
                     LoadNewCmdToReg(newCmdReg);
                 }
                 else
                 {
+                    // SERIAL_PRINTLN("error: busy", "%s");
                     SET_ERROR(cmdReg, BusyError);
                 }
             }
-            else  //read cmd reg requested. load data to buffer
+            // Master requested read command reg - see request handler
+            else
             {
-                ResetBuffer(&transmitBuffer);
-                WriteUint8(&transmitBuffer, cmdReg);
+                cmdRegReadRequested = true;
             }
         }
         // write cmd already requested now receiving new command 
         else if (GET_COMMAND(cmdReg) == CmdReg)
         {
+            // SERIAL_PRINTLN("Loading new command", "%s");
             LoadNewCmdToReg(newCmdReg);
             UpdateStatusBits(newCmdReg);
         }
         else
         {
+            // SERIAL_PRINTLN("error: ???", "%s");
             // received undefined command
         }
     }
@@ -273,29 +305,37 @@ void Controller_ConsumeCommand(LifeTester_t *const lifeTesterChA,
     switch (GET_COMMAND(cmdReg))
     {
         case Reset:
+            // SERIAL_PRINTLN("Reset requested", "%s");
             if (!IS_RDY(cmdReg))  // RW bit ignored
             {
+                // SERIAL_PRINT("Resetting ch", "%s");
+                // SERIAL_PRINTLN(GET_CHANNEL(cmdReg), "%u");
                 StateMachine_Reset(ch);
                 SET_RDY_STATUS(cmdReg);
             }
             break;
         case ParamsReg:
+            // SERIAL_PRINTLN("Params reg read requested", "%s");
             if (!IS_WRITE(cmdReg))
             {
+                // SERIAL_PRINTLN("Loading data to buffer", "%s");
                 WriteParamsToTransmitBuffer();
                 SET_RDY_STATUS(cmdReg);
             }
             else
             {
+                // SERIAL_PRINTLN("Params reg write requested", "%s");
                 FlushReadBuffer();
                 SET_RDY_STATUS(cmdReg);
             }
             break;
         case DataReg:
+            // SERIAL_PRINTLN("Read data reg requested", "%s");
             if (!IS_WRITE(cmdReg))
             {
                 if (!IS_RDY(cmdReg))
                 {
+                    // SERIAL_PRINTLN("Loading data to buffer", "%s");
                     // ensure data isn't loaded again
                     WriteDataToTransmitBuffer(ch);
                     SET_RDY_STATUS(cmdReg);                    

@@ -2,7 +2,7 @@
 
 #define BUFFER_MAX_SIZE   (32U)
 #define DATA_SEND_SIZE    (13U)  // size of data sent for single channel
-#define PARAMS_REG_SIZE   (4U)
+#define PARAMS_REG_SIZE   (8U)
 
 // register map
 // Bit:  7  6   5  4  3  2  1  0

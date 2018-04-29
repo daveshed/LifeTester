@@ -32,17 +32,12 @@ extern "C" {
 #define SETTLE_TIME           (200U) //settle time after setting DAC to ADC measurement
 #define SAMPLING_TIME         (200U) //time interval over which ADC measurements are made continuously then averaged afterward
 #define TRACK_DELAY_TIME      (200U) //time period between tracking measurements
-// maximum allowed values
-#define SETTLE_TIME_MAX       (0xFF << TIMING_BIT_SHIFT)
-#define SAMPLING_TIME_MAX     (0xFF << TIMING_BIT_SHIFT)
-#define TRACK_DELAY_TIME_MAX  (0xFF << TIMING_BIT_SHIFT)
 
 // error handling
 #define MAX_ERROR_READS       (20U)  //number of allowed bad readings before error state
 #define MAX_CURRENT           (0xFFFFU)
 #define MIN_CURRENT           (200U) // minimum current allowed during mpp update
-#define THRESHOLD_CURRENT     (1000U) //required threshold ADCreading in MPPscan for test to start
-#define THRESHOLD_CURRENT_MAX (0xFF << CURRENT_BIT_SHIFT)
+#define THRESHOLD_CURRENT     (100U) //required threshold ADCreading in MPPscan for test to start
 
 // Led flasher timings
 #define SCAN_LED_ON_TIME      (50U)
