@@ -193,9 +193,6 @@ void Controller_Init(void)
     cmdRegReadRequested = false;
 }
 
-/*
- Handles a read request from the master device/slave write
-*/
 void Controller_RequestHandler(void)
 {
     digitalWrite(COMMS_LED_PIN, HIGH);
