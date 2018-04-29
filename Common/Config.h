@@ -5,7 +5,7 @@
 extern "C" {
 #endif 
 
-#include "Controller.h"
+#include <stdint.h>
 
 #define ADC_CS_PIN            (10U)
 #define DAC_CS_PIN            (9U)

@@ -152,17 +152,12 @@ static void UpdateStatusBits(uint8_t newCmdReg)
     {
         switch (c)
         {
-            case DataReg:
-                // Master can't write to the data register
-                SET_ERROR(cmdReg, UnkownCmdError);
-                break;
             case Reset:
-                CLEAR_RDY_STATUS(cmdReg);
-                break;
             case ParamsReg:
             case CmdReg:
                 CLEAR_RDY_STATUS(cmdReg);  // only applies for reading/loading
                 break;
+            case DataReg: // Master can't write to the data register
             default:
                 SET_ERROR(cmdReg, UnkownCmdError);
                 break;
@@ -206,7 +201,6 @@ void Controller_RequestHandler(void)
     digitalWrite(COMMS_LED_PIN, HIGH);
     if (cmdRegReadRequested)
     {
-        // SERIAL_PRINTLN("Transmit cmd reg", "%s");
         cmdRegReadRequested = false;
         Wire.write(cmdReg);
     }
@@ -214,7 +208,6 @@ void Controller_RequestHandler(void)
     {
         if (!IsEmpty(&transmitBuffer))
         {
-            // SERIAL_PRINTLN("Transmit data buffer", "%s");
             TransmitData();
         }
         else
@@ -255,8 +248,6 @@ void Controller_ReceiveHandler(int numBytes)
     else // new command isued...
     {
         const uint8_t newCmdReg = Wire.read();
-        // SERIAL_PRINT("I2C received ", "%s");
-        SERIAL_PRINTLN(newCmdReg, "%u");
         // Make sure old commands don't fill up buffer
         FlushReadBuffer();
         // requesting write to cmd reg
@@ -266,12 +257,10 @@ void Controller_ReceiveHandler(int numBytes)
             {
                 if (IS_RDY(cmdReg))
                 {
-                    // SERIAL_PRINTLN("new command requested", "%s");
                     LoadNewCmdToReg(newCmdReg);
                 }
                 else
                 {
-                    // SERIAL_PRINTLN("error: busy", "%s");
                     SET_ERROR(cmdReg, BusyError);
                 }
             }
@@ -284,14 +273,12 @@ void Controller_ReceiveHandler(int numBytes)
         // write cmd already requested now receiving new command 
         else if (GET_COMMAND(cmdReg) == CmdReg)
         {
-            // SERIAL_PRINTLN("Loading new command", "%s");
             LoadNewCmdToReg(newCmdReg);
             UpdateStatusBits(newCmdReg);
         }
         else
         {
-            // SERIAL_PRINTLN("error: ???", "%s");
-            // received undefined command
+            // TODO: handle this. received undefined command
         }
     }
     digitalWrite(COMMS_LED_PIN, LOW);
@@ -305,37 +292,29 @@ void Controller_ConsumeCommand(LifeTester_t *const lifeTesterChA,
     switch (GET_COMMAND(cmdReg))
     {
         case Reset:
-            // SERIAL_PRINTLN("Reset requested", "%s");
             if (!IS_RDY(cmdReg))  // RW bit ignored
             {
-                // SERIAL_PRINT("Resetting ch", "%s");
-                // SERIAL_PRINTLN(GET_CHANNEL(cmdReg), "%u");
                 StateMachine_Reset(ch);
                 SET_RDY_STATUS(cmdReg);
             }
             break;
         case ParamsReg:
-            // SERIAL_PRINTLN("Params reg read requested", "%s");
             if (!IS_WRITE(cmdReg))
             {
-                // SERIAL_PRINTLN("Loading data to buffer", "%s");
                 WriteParamsToTransmitBuffer();
                 SET_RDY_STATUS(cmdReg);
             }
             else
             {
-                // SERIAL_PRINTLN("Params reg write requested", "%s");
                 FlushReadBuffer();
                 SET_RDY_STATUS(cmdReg);
             }
             break;
         case DataReg:
-            // SERIAL_PRINTLN("Read data reg requested", "%s");
             if (!IS_WRITE(cmdReg))
             {
                 if (!IS_RDY(cmdReg))
                 {
-                    // SERIAL_PRINTLN("Loading data to buffer", "%s");
                     // ensure data isn't loaded again
                     WriteDataToTransmitBuffer(ch);
                     SET_RDY_STATUS(cmdReg);                    
