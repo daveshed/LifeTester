@@ -9,10 +9,12 @@
 
 // support
 #include "Arduino.h"       // arduino function prototypes - implemented MockAduino.c
-#include "MockArduino.h"   // mockDigitalPins, mockMillis, private variables
+#include "MockArduino.h"
 #include "MockSpiCommon.h" // Mock spi interface
 #include "SpiCommon.h"     // spi function prototypes - mocks implemented here.
 #include <stdint.h>
+
+static uint32_t mockMillis;
 
 /*******************************************************************************
  * Private function implementations for tests
@@ -157,7 +159,8 @@ TEST(TC77TestGroup, ReadingTC77BeforeConversionNoData)
         .withParameter("pin", pinNum);
     TC77_Init(pinNum);
 
-    mock().expectOneCall("millis");
+    mock().expectOneCall("millis")
+        .andReturnValue(mockMillis);
     TC77_Update();
     CHECK_EQUAL(0U, TC77_GetRawData());   
     mock().checkExpectations();
@@ -177,7 +180,8 @@ TEST(TC77TestGroup, ReadingTC77AfterConversionNotReady)
         .withParameter("pin", pinNum);
     TC77_Init(pinNum);
 
-    mock().expectOneCall("millis");
+    mock().expectOneCall("millis")
+        .andReturnValue(mockMillis);
     
     // Put data into read register - do not expect to see this. Device not ready.
     const float mockTemperature = 25.2F;
@@ -211,7 +215,8 @@ TEST(TC77TestGroup, ReadingTC77AfterConversionExpectData)
     mockMillis = CONVERSION_TIME + 10U;
     
     // mock spi calls when data is read from TC77 device.
-    mock().expectOneCall("millis");
+    mock().expectOneCall("millis")
+        .andReturnValue(mockMillis);
     MockForTC77ReadRawData();
     
     TC77_Update();
@@ -256,7 +261,8 @@ TEST(TC77TestGroup, ReadingTC77AfterConversionWithOverTemp)
     mockMillis = CONVERSION_TIME + 10U;
 
     // mock spi calls when data is read from TC77 device.
-    mock().expectOneCall("millis");
+    mock().expectOneCall("millis")
+        .andReturnValue(mockMillis);
     MockForTC77ReadRawData();
     
     // now call the update function

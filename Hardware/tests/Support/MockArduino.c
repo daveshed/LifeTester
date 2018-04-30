@@ -1,75 +1,182 @@
-// CppUnit Test framework
-#include "CppUTest/TestHarness.h"
 #include "CppUTestExt/MockSupport.h"
+#include "CppUTestExt/MockSupportPlugin.h"
 
 #include "Arduino.h"
-#include "MockArduino.h"  // mockDigitalPins, mockMillis
+#include "MockArduino.h"
+#include <string.h> //memset
 
-// definition of extern variables declared in MockArduino.h
-long unsigned int mockMillis;
-pinState_t mockDigitalPins[N_DIGITAL_PINS];
+static DigitalPinState_t mockDigitalPins[N_DIGITAL_PINS];
 
-// Sets the mode of digital pins 2-13 as input/output
+/*******************************************************************************
+* PRIVATE FUNCTIONS
+*******************************************************************************/
+static bool DigitalPinValid(uint8_t pin)
+{
+    return pin < N_DIGITAL_PINS;   
+}
+
+static bool AnalogPinValid(uint8_t pin)
+{
+    return pin < N_ANALOG_PINS;   
+}
+
+/*******************************************************************************
+* METHODS FOR GETTING AND MANULLAY SETTING THE STATUS OF HARWARE
+*******************************************************************************/
+bool IsDigitalPinAssigned(uint8_t pin)
+{
+    if (!DigitalPinValid(pin))
+    {
+        FAIL("Digital pin index out of range");        
+    }
+    return mockDigitalPins[pin].isAssigned;
+}
+
+bool IsDigitalPinOutput(uint8_t pin)
+{
+    if (!DigitalPinValid(pin))
+    {
+        FAIL("Digital pin index out of range");        
+    }
+    return mockDigitalPins[pin].isOutput;
+}
+
+bool IsDigitalPinHigh(uint8_t pin)
+{
+    if (!DigitalPinValid(pin))
+    {
+        FAIL("Digital pin index out of range");        
+    }
+    return mockDigitalPins[pin].isOn && mockDigitalPins[pin].isAssigned;
+}
+
+bool IsDigitalPinLow(uint8_t pin)
+{
+    if (!DigitalPinValid(pin))
+    {
+        FAIL("Digital pin index out of range");        
+    }
+    return !mockDigitalPins[pin].isOn && mockDigitalPins[pin].isAssigned;
+}
+
+void ResetDigitalPins(void)
+{
+    memset(mockDigitalPins, 0U, sizeof(DigitalPinState_t) * N_DIGITAL_PINS);
+}
+
+void SetDigitalPinToOutput(uint8_t pin)
+{
+    if (!DigitalPinValid(pin))
+    {
+        FAIL("Invalid digital pin argument");        
+    }
+    mockDigitalPins[pin].isOutput = true;
+    mockDigitalPins[pin].isAssigned = true;
+}
+
+void SetDigitalPinToInput(uint8_t pin)
+{
+    if (!DigitalPinValid(pin))
+    {
+        FAIL("Invalid digital pin argument");        
+    }
+    mockDigitalPins[pin].isOutput = false;
+    mockDigitalPins[pin].isAssigned = true;
+}
+
+void SetDigitalPinOutputHigh(uint8_t pin)
+{
+    if (!IsDigitalPinAssigned(pin))
+    {
+        FAIL("Cannot turn on pin. Not assigned yet");
+    }
+    else if (!IsDigitalPinOutput(pin))
+    {
+        FAIL("Cannot turn on pin. Not set to OUTPUT");
+    }
+    else
+    {
+        mockDigitalPins[pin].isOn = true;
+    }
+}
+
+void SetDigitalPinOutputLow(uint8_t pin)
+{
+    if (!IsDigitalPinAssigned(pin))
+    {
+        FAIL("Cannot turn on pin. Not assigned yet");
+    }
+    else if (!IsDigitalPinOutput(pin))
+    {
+        FAIL("Cannot turn on pin. Not set to OUTPUT");
+    }
+    else
+    {
+        mockDigitalPins[pin].isOn = false;
+    }
+}
+
+
+/*******************************************************************************
+* MOCK IMPLEMENTATIONS OF ARDUINO FUNCTIONS
+*******************************************************************************/
 void pinMode(uint8_t pin, uint8_t mode)
 {
-    // check that pin request is in range
-    CHECK_TEXT(((pin >= 2U) && (pin <= 13U)),
-        "invalid pin number arg in pinMode call.");
-
-    // update mock digital pins
+    mock().actualCall("pinMode")
+        .withParameter("pin", pin)
+        .withParameter("mode", mode);
     if (mode == INPUT)
     {
-        mockDigitalPins[pin].mode = input;
+        SetDigitalPinToInput(pin);
     }
     else if (mode == OUTPUT)
     {
-        mockDigitalPins[pin].mode = output;
+        SetDigitalPinToOutput(pin);
     }
     else
     {
-        FAIL("invalid mode arg passed to pinMode.");
+        FAIL("Invalid mode arg passed to pinMode");
     }
-
-    // mock function behaviour
-    mock().actualCall("pinMode")
-        .withParameter("pin", pin).withParameter("mode", mode);
 }
 
-/*
- sets the state of digital pins 2-13. Note that they must be asigned as output
- first with pinMode.
-*/
 void digitalWrite(uint8_t pin, uint8_t value)
 {
-    // check that pin request is in range
-    CHECK_TEXT(((pin >= 2U) && (pin <= 13U)),
-        "invalid pin number arg in digitalWrite call");
-
-    // Check that pin has been assigned as output before setting the state
-    CHECK_TEXT(mockDigitalPins[pin].mode == output,
-        "digitalWrite cannot set mode. pinMode not assiged as output.");
-
-    // Now we can write the output state to the selected pin
+    mock().actualCall("digitalWrite")
+        .withParameter("pin", pin)
+        .withParameter("value", value);
     if (value == HIGH)
     {
-        mockDigitalPins[pin].outputOn = true;
+        SetDigitalPinOutputHigh(pin);
     }
     else if (value == LOW)
     {
-        mockDigitalPins[pin].outputOn = false;
+        SetDigitalPinOutputLow(pin);
     }
     else
     {
-        FAIL("Unkown value arg passed to digitalWrite.");
+        FAIL("Unkown value arg passed to digitalWrite");
     }
+}
 
-    // Mock low-level Arduino function call
-    mock().actualCall("digitalWrite")
-        .withParameter("pin", pin).withParameter("value", value);
+int analogRead(uint8_t pin)
+{
+    mock().actualCall("analogRead")
+        .withParameter("pin", pin);
+    
+    if (!AnalogPinValid(pin))
+    {
+        FAIL("Invalid pin arg passed to analogRead")
+    }
+    const int retVal = mock().intReturnValue(); 
+    if ((retVal < 0) || (retVal > 1023))
+    {
+        FAIL("Return value out of range");
+    }
+    return retVal;
 }
 
 long unsigned int millis(void)
 {
     mock().actualCall("millis");
-    return mockMillis;
+    return mock().unsignedLongIntReturnValue();
 }

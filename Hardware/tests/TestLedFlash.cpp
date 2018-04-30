@@ -8,39 +8,45 @@
 
 // support
 #include "Arduino.h"
-#include "MockArduino.h" // mockDigitalPins, mockMillis
-#include "TestUtils.h"   // digital pin mocking
+#include "MockArduino.h"
+
+static uint32_t mockMillis;
 
 /*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
-
-// Creates mock calls for Flahser instantiation
 static void MockForFlasherCreateInstance(int pinNum)
 {
     mock().expectOneCall("pinMode")
-        .withParameter("pin", pinNum).withParameter("mode", OUTPUT);
+        .withParameter("pin", pinNum)
+        .withParameter("mode", OUTPUT);
     mock().expectOneCall("digitalWrite")
-        .withParameter("pin", pinNum).withParameter("value", LOW);
+        .withParameter("pin", pinNum)
+        .withParameter("value", LOW);
 }
 
 static void MockForFlasherUpdateSwitchOff(int pinNum)
 {
-    mock().expectOneCall("millis");
+    mock().expectOneCall("millis")
+        .andReturnValue(mockMillis);
     mock().expectOneCall("digitalWrite")
-        .withParameter("pin", pinNum).withParameter("value", LOW);
+        .withParameter("pin", pinNum)
+        .withParameter("value", LOW);
 }
 
 static void MockForFlasherUpdateSwitchOn(int pinNum)
 {
-    mock().expectOneCall("millis");
+    mock().expectOneCall("millis")
+        .andReturnValue(mockMillis);
     mock().expectOneCall("digitalWrite")
-        .withParameter("pin", pinNum).withParameter("value", HIGH);
+        .withParameter("pin", pinNum)
+        .withParameter("value", HIGH);
 }
 
 static void MockForFlasherUpdateNoSwitch(void)
 {
-    mock().expectOneCall("millis");
+    mock().expectOneCall("millis")
+        .andReturnValue(mockMillis);
 }
 
 /*
@@ -50,36 +56,19 @@ static void MockForFlasherUpdateNoSwitch(void)
 static void RunMockLedFlashCycle(Flasher *led, int pinNum, long onTime, long offTime)
 {
     // check that the LED is initialsed and off
-    CheckMockPinOutputState(pinNum, false);
-    
-    // Fast forward to end of the off period
+    CHECK(IsDigitalPinLow(pinNum));
     mockMillis += offTime + 1U;
-
-    // updating led now should turn it on
     MockForFlasherUpdateSwitchOn(pinNum);
     led->update();
-    // Check that the led is indeed on at the beginning of on period
-    CheckMockPinOutputState(pinNum, true);
-
-    // fast forward to the end of the on period
+    CHECK(IsDigitalPinHigh(pinNum));
     mockMillis += onTime;
-
-    // led should still be on...
     MockForFlasherUpdateNoSwitch();
     led->update();
-    // Check that the led is indeed on at the beginning of on period
-    CheckMockPinOutputState(pinNum, true);
-
-    //...a bit more time passes
+    CHECK(IsDigitalPinHigh(pinNum));
     mockMillis += 1U;
-
-    // now the led should switch off
     MockForFlasherUpdateSwitchOff(pinNum);
     led->update();
-    // check that led has switched off
-    CheckMockPinOutputState(pinNum, false);
-
-    // Finally check the mock function calls match expectations
+    CHECK(IsDigitalPinLow(pinNum));
     mock().checkExpectations();
 }
 
@@ -96,8 +85,7 @@ TEST_GROUP(LedFlashTestGroup)
 {
     void setup(void)
     {
-        ResetDigitalPins(mockDigitalPins, N_DIGITAL_PINS);
-
+        ResetDigitalPins();
         mockMillis = 0U;
     }
 
@@ -116,12 +104,9 @@ TEST(LedFlashTestGroup, FlasherOnConstant)
     MockForFlasherCreateInstance(pinNum);
     Flasher testLed(pinNum);
 
-    // Turn on the Led constantly
-    mock().expectOneCall("digitalWrite")
-        .withParameter("pin", pinNum).withParameter("value", HIGH);
+    mock().disable();
     testLed.on();
-   
-    mock().checkExpectations();
+    mock().enable();   
 }
 
 // Test for turning off the Led constantly
@@ -178,8 +163,7 @@ TEST(LedFlashTestGroup, FlasherTwoFlashesRequested)
     MockForFlasherCreateInstance(pinNum);
     Flasher testLed(pinNum);
     testLed.stopAfter(numFlashes);
-    // check that the LED is initialsed and off
-    CheckMockPinOutputState(pinNum, false);
+    CHECK(IsDigitalPinLow(pinNum));
 
     for (int i = 0; i < 2; i++)
     {
@@ -196,21 +180,18 @@ TEST(LedFlashTestGroup, FlasherTwoFlashesRequested)
     
     // Check that the led is still off at the after another off period
     testLed.update();
-    CheckMockPinOutputState(pinNum, false);
+    CHECK(IsDigitalPinLow(pinNum));
 
     // fast forward to the end of the on period
     mockMillis += DEFAULT_ON_TIME;
 
     // led should still be off
     testLed.update();
-    CheckMockPinOutputState(pinNum, false);
-
+    CHECK(IsDigitalPinLow(pinNum));
     //...a bit more time passes and we're now in the next off period
     mockMillis += 1U;
-
-    // now the led should still be off
     testLed.update();
-    CheckMockPinOutputState(pinNum, false);
+    CHECK(IsDigitalPinLow(pinNum));
     // Finally check the mock function calls match expectations
     mock().checkExpectations();
 }

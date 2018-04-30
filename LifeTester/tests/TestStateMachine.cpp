@@ -304,34 +304,6 @@ static uint16_t mockCurrent;
 static LifeTester_t *mockLifeTester;
 
 /*******************************************************************************
- * Mock function implementations for tests
- ******************************************************************************/
-/*
- Mock implemetation for Arduino library millis. Returns a long int corresponding
- to the current value of the device timer in ms.
- */
-unsigned long millis(void)
-{
-    mock().actualCall("millis");
-    uint32_t retval = mock().unsignedLongIntReturnValue();
-    return retval;
-}
-
-/*
- Mock implemetation for Arduino library function delay.
- */
-void delay(unsigned long time)
-{
-    mock().actualCall("delay")
-        .withParameter("time", time);
-}
-
-int analogRead(uint8_t pin)
-{
-    return 0;
-}
-
-/*******************************************************************************
  * Private function implementations for tests
  ******************************************************************************/
 /*
@@ -458,8 +430,11 @@ static void MockForLedOff(void)
 
 static void MocksForPrintNewMpp(void)
 {
-    mock().expectOneCall("TempReadDegC").
-        andReturnValue(0.0);
+    mock().expectOneCall("analogRead")
+        .withParameter("pin", LIGHT_SENSOR_PIN)
+        .andReturnValue(0);
+    mock().expectOneCall("TempReadDegC")
+        .andReturnValue(0.0);
 }
 
 static void MocksForFlashLedOnce(void)
@@ -495,15 +470,17 @@ static void MocksForScanModeExit(void)
     MockForLedOff();
 }
 
-static void MocksForMeasureDataReadAdc(LifeTester_t const *const lifeTester)
-{
-    MocksForGetTime();
-    MocksForSampleCurrent(mockLifeTester);
-}
-
 static void MocksForMeasureDataNoAdcRead(void)
 {
     MocksForGetTime();
+    mock().expectOneCall("Config_GetSettleTime").andReturnValue(SETTLE_TIME);
+    mock().expectOneCall("Config_GetSampleTime").andReturnValue(SAMPLING_TIME);
+}
+
+static void MocksForMeasureDataReadAdc(LifeTester_t const *const lifeTester)
+{
+    MocksForMeasureDataNoAdcRead();
+    MocksForSampleCurrent(mockLifeTester);
 }
 
 static void MocksForTrackingModeStep(void)
@@ -533,6 +510,8 @@ static void MocksForTrackingDelayEntry(void)
 static void MocksForTrackingDelayStep(void)
 {
     MocksForGetTime();
+    mock().expectOneCall("Config_GetTrackDelay").andReturnValue(TRACK_DELAY_TIME);
+
 }
 
 static void MocksForMeasureThisPointEntry(LifeTester_t const *const lifeTester) 
@@ -551,8 +530,10 @@ static void MocksForInitialiseStepAdcRead(LifeTester_t const *const lifeTester)
 {
     MockForLedUpdate();
     MocksForGetTime();
+    mock().expectOneCall("Config_GetSettleTime").andReturnValue(SETTLE_TIME); 
     // delay time expired so adc will be sampled
     MocksForSampleCurrent(mockLifeTester);
+    mock().expectOneCall("Config_GetThresholdCurrent").andReturnValue(THRESHOLD_CURRENT); 
 }
 
 static void MocksForInitialiseEntry(LifeTester_t const *const lifeTester)
@@ -565,6 +546,7 @@ static void MocksForInitialiseEntry(LifeTester_t const *const lifeTester)
 static void MocksForInitialiseStepNoAdcRead(void)
 {
     MocksForGetTime();
+    mock().expectOneCall("Config_GetSettleTime").andReturnValue(SETTLE_TIME); 
     MockForLedUpdate();
 }
 

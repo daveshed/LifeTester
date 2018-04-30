@@ -121,6 +121,7 @@ void yield(void);
 #define bitInsert(value, insert, mask, offset) \
   (bitDelete(value, mask, offset) |= (insert & mask) << offset)
 #define bitExtract(value, mask, offset) ((value >> offset) & mask) // reads out several bits
+#define bitCopy(dst, src, bit) (bitWrite(dst, bit, bitRead(src, bit)))
 
 // avr-libc defines _NOP() since 1.6.2
 #ifndef _NOP

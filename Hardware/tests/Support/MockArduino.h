@@ -1,30 +1,24 @@
-/*
- Data accessible from tests that mocks arduino digital io and timer outputs.
-*/
-
 #ifndef MOCKARDUINO_H
 #define MOCKARDUINO_H
 
+// digital pin number takes a value between 0-13.
 #define N_DIGITAL_PINS          (14U)
+// analog pin number takes a value between 0-5.
+#define N_ANALOG_PINS           (6U)
 
-// types to hold information about mock digital pins.
-typedef enum pinAssignment_e{
-    input,
-    output,
-    unassigned
-} pinAssignment_t;
+typedef struct DigitalPinState_s {
+    bool isAssigned;
+    bool isOutput;
+    bool isOn;
+} DigitalPinState_t;
 
-typedef struct pinState_s{
-    pinAssignment_t mode;
-    bool            outputOn;
-} pinState_t;
-
-/*
- Declaring extern variables. Any file that includes this header will be able to
- access them. These data mock io and timers of the Arduino microcontroller for 
- testing only. 
- */
-extern long unsigned int mockMillis;
-extern pinState_t mockDigitalPins[N_DIGITAL_PINS];
-
+bool IsDigitalPinAssigned(uint8_t pin);
+bool IsDigitalPinOutput(uint8_t pin);
+bool IsDigitalPinHigh(uint8_t pin);
+bool IsDigitalPinLow(uint8_t pin);
+void ResetDigitalPins(void);
+void SetDigitalPinToOutput(uint8_t pin);
+void SetDigitalPinToInput(uint8_t pin);
+void SetDigitalPinOutputHigh(uint8_t pin);
+void SetDigitalPinOutputLow(uint8_t pin);
 #endif // MOCKARDUINO_H

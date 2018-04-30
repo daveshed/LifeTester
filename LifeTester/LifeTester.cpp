@@ -2,10 +2,9 @@
 #include "Config.h"
 #include "IoWrapper.h"
 #include "StateMachine.h"
-#include "I2C.h"
+#include "Controller.h"
 #include "LedFlash.h"
 #include "LifeTesterTypes.h"
-#include "MCP4802.h" // dac types
 #include "Print.h"
 #include <SPI.h>
 #include <Wire.h>
@@ -36,15 +35,18 @@ void setup()
   SPI.begin();
     
   // I2C COMMUNICATION WITH MASTER ARDUINO
-  Wire.begin(I2C_ADDRESS);          // I2C address defined at compile time - see makefile
-  Wire.onRequest(I2C_TransmitData); // register event
-
+  Wire.begin(I2C_ADDRESS);                   // I2C address defined at compile time
+  Wire.setClock(31000L);
+  Wire.onRequest(Controller_RequestHandler); // register event
+  Wire.onReceive(Controller_ReceiveHandler); // register event
+  Controller_Init();
   // INITIALISE I/O
   Serial.println("Initialising IO...");
+  pinMode(COMMS_LED_PIN, OUTPUT);
   DacInit();
   AdcInit();
   TempSenseInit();
-  
+  Config_InitParams();
   StateMachine_Reset(&channelA);
   StateMachine_Reset(&channelB);
 
@@ -57,5 +59,5 @@ void loop()
   StateMachine_UpdateStep(&channelB);
 
   TempSenseUpdate();
-  I2C_PrepareData(&channelA, &channelB);
+  Controller_ConsumeCommand(&channelA, &channelB);
 }
