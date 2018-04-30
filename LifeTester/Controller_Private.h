@@ -1,13 +1,11 @@
+#include "Arduino.h"
 #include "Macros.h"
 
 #define BUFFER_MAX_SIZE   (32U)
 #define DATA_SEND_SIZE    (13U)  // size of data sent for single channel
 #define PARAMS_REG_SIZE   (8U)
 
-// register map
-// Bit:  7  6   5  4  3  2  1  0
-// Func: Ch RW RDY X  X |  CMD  |
-// comms register mask and bit shifts
+// Register mapping
 #define COMMAND_MASK      (7U)
 #define COMMAND_OFFSET    (0U)
 #define ERROR_MASK        (3U)
@@ -23,7 +21,33 @@
 // byte requested but no data to return
 #define EMPTY_BYTE        (0xFF)
 
+// Stores the channel request in the channel bit
 typedef bool LtChannel_t;
+
+// Buffer type used to store data ready for transmitting over I2C
+typedef struct DataBuffer_s {
+    uint8_t d[BUFFER_MAX_SIZE];
+    uint8_t tail;
+    uint8_t head;
+} DataBuffer_t;
+
+// Commands from master stored in the command register
+typedef enum ControllerCommand_e {
+    CmdReg,
+    ParamsReg,
+    DataReg,
+    Reset,
+    MaxCommands
+} ControllerCommand_t;
+
+// Error codes displayed in error bits of the command register
+typedef enum ControllerError_e {
+    Ok,
+    BusyError,
+    UnkownCmdError,
+    BadParamsError,
+    MaxErrorCodes
+} ControllerError_t;
 
 // Commands
 #define CLEAR_GO_STATUS(REG)    bitClear(REG, GO_BIT)
@@ -46,28 +70,7 @@ typedef bool LtChannel_t;
 #define SET_ERROR(REG, ERR) \
     bitInsert(REG, (uint8_t)ERR, ERROR_MASK, ERROR_OFFSET)
 
-typedef struct DataBuffer_s {
-    uint8_t d[BUFFER_MAX_SIZE];
-    uint8_t tail;
-    uint8_t head;
-} DataBuffer_t;
-
-typedef enum ControllerCommand_e {
-    CmdReg,
-    ParamsReg,
-    DataReg,
-    Reset,
-    MaxCommands
-} ControllerCommand_t;
-
-typedef enum ControllerError_e {
-    Ok,
-    BusyError,
-    UnkownCmdError,
-    BadParamsError,
-    MaxErrorCodes
-} ControllerError_t;
-
+// Expose certain variables for unit testing only
 #ifdef UNIT_TEST
     extern DataBuffer_t transmitBuffer;
     extern DataBuffer_t receiveBuffer;

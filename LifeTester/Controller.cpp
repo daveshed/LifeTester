@@ -1,4 +1,3 @@
-#include "Arduino.h"
 #include "Config.h"
 #include "Controller.h"
 #include "Controller_Private.h"
